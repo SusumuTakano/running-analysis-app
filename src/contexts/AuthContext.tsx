@@ -21,22 +21,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchUserProfile = async (authUser: User) => {
     try {
       console.log('📋 Fetching profile for user:', authUser.id);
+      const startTime = Date.now();
       
-      const { data, error } = await supabase
+      // タイムアウト付きでプロフィールを取得（5秒）
+      const profilePromise = supabase
         .from('profiles')
         .select('*')
         .eq('id', authUser.id)
         .single();
+      
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Profile fetch timeout after 5s')), 5000)
+      );
+      
+      const { data, error } = await Promise.race([
+        profilePromise,
+        timeoutPromise
+      ]).catch((err) => {
+        console.warn('⚠️ Profile fetch failed or timed out:', err.message);
+        return { data: null, error: err };
+      }) as any;
 
-      if (error) {
-        console.error('❌ Error fetching user profile:', error);
-        console.error('Error details:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        });
-        throw error;
+      const elapsed = Date.now() - startTime;
+      console.log(`📋 Profile fetch took ${elapsed}ms`);
+
+      if (error || !data) {
+        console.warn('⚠️ Using fallback user data from auth');
+        // プロフィールが存在しない場合は、基本的なユーザー情報だけで設定
+        setUser({
+          id: authUser.id,
+          email: authUser.email || '',
+          full_name: authUser.user_metadata?.full_name || '',
+          role: 'user',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        } as any);
+        return;
       }
 
       console.log('✅ Profile fetched successfully:', data);
@@ -44,13 +64,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('❌ Failed to fetch user profile:', error);
       
-      // プロフィールが存在しない場合は、基本的なユーザー情報だけで設定
+      // フォールバック
       console.log('⚠️ Using fallback user data from auth');
       setUser({
         id: authUser.id,
         email: authUser.email || '',
         full_name: authUser.user_metadata?.full_name || '',
-        role: 'guest',
+        role: 'user',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       } as any);
