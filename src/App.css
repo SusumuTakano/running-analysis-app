@@ -35,6 +35,10 @@ body {
   min-height: 100vh;
   color: var(--gray-900);
   line-height: 1.6;
+  /* モバイルでのスクロールを改善 */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
 }
 
 /* ========== コンテナ ========== */
@@ -43,6 +47,10 @@ body {
   max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
+  /* モバイルでのスクロールを確保 */
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
 }
 
 /* ========== ヘッダー ========== */
@@ -1085,5 +1093,260 @@ body {
 
   .btn-primary-large {
     order: 1;
+  }
+}
+
+/* ========== モバイル対応：接地/離地マーキング ========== */
+
+/* デフォルトでモバイル用コントロールを非表示 */
+.mobile-marking-controls {
+  display: none;
+}
+
+/* デスクトップでは通常のテキストを表示 */
+.mobile-only {
+  display: none;
+}
+
+.desktop-only {
+  display: inline;
+}
+
+/* モバイルデバイスでの表示切り替え */
+@media (max-width: 768px) {
+  .mobile-only {
+    display: inline;
+  }
+  
+  .desktop-only {
+    display: none;
+  }
+
+  /* モバイル用のマーキングコントロールを表示 */
+  .mobile-marking-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 16px;
+    background: var(--gray-50);
+    border-radius: var(--radius);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    position: relative;
+    z-index: 1;
+  }
+
+  /* 大きなマーキングボタン */
+  .btn-mark-contact {
+    width: 100%;
+    padding: 18px 24px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+    box-shadow: var(--shadow-md);
+    transition: var(--transition);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .btn-mark-contact:active {
+    transform: scale(0.98);
+    box-shadow: var(--shadow);
+  }
+
+  .btn-mark-contact:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* フレーム移動ボタンのグリッド */
+  .mobile-frame-nav {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+
+  .btn-nav-arrow {
+    padding: 14px 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    background: white;
+    color: var(--primary);
+    border: 2px solid var(--primary);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: var(--transition);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .btn-nav-arrow:active {
+    background: var(--primary);
+    color: white;
+  }
+
+  .btn-nav-arrow:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  /* デスクトップ用のボタングループを小さく */
+  .frame-buttons-compact {
+    display: none; /* モバイルでは非表示 */
+  }
+
+  /* キャンバスをモバイル画面に完全固定表示 */
+  .canvas-area {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 1000 !important;
+    background: white;
+    padding: 8px 12px;
+    margin: 0 !important;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+    width: 100vw !important;
+    border-bottom: 2px solid var(--primary);
+  }
+
+  .preview-canvas {
+    width: 100% !important;
+    height: auto !important;
+    max-height: 35vh !important;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto;
+    border-radius: 4px;
+  }
+
+  /* フレーム情報を見やすく */
+  .frame-info {
+    font-size: 1rem;
+    padding: 12px;
+    background: white;
+    border-radius: var(--radius);
+    margin-bottom: 12px;
+    text-align: center;
+    font-weight: 500;
+  }
+
+  /* スライダーを大きく */
+  .frame-range {
+    height: 44px;
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    background: transparent;
+  }
+
+  .frame-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 32px;
+    height: 32px;
+    background: var(--primary);
+    cursor: pointer;
+    border-radius: 50%;
+    box-shadow: var(--shadow-md);
+  }
+
+  .frame-range::-moz-range-thumb {
+    width: 32px;
+    height: 32px;
+    background: var(--primary);
+    cursor: pointer;
+    border-radius: 50%;
+    box-shadow: var(--shadow-md);
+    border: none;
+  }
+
+  /* マーカーコントロールボタンを大きく */
+  .marker-controls {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .marker-controls button,
+  .marker-controls .toggle-btn {
+    padding: 12px 16px;
+    font-size: 1rem;
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+
+  /* 角度表示を縦に並べる */
+  .angle-display-compact {
+    padding: 16px;
+  }
+
+  .angle-grid-compact {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .angle-grid-compact > div {
+    padding: 12px;
+    font-size: 1rem;
+  }
+
+  /* モバイルでのスクロール問題を修正 */
+  body {
+    position: relative;
+    overflow-y: auto;
+    overflow-x: hidden;
+    height: auto;
+    min-height: 100vh;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-container {
+    overflow-y: visible !important;
+    overflow-x: hidden;
+    height: auto;
+    min-height: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ウィザードコンテンツのスクロールを確保 */
+  .wizard-content {
+    overflow-y: visible !important;
+    overflow-x: hidden;
+    max-height: none;
+    height: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 100px;
+  }
+
+  /* Step 4と5ではキャンバスが固定されるため、ヘッダーに余白を追加 */
+  .wizard-content:has(.canvas-area) .wizard-step-header {
+    padding-top: calc(35vh + 48px);
+    margin-top: -20px; /* app-containerのpaddingをキャンセル */
+  }
+
+  /* 固定されたキャンバスエリアの子要素 */
+  .canvas-area canvas {
+    touch-action: pan-y pinch-zoom;
+  }
+
+  /* Step 4と5でキャンバス以外のコンテンツを調整 */
+  .wizard-content .frame-control,
+  .wizard-content .section-settings,
+  .wizard-content .marker-controls,
+  .wizard-content .mobile-marking-controls,
+  .wizard-content .contact-markers,
+  .wizard-content .angle-display-compact,
+  .wizard-content .wizard-actions {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* すべてのボタンとインタラクティブ要素 */
+  button, input[type="range"], .btn-mark-contact, .btn-nav-arrow {
+    touch-action: manipulation;
   }
 }

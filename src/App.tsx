@@ -314,6 +314,11 @@ const App: React.FC = () => {
   const [startLineOffset, setStartLineOffset] = useState(0);
   const [midLineOffset, setMidLineOffset] = useState(0);
   const [endLineOffset, setEndLineOffset] = useState(0);
+  
+  // 設定時の腰の位置を記憶（正規化座標 0-1）
+  const [savedStartHipX, setSavedStartHipX] = useState<number | null>(null);
+  const [savedMidHipX, setSavedMidHipX] = useState<number | null>(null);
+  const [savedEndHipX, setSavedEndHipX] = useState<number | null>(null);
 
   const sectionRange = useMemo(() => {
     const rawStart = sectionStartFrame ?? 0;
@@ -646,14 +651,20 @@ const App: React.FC = () => {
           `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
       });
 
+      // デバイスに応じた設定
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+      
       pose.setOptions({
-        modelComplexity: 1,
+        modelComplexity: isMobile ? 0 : 1, // モバイルは軽量モデルを使用
         smoothLandmarks: true,
         enableSegmentation: false,
         smoothSegmentation: false,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5,
+        minDetectionConfidence: isMobile ? 0.3 : 0.5, // モバイルは検出閾値を下げる
+        minTrackingConfidence: isMobile ? 0.3 : 0.5,
       });
+      
+      console.log(`🎯 Pose estimation config: mobile=${isMobile}, iOS=${isIOS}, modelComplexity=${isMobile ? 0 : 1}`);
 
       const results: (FramePoseData | null)[] = [];
 
@@ -670,10 +681,14 @@ const App: React.FC = () => {
           tempCtx.putImageData(frame, 0, 0);
 
           try {
+            // デバイスに応じたタイムアウト設定
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            const timeoutDuration = isMobile ? 15000 : 5000; // モバイルは15秒、デスクトップは5秒
+            
             const result = await new Promise<any>((resolve, reject) => {
               const timeout = setTimeout(
                 () => reject(new Error("Timeout")),
-                5000
+                timeoutDuration
               );
 
               pose.onResults((r: any) => {
@@ -696,10 +711,19 @@ const App: React.FC = () => {
             } else {
               results.push(null);
             }
-          } catch (e) {
-            console.error("Frame processing error:", e);
+          } catch (e: any) {
+            if (e.message === "Timeout") {
+              console.warn(`⏱️ Frame ${i} timed out`);
+            } else {
+              console.error(`❌ Frame ${i} processing error:`, e.message);
+            }
             results.push(null);
           }
+        }
+        
+        // モバイルではメモリを解放するため、10フレームごとに少し待つ
+        if (i % 10 === 0 && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+          await new Promise(resolve => setTimeout(resolve, 50));
         }
 
         const progress = Math.round(
@@ -712,7 +736,25 @@ const App: React.FC = () => {
       }
 
       setPoseResults(results);
-      setStatus("✅ 姿勢推定完了！");
+      
+      // 成功率を計算
+      const successCount = results.filter(r => r !== null && r.landmarks).length;
+      const successRateNum = successCount / results.length * 100;
+      const successRateStr = successRateNum.toFixed(1);
+      console.log(`📊 Pose estimation complete: ${successCount}/${results.length} frames (${successRateStr}%)`);
+      
+      if (successCount === 0) {
+        setStatus("❌ 姿勢推定が完全に失敗しました。動画を変更してください。");
+        alert("姿勢推定が失敗しました。\n\nより短い動画や、人物が大きく映っている動画をお試しください。");
+        return;
+      } else if (successRateNum < 50) {
+        setStatus(`⚠️ 姿勢推定完了（成功率: ${successRateStr}%）- 精度が低い可能性があります`);
+        if (!confirm(`姿勢推定の成功率が低いです（${successRateStr}%）。\n\n続行しますか？\n\n※ より短い動画や、人物が大きく映っている動画をお勧めします。`)) {
+          return;
+        }
+      } else {
+        setStatus(`✅ 姿勢推定完了！（成功率: ${successRateStr}%）`);
+      }
       
       // 自動で次のステップへ
       setTimeout(() => {
@@ -937,6 +979,9 @@ const App: React.FC = () => {
     setStartLineOffset(0);
     setMidLineOffset(0);
     setEndLineOffset(0);
+    setSavedStartHipX(null);
+    setSavedMidHipX(null);
+    setSavedEndHipX(null);
     setContactFrames([]);
     setPoseResults([]);
 
@@ -1033,9 +1078,41 @@ const App: React.FC = () => {
       return;
     }
 
+    // デバイス検出（モバイルかどうか）
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    
+    // 動画サイズとデバイスに応じた制限設定
+    const videoSizeMB = (video.videoWidth * video.videoHeight * video.duration * 24) / (1024 * 1024);
+    console.log(`📹 Video info: ${video.videoWidth}x${video.videoHeight}, duration: ${video.duration.toFixed(2)}s, estimated size: ${videoSizeMB.toFixed(1)}MB`);
+    console.log(`📱 Device: ${isMobile ? 'Mobile' : 'Desktop'}, iOS: ${isIOS}`);
+
     const duration = video.duration;
-    const MAX_FRAMES = 1000;
-    const preferredFps = 120;
+    
+    // デバイスに応じたメモリ制限
+    let MAX_FRAMES: number;
+    let MAX_WIDTH: number;
+    let preferredFps: number;
+    
+    if (isIOS) {
+      // iOS（iPhone/iPad）: 最も厳しい制限
+      MAX_FRAMES = 400; // 通常の1000から大幅削減
+      MAX_WIDTH = 480;  // 通常の960から半分に削減
+      preferredFps = 60; // 通常の120から半分に削減
+      console.log('⚠️ iOS detected: Using conservative memory limits');
+    } else if (isMobile) {
+      // その他のモバイル（Android等）
+      MAX_FRAMES = 600;
+      MAX_WIDTH = 640;
+      preferredFps = 90;
+      console.log('⚠️ Mobile detected: Using reduced memory limits');
+    } else {
+      // デスクトップ: 通常の制限
+      MAX_FRAMES = 1000;
+      MAX_WIDTH = 960;
+      preferredFps = 120;
+    }
+    
     const maxFpsForLength = Math.floor(MAX_FRAMES / Math.max(duration, 0.001));
     const targetFps = Math.max(30, Math.min(preferredFps, maxFpsForLength));
     const dt = 1 / targetFps;
@@ -1043,10 +1120,22 @@ const App: React.FC = () => {
 
     setUsedTargetFps(targetFps);
 
-    const MAX_WIDTH = 960;
     const scale = Math.min(1, MAX_WIDTH / video.videoWidth);
     const targetWidth = Math.round(video.videoWidth * scale);
     const targetHeight = Math.round(video.videoHeight * scale);
+    
+    // メモリ使用量の推定と警告
+    const estimatedMemoryMB = (targetWidth * targetHeight * totalFrames * 4) / (1024 * 1024);
+    console.log(`💾 Estimated memory usage: ${estimatedMemoryMB.toFixed(1)}MB for ${totalFrames} frames at ${targetWidth}x${targetHeight}`);
+    
+    if (isIOS && estimatedMemoryMB > 200) {
+      console.warn('⚠️ High memory usage detected on iOS. May cause crash.');
+      if (!confirm(`この動画の処理には約${estimatedMemoryMB.toFixed(0)}MBのメモリが必要です。\niPhoneでは処理中にクラッシュする可能性があります。\n\n続行しますか？`)) {
+        setIsExtracting(false);
+        setStatus("キャンセルされました");
+        return;
+      }
+    }
 
     canvas.width = targetWidth;
     canvas.height = targetHeight;
@@ -1083,24 +1172,165 @@ const App: React.FC = () => {
         video.removeEventListener("seeked", onSeeked);
 
         requestAnimationFrame(() => {
-          ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
-          const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
-          framesRef.current.push(imageData);
+          try {
+            ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
+            const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+            framesRef.current.push(imageData);
 
-          const progress = Math.round(((index + 1) / totalFrames) * 100);
-          setExtractProgress(clamp(progress, 0, 99));
-          setStatus(`フレーム抽出中... ${index + 1}/${totalFrames} フレーム`);
+            const progress = Math.round(((index + 1) / totalFrames) * 100);
+            setExtractProgress(clamp(progress, 0, 99));
+            setStatus(`フレーム抽出中... ${index + 1}/${totalFrames} フレーム`);
 
-          index += 1;
-          grabFrame();
+            index += 1;
+            grabFrame();
+          } catch (error) {
+            // メモリエラーをキャッチしてクラッシュを防ぐ
+            console.error('❌ Frame extraction error:', error);
+            setIsExtracting(false);
+            setStatus(`⚠️ フレーム抽出中にエラーが発生しました（${index}/${totalFrames}フレームまで処理）`);
+            
+            // エラーが発生しても、それまでに抽出したフレームは使用可能にする
+            if (framesRef.current.length > 0) {
+              setFramesCount(framesRef.current.length);
+              setCurrentFrame(0);
+              alert(`メモリ不足のため、${index}フレームまでで処理を中断しました。\n抽出済みの${framesRef.current.length}フレームは使用できます。\n\nより短い動画や低解像度の動画をお試しください。`);
+            } else {
+              alert('フレーム抽出中にエラーが発生しました。\nより短い動画や低解像度の動画をお試しください。');
+              setWizardStep(1);
+            }
+          }
         });
       };
 
+      const onSeekError = () => {
+        video.removeEventListener("seeked", onSeeked);
+        video.removeEventListener("error", onSeekError);
+        console.error('❌ Video seek error at frame', index);
+        
+        // シークエラーの場合もクラッシュを防ぐ
+        setIsExtracting(false);
+        setStatus(`⚠️ 動画シークエラー（${index}/${totalFrames}フレーム）`);
+        
+        if (framesRef.current.length > 0) {
+          setFramesCount(framesRef.current.length);
+          setCurrentFrame(0);
+          alert(`動画の読み込み中にエラーが発生しました。\n抽出済みの${framesRef.current.length}フレームは使用できます。`);
+        } else {
+          alert('動画の読み込み中にエラーが発生しました。\n別の動画ファイルをお試しください。');
+          setWizardStep(1);
+        }
+      };
+
       video.addEventListener("seeked", onSeeked);
+      video.addEventListener("error", onSeekError);
       video.currentTime = clamp(currentTime, 0, duration);
     };
 
     grabFrame();
+  };
+
+  // ------------ 腰の位置を計算するヘルパー関数 ------------
+  const calculateHipPosition = (frameIndex: number): number | null => {
+    console.log(`🔍 calculateHipPosition called: frameIndex=${frameIndex}, poseResults.length=${poseResults.length}`);
+    
+    // poseResults全体のサマリーを表示（初回のみ）
+    if (frameIndex >= 0) {
+      let validCount = 0;
+      let nullCount = 0;
+      let noLandmarksCount = 0;
+      
+      for (let i = 0; i < Math.min(poseResults.length, 100); i++) {
+        const p = poseResults[i];
+        if (p === null || p === undefined) {
+          nullCount++;
+        } else if (!p.landmarks) {
+          noLandmarksCount++;
+        } else {
+          validCount++;
+        }
+      }
+      
+      console.log(`📊 PoseResults summary (first 100 frames):`);
+      console.log(`  - Valid poses with landmarks: ${validCount}`);
+      console.log(`  - Null/undefined poses: ${nullCount}`);
+      console.log(`  - Poses without landmarks: ${noLandmarksCount}`);
+    }
+    
+    if (poseResults.length === 0 || frameIndex >= poseResults.length || frameIndex < 0) {
+      console.log(`⚠️ calculateHipPosition: Invalid frame ${frameIndex} (poseResults.length=${poseResults.length})`);
+      return null;
+    }
+    
+    // まず指定されたフレームを試す
+    const tryGetHipPosition = (idx: number): number | null => {
+      if (idx < 0 || idx >= poseResults.length) return null;
+      
+      const pose = poseResults[idx];
+      
+      // デバッグ: poseオブジェクトの詳細を確認
+      if (idx === frameIndex) {
+        console.log(`🔍 Detailed check for frame ${idx}:`);
+        console.log(`  - pose is null: ${pose === null}`);
+        console.log(`  - pose is undefined: ${pose === undefined}`);
+        console.log(`  - typeof pose: ${typeof pose}`);
+        if (pose) {
+          console.log(`  - pose has landmarks: ${'landmarks' in pose}`);
+          console.log(`  - landmarks value:`, pose.landmarks);
+          if (pose.landmarks) {
+            console.log(`  - landmarks.length: ${pose.landmarks.length}`);
+            console.log(`  - landmarks[23] (leftHip):`, pose.landmarks[23]);
+            console.log(`  - landmarks[24] (rightHip):`, pose.landmarks[24]);
+          }
+        }
+      }
+      
+      if (!pose?.landmarks) return null;
+      
+      const leftHip = pose.landmarks[23];
+      const rightHip = pose.landmarks[24];
+      
+      if (!leftHip || !rightHip || leftHip.visibility < 0.5 || rightHip.visibility < 0.5) {
+        if (idx === frameIndex) {
+          console.log(`  - Hip visibility too low or missing: L=${leftHip?.visibility}, R=${rightHip?.visibility}`);
+        }
+        return null;
+      }
+      
+      const hipCenterX = (leftHip.x + rightHip.x) / 2;
+      return hipCenterX;
+    };
+    
+    // 指定されたフレームで試す
+    let hipX = tryGetHipPosition(frameIndex);
+    if (hipX !== null) {
+      console.log(`✅ calculateHipPosition: Frame ${frameIndex} → hipX=${(hipX * 100).toFixed(1)}%`);
+      return hipX;
+    }
+    
+    console.log(`⚠️ Frame ${frameIndex} has no valid hip data, searching nearby frames...`);
+    
+    // 前後±20フレームを探索（モバイルでは姿勢推定失敗が多いため範囲を拡大）
+    const searchRange = 20;
+    for (let offset = 1; offset <= searchRange; offset++) {
+      // 前方を探索
+      const prevIdx = frameIndex - offset;
+      hipX = tryGetHipPosition(prevIdx);
+      if (hipX !== null) {
+        console.log(`✅ calculateHipPosition: Using frame ${prevIdx} (offset: ${-offset}) → hipX=${(hipX * 100).toFixed(1)}%`);
+        return hipX;
+      }
+      
+      // 後方を探索
+      const nextIdx = frameIndex + offset;
+      hipX = tryGetHipPosition(nextIdx);
+      if (hipX !== null) {
+        console.log(`✅ calculateHipPosition: Using frame ${nextIdx} (offset: +${offset}) → hipX=${(hipX * 100).toFixed(1)}%`);
+        return hipX;
+      }
+    }
+    
+    console.log(`❌ calculateHipPosition: No valid hip data found within ±${searchRange} frames of ${frameIndex}`);
+    return null;
   };
 
   // ------------ 区間マーカー線を描画 ------------
@@ -1112,64 +1342,52 @@ const App: React.FC = () => {
     viewParams?: { srcX: number; srcY: number; srcW: number; srcH: number; scale: number }
   ) => {
     const markers = [
-      { frame: sectionStartFrame, color: "#10b981", label: "スタート", offset: startLineOffset },
-      { frame: sectionMidFrame, color: "#f59e0b", label: "中間", offset: midLineOffset },
-      { frame: sectionEndFrame, color: "#ef4444", label: "フィニッシュ", offset: endLineOffset },
+      { frame: sectionStartFrame, color: "#10b981", label: "スタート", offset: startLineOffset, savedHipX: savedStartHipX },
+      { frame: sectionMidFrame, color: "#f59e0b", label: "中間", offset: midLineOffset, savedHipX: savedMidHipX },
+      { frame: sectionEndFrame, color: "#ef4444", label: "フィニッシュ", offset: endLineOffset, savedHipX: savedEndHipX },
     ];
 
-    markers.forEach(({ frame, color, label, offset }) => {
-      if (frame == null || frame !== currentFrameNum) return;
+    markers.forEach(({ frame, color, label, offset, savedHipX }) => {
+      // フレームが設定されていない場合はスキップ
+      if (frame == null) return;
 
-      // 姿勢推定から腰の位置を取得
-      let torsoX: number | null = null;
+      // 保存された腰の位置を使用（正規化座標 0-1）
+      let torsoX: number;
       let fromPose = false;
-
-      // まず姿勢推定データから腰の位置を取得しようとする
-      if (poseResults.length > 0 && frame < poseResults.length && poseResults[frame]?.landmarks) {
-        const landmarks = poseResults[frame]!.landmarks;
-        const leftHip = landmarks[23];
-        const rightHip = landmarks[24];
-
-        if (leftHip && rightHip && leftHip.visibility > 0.5 && rightHip.visibility > 0.5) {
-          const hipCenterX = (leftHip.x + rightHip.x) / 2;
-          fromPose = true;
-          
-          console.log(`[${label}] Frame ${frame}: Hip position found at X=${(hipCenterX * 100).toFixed(1)}%`);
-          
-          if (viewParams) {
-            // 拡大表示時の座標変換
-            const origX = hipCenterX * width;
-            const relX = origX - viewParams.srcX;
-            torsoX = (relX / viewParams.srcW) * width;
-          } else {
-            // 通常表示
-            torsoX = hipCenterX * width;
-          }
-        } else {
-          console.log(`[${label}] Frame ${frame}: Hip landmarks not visible (L:${leftHip?.visibility.toFixed(2)}, R:${rightHip?.visibility.toFixed(2)})`);
-        }
-      } else {
-        console.log(`[${label}] Frame ${frame}: No pose data available (poseResults.length=${poseResults.length})`);
-      }
       
-      // 姿勢推定から取得できなかった場合のみデフォルト位置を使用
-      if (torsoX === null) {
+      if (savedHipX !== null) {
+        // 保存された位置を使用（常に設定時の腰の位置を表示）
+        if (viewParams) {
+          // 拡大表示時の座標変換
+          const origX = savedHipX * width;
+          const relX = origX - viewParams.srcX;
+          torsoX = (relX / viewParams.srcW) * width;
+        } else {
+          // 通常表示
+          torsoX = savedHipX * width;
+        }
+        fromPose = true;
+        console.log(`📌 [${label}] Using saved hip position: ${(savedHipX * 100).toFixed(1)}% → ${torsoX.toFixed(0)}px`);
+      } else {
+        // 保存された位置がない場合はデフォルト（センター）
         torsoX = width / 2;
+        console.log(`📍 [${label}] No saved position, using center: ${torsoX.toFixed(0)}px`);
       }
       
       // 手動オフセットを適用
-      torsoX += offset;
+      const finalX = torsoX + offset;
+      console.log(`📐 [${label}] Frame ${frame}: Final position: ${finalX.toFixed(0)} (base=${torsoX.toFixed(0)} + offset=${offset})`);
 
       // 画面内に収まるように調整
-      torsoX = Math.max(20, Math.min(width - 20, torsoX));
+      const clampedX = Math.max(20, Math.min(width - 20, finalX));
 
       // 垂直線を描画
       ctx.strokeStyle = color;
       ctx.lineWidth = 3;
       ctx.setLineDash([10, 5]);
       ctx.beginPath();
-      ctx.moveTo(torsoX, height);
-      ctx.lineTo(torsoX, 0);
+      ctx.moveTo(clampedX, height);
+      ctx.lineTo(clampedX, 0);
       ctx.stroke();
       ctx.setLineDash([]);
 
@@ -1177,18 +1395,18 @@ const App: React.FC = () => {
       ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
       ctx.font = "bold 14px sans-serif";
       const textWidth = ctx.measureText(label).width;
-      ctx.fillRect(torsoX - textWidth / 2 - 8, 12, textWidth + 16, 24);
+      ctx.fillRect(clampedX - textWidth / 2 - 8, 12, textWidth + 16, 24);
       
       // ラベルを描画
       ctx.fillStyle = color;
       ctx.textAlign = "center";
-      ctx.fillText(label, torsoX, 28);
+      ctx.fillText(label, clampedX, 28);
       
       // 姿勢推定からの位置かどうかのインジケーター
       if (!fromPose) {
         ctx.fillStyle = "rgba(239, 68, 68, 0.8)";
         ctx.font = "10px sans-serif";
-        ctx.fillText("手動", torsoX, 45);
+        ctx.fillText("手動", clampedX, 45);
       }
     });
   };
@@ -1809,6 +2027,10 @@ const App: React.FC = () => {
                   onClick={() => {
                     setSectionStartFrame(currentFrame);
                     setStartLineOffset(0);
+                    // 腰の位置を計算して保存
+                    const hipX = calculateHipPosition(currentFrame);
+                    setSavedStartHipX(hipX);
+                    console.log(`🟢 スタート設定: Frame ${currentFrame}, HipX=${hipX !== null ? (hipX * 100).toFixed(1) + '%' : 'null'}`);
                   }}
                   disabled={!ready}
                 >
@@ -1865,6 +2087,10 @@ const App: React.FC = () => {
                     onClick={() => {
                       setSectionMidFrame(currentFrame);
                       setMidLineOffset(0);
+                      // 腰の位置を計算して保存
+                      const hipX = calculateHipPosition(currentFrame);
+                      setSavedMidHipX(hipX);
+                      console.log(`🟡 中間設定: Frame ${currentFrame}, HipX=${hipX !== null ? (hipX * 100).toFixed(1) + '%' : 'null'}`);
                     }}
                     disabled={!ready}
                   >
@@ -1876,6 +2102,7 @@ const App: React.FC = () => {
                       onClick={() => {
                         setSectionMidFrame(null);
                         setMidLineOffset(0);
+                        setSavedMidHipX(null);
                       }}
                     >
                       クリア
@@ -1932,6 +2159,10 @@ const App: React.FC = () => {
                   onClick={() => {
                     setSectionEndFrame(currentFrame);
                     setEndLineOffset(0);
+                    // 腰の位置を計算して保存
+                    const hipX = calculateHipPosition(currentFrame);
+                    setSavedEndHipX(hipX);
+                    console.log(`🔴 フィニッシュ設定: Frame ${currentFrame}, HipX=${hipX !== null ? (hipX * 100).toFixed(1) + '%' : 'null'}`);
                   }}
                   disabled={!ready}
                 >
@@ -2007,9 +2238,11 @@ const App: React.FC = () => {
             <div className="wizard-step-header">
               <h2 className="wizard-step-title">ステップ 5: 接地/離地マーカー</h2>
               <p className="wizard-step-desc">
-                Spaceキーで接地・離地のタイミングにマーカーを打ってください。
+                <span className="desktop-only">Spaceキーで接地・離地のタイミングにマーカーを打ってください。</span>
+                <span className="mobile-only">「📍 接地/離地マーク」ボタンでマーカーを打ってください。</span>
                 <br />
-                <small>矢印キー: ←→ (1フレーム移動) / ↑↓ (10フレーム移動)</small>
+                <small className="desktop-only">矢印キー: ←→ (1フレーム移動) / ↑↓ (10フレーム移動)</small>
+                <small className="mobile-only">下のボタンでフレームを移動できます</small>
               </p>
             </div>
 
@@ -2050,6 +2283,47 @@ const App: React.FC = () => {
 
             <div className="canvas-area">
               <canvas ref={displayCanvasRef} className="preview-canvas" />
+            </div>
+
+            {/* モバイル用：大きなマーキングボタン */}
+            <div className="mobile-marking-controls">
+              <button 
+                className="btn-mark-contact"
+                onClick={() => setContactFrames((prev) => [...prev, currentFrame])}
+                disabled={!ready}
+              >
+                📍 接地/離地マーク
+              </button>
+              <div className="mobile-frame-nav">
+                <button 
+                  className="btn-nav-arrow" 
+                  onClick={() => changeFrame(-10)} 
+                  disabled={!ready}
+                >
+                  ⏪ -10
+                </button>
+                <button 
+                  className="btn-nav-arrow" 
+                  onClick={() => changeFrame(-1)} 
+                  disabled={!ready}
+                >
+                  ◀ -1
+                </button>
+                <button 
+                  className="btn-nav-arrow" 
+                  onClick={() => changeFrame(1)} 
+                  disabled={!ready}
+                >
+                  +1 ▶
+                </button>
+                <button 
+                  className="btn-nav-arrow" 
+                  onClick={() => changeFrame(10)} 
+                  disabled={!ready}
+                >
+                  +10 ⏩
+                </button>
+              </div>
             </div>
 
             <div className="frame-control">
@@ -2524,6 +2798,9 @@ const App: React.FC = () => {
                     setUsedTargetFps(null);
                     setSectionStartFrame(null);
                     setSectionEndFrame(null);
+                    setSavedStartHipX(null);
+                    setSavedMidHipX(null);
+                    setSavedEndHipX(null);
                     setContactFrames([]);
                     setPoseResults([]);
                     setStatus("");
