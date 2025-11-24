@@ -8,11 +8,14 @@ export const AuthPage: React.FC = () => {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const { user, loading } = useAuth();
 
+  console.log('📄 AuthPage rendered - loading:', loading, 'user:', user ? 'logged in' : 'not logged in');
+
   const toggleMode = () => {
     setMode(mode === 'login' ? 'register' : 'login');
   };
 
   if (loading) {
+    console.log('⏳ AuthPage: Showing loading screen');
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -22,6 +25,8 @@ export const AuthPage: React.FC = () => {
       </div>
     );
   }
+
+  console.log('✅ AuthPage: Showing login/register form');
 
   // ログイン済みの場合はプロフィールを表示
   if (user) {

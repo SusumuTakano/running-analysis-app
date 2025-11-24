@@ -123,6 +123,7 @@ const MainApp: React.FC = () => {
 
   // ローディング中
   if (loading) {
+    console.log('🔄 MainApp: Still loading... (loading=' + loading + ')');
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -132,6 +133,11 @@ const MainApp: React.FC = () => {
       </div>
     );
   }
+
+  console.log('✅ MainApp: Loading complete! Showing content...');
+  console.log('Current user:', user);
+  console.log('Current route:', currentRoute);
+  console.log('View mode:', viewMode);
 
   // 管理者ログインページ（/admin/login）
   if (currentRoute === '/admin/login') {

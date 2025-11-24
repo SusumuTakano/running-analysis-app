@@ -8,8 +8,10 @@ interface RegisterFormProps {
 export const RegisterForm: React.FC<RegisterFormProps> = ({ onToggleMode }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [accountType, setAccountType] = useState<'guest' | 'paid'>('guest');
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
@@ -19,23 +21,68 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onToggleMode }) => {
     e.preventDefault();
     setError('');
     setSuccess('');
+
+    // バリデーション
+    if (!fullName.trim()) {
+      setError('お名前を入力してください');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('パスワードは6文字以上で入力してください');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('パスワードが一致しません');
+      return;
+    }
+
+    if (!agreedToTerms) {
+      setError('利用規約に同意してください');
+      return;
+    }
+
     setLoading(true);
 
     try {
       if (accountType === 'guest') {
         await signUpAsGuest(email, password, fullName);
-        setSuccess('ゲストアカウントを作成しました！1週間のトライアルをお楽しみください。確認メールをご確認ください。');
+        setSuccess('✅ ゲストアカウントを作成しました！1週間のトライアルをお楽しみください。');
+        
+        // 5秒後にログインページへ案内
+        setTimeout(() => {
+          setSuccess('✅ 登録完了！メールを確認して、確認リンクをクリックしてください。その後、ログインできます。');
+        }, 2000);
       } else {
         await signUp(email, password, fullName);
-        setSuccess('アカウントを作成しました！確認メールをご確認ください。');
+        setSuccess('✅ アカウントを作成しました！メールを確認後、Stripe決済ページへ移動します...');
+        // TODO: Stripe決済ページへリダイレクト
       }
       
       // フォームをリセット
       setEmail('');
       setPassword('');
+      setConfirmPassword('');
       setFullName('');
+      setAgreedToTerms(false);
     } catch (err: any) {
-      setError(err.message || '登録に失敗しました');
+      console.error('Registration error:', err);
+      
+      // より詳細なエラーメッセージ
+      let errorMessage = '登録に失敗しました。';
+      
+      if (err.message?.includes('already registered')) {
+        errorMessage = 'このメールアドレスは既に登録されています。ログインしてください。';
+      } else if (err.message?.includes('Invalid email')) {
+        errorMessage = 'メールアドレスの形式が正しくありません。';
+      } else if (err.message?.includes('Password')) {
+        errorMessage = 'パスワードは6文字以上で入力してください。';
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -52,36 +99,61 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onToggleMode }) => {
       )}
 
       {success && (
-        <div className="mb-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded">
-          {success}
+        <div className="mb-4 p-4 bg-green-100 border-2 border-green-400 text-green-800 rounded-lg">
+          <div className="font-semibold mb-1">{success}</div>
+          <div className="text-sm mt-2">
+            確認メールが送信されました。メール内のリンクをクリックしてアカウントを有効化してください。
+          </div>
         </div>
       )}
 
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
-          <label className="block text-gray-700 text-sm font-bold mb-2">
-            アカウントタイプ
+          <label className="block text-gray-700 text-sm font-bold mb-3">
+            アカウントタイプを選択
           </label>
-          <div className="space-y-2">
-            <label className="flex items-center">
+          <div className="space-y-3">
+            <label className={`flex items-start p-3 border-2 rounded-lg cursor-pointer transition ${
+              accountType === 'guest' 
+                ? 'border-blue-500 bg-blue-50' 
+                : 'border-gray-200 hover:border-blue-300'
+            }`}>
               <input
                 type="radio"
                 value="guest"
                 checked={accountType === 'guest'}
                 onChange={(e) => setAccountType(e.target.value as 'guest')}
-                className="mr-2"
+                className="mt-1 mr-3"
               />
-              <span>ゲストアカウント（1週間無料トライアル）</span>
+              <div>
+                <div className="font-semibold text-gray-800">
+                  🎁 ゲストアカウント（無料トライアル）
+                </div>
+                <div className="text-sm text-gray-600 mt-1">
+                  1週間無料でお試しいただけます
+                </div>
+              </div>
             </label>
-            <label className="flex items-center">
+            <label className={`flex items-start p-3 border-2 rounded-lg cursor-pointer transition ${
+              accountType === 'paid' 
+                ? 'border-green-500 bg-green-50' 
+                : 'border-gray-200 hover:border-green-300'
+            }`}>
               <input
                 type="radio"
                 value="paid"
                 checked={accountType === 'paid'}
                 onChange={(e) => setAccountType(e.target.value as 'paid')}
-                className="mr-2"
+                className="mt-1 mr-3"
               />
-              <span>有料アカウント（年間500円）</span>
+              <div>
+                <div className="font-semibold text-gray-800">
+                  💳 有料アカウント（年間500円）
+                </div>
+                <div className="text-sm text-gray-600 mt-1">
+                  すぐに全機能をご利用いただけます
+                </div>
+              </div>
             </label>
           </div>
         </div>
@@ -113,7 +185,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onToggleMode }) => {
           />
         </div>
 
-        <div className="mb-6">
+        <div className="mb-4">
           <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">
             パスワード（6文字以上）
           </label>
@@ -126,6 +198,42 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onToggleMode }) => {
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             required
           />
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="confirmPassword">
+            パスワード（確認）
+          </label>
+          <input
+            id="confirmPassword"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            minLength={6}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            required
+          />
+          {password && confirmPassword && password !== confirmPassword && (
+            <p className="mt-1 text-sm text-red-600">パスワードが一致しません</p>
+          )}
+        </div>
+
+        <div className="mb-6">
+          <label className="flex items-start">
+            <input
+              type="checkbox"
+              checked={agreedToTerms}
+              onChange={(e) => setAgreedToTerms(e.target.checked)}
+              className="mt-1 mr-2"
+              required
+            />
+            <span className="text-sm text-gray-700">
+              <a href="#" className="text-blue-500 hover:text-blue-600 underline">利用規約</a>
+              および
+              <a href="#" className="text-blue-500 hover:text-blue-600 underline">プライバシーポリシー</a>
+              に同意します
+            </span>
+          </label>
         </div>
 
         {accountType === 'guest' && (

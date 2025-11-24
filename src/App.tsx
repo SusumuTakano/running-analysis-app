@@ -57,6 +57,7 @@ type AngleData = {
   shankAngle: { left: number | null; right: number | null };
   kneeFlex: { left: number | null; right: number | null };
   ankleFlex: { left: number | null; right: number | null };
+  elbowAngle: { left: number | null; right: number | null };
 };
 
 /** 3局面での角度データ */
@@ -97,6 +98,7 @@ const calculateAngles = (
       shankAngle: { left: null, right: null },
       kneeFlex: { left: null, right: null },
       ankleFlex: { left: null, right: null },
+      elbowAngle: { left: null, right: null },
     };
   }
 
@@ -168,6 +170,45 @@ const calculateAngles = (
   const left = calcLegAngles("left");
   const right = calcLegAngles("right");
 
+  // 腕振り角度の計算（肘の屈曲角度）
+  const calcElbowAngle = (side: "left" | "right"): number | null => {
+    const shoulderIdx = side === "left" ? 11 : 12;
+    const elbowIdx = side === "left" ? 13 : 14;
+    const wristIdx = side === "left" ? 15 : 16;
+
+    const shoulder = getPoint(shoulderIdx);
+    const elbow = getPoint(elbowIdx);
+    const wrist = getPoint(wristIdx);
+
+    // 肘、肩、手首の信頼度をチェック
+    if (
+      shoulder.visibility < CONFIDENCE_THRESHOLD ||
+      elbow.visibility < CONFIDENCE_THRESHOLD ||
+      wrist.visibility < CONFIDENCE_THRESHOLD
+    ) {
+      return null;
+    }
+
+    // 肘角度の計算：上腕（肩→肘）と前腕（肘→手首）のベクトルから
+    const v1 = { x: elbow.x - shoulder.x, y: elbow.y - shoulder.y };
+    const v2 = { x: wrist.x - elbow.x, y: wrist.y - elbow.y };
+    const dot = v1.x * v2.x + v1.y * v2.y;
+    const mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+    const mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+    
+    if (mag1 === 0 || mag2 === 0) return null;
+    
+    const cosAngle = dot / (mag1 * mag2);
+    const elbowAngleRad = Math.acos(clamp(cosAngle, -1, 1));
+    // 肘屈曲角度：180° - アーク角度
+    const elbowFlex = 180 - (elbowAngleRad * 180) / Math.PI;
+
+    return elbowFlex;
+  };
+
+  const leftElbow = calcElbowAngle("left");
+  const rightElbow = calcElbowAngle("right");
+
   return {
     trunkAngle,
     hipAnkleAngle: { left: left.hipAnkleAngle, right: right.hipAnkleAngle },
@@ -175,6 +216,7 @@ const calculateAngles = (
     shankAngle: { left: left.shankAngle, right: right.shankAngle },
     kneeFlex: { left: left.kneeFlex, right: right.kneeFlex },
     ankleFlex: { left: left.ankleFlex, right: right.ankleFlex },
+    elbowAngle: { left: leftElbow, right: rightElbow },
   };
 };
 
@@ -482,66 +524,59 @@ const App: React.FC = () => {
     return { frame: currentFrame, ...angles };
   }, [currentFrame, poseResults]);
 
-  // 3局面の角度計算
+  // 3局面の角度計算（接地期前半15%、中判50%、後半85%）
   const threePhaseAngles = useMemo((): PhaseAngles[] => {
-    if (stepMetrics.length === 0 || poseResults.length === 0) return [];
+    if (contactFrames.length < 3 || poseResults.length === 0) return [];
 
     const results: PhaseAngles[] = [];
 
-    for (const stepMetric of stepMetrics) {
-      const initialFrame = stepMetric.contactFrame;
-      if (poseResults[initialFrame]?.landmarks) {
-        const angles = calculateAngles(poseResults[initialFrame]!.landmarks);
+    // 各ステップ（接地から次の接地まで）を処理
+    for (let i = 0; i + 2 < contactFrames.length; i += 2) {
+      const contactFrame = contactFrames[i];
+      const toeOffFrame = contactFrames[i + 1];
+      const nextContactFrame = contactFrames[i + 2];
+
+      // 接地期の長さ
+      const stanceDuration = toeOffFrame - contactFrame;
+
+      if (stanceDuration <= 0) continue;
+
+      // 接地期前半（15%）
+      const earlyContactFrame = Math.round(contactFrame + stanceDuration * 0.15);
+      if (earlyContactFrame >= contactFrame && earlyContactFrame <= toeOffFrame && poseResults[earlyContactFrame]?.landmarks) {
+        const angles = calculateAngles(poseResults[earlyContactFrame]!.landmarks);
         results.push({
           phase: "initial",
-          frame: initialFrame,
+          frame: earlyContactFrame,
           angles,
         });
       }
 
-      let minDist = Infinity;
-      let midFrame = initialFrame;
-      for (let f = stepMetric.contactFrame; f <= stepMetric.toeOffFrame; f++) {
-        const pose = poseResults[f];
-        if (!pose?.landmarks) continue;
-
-        const leftHip = pose.landmarks[23];
-        const rightHip = pose.landmarks[24];
-        const leftAnkle = pose.landmarks[27];
-        const rightAnkle = pose.landmarks[28];
-
-        const hipX = (leftHip.x + rightHip.x) / 2;
-        const ankleX = (leftAnkle.x + rightAnkle.x) / 2;
-        const dist = Math.abs(hipX - ankleX);
-
-        if (dist < minDist) {
-          minDist = dist;
-          midFrame = f;
-        }
-      }
-
-      if (poseResults[midFrame]?.landmarks) {
-        const angles = calculateAngles(poseResults[midFrame]!.landmarks);
+      // 接地期中判（50%）
+      const midStanceFrame = Math.round(contactFrame + stanceDuration * 0.50);
+      if (midStanceFrame >= contactFrame && midStanceFrame <= toeOffFrame && poseResults[midStanceFrame]?.landmarks) {
+        const angles = calculateAngles(poseResults[midStanceFrame]!.landmarks);
         results.push({
           phase: "mid",
-          frame: midFrame,
+          frame: midStanceFrame,
           angles,
         });
       }
 
-      const lateFrame = stepMetric.toeOffFrame;
-      if (poseResults[lateFrame]?.landmarks) {
-        const angles = calculateAngles(poseResults[lateFrame]!.landmarks);
+      // 接地期後半（85%）- 離地直前
+      const lateStanceFrame = Math.round(contactFrame + stanceDuration * 0.85);
+      if (lateStanceFrame >= contactFrame && lateStanceFrame <= toeOffFrame && poseResults[lateStanceFrame]?.landmarks) {
+        const angles = calculateAngles(poseResults[lateStanceFrame]!.landmarks);
         results.push({
           phase: "late",
-          frame: lateFrame,
+          frame: lateStanceFrame,
           angles,
         });
       }
     }
 
     return results;
-  }, [stepMetrics, poseResults]);
+  }, [contactFrames, poseResults]);
 
   // ------------ 姿勢推定実行 ------------
   const runPoseEstimation = async () => {
@@ -754,12 +789,12 @@ const App: React.FC = () => {
     }
 
     let csv =
-      "Frame,Trunk_Angle,Left_HipAnkle,Right_HipAnkle,Left_Thigh,Right_Thigh,Left_Shank,Right_Shank,Left_Knee,Right_Knee,Left_Ankle,Right_Ankle\n";
+      "Frame,Trunk_Angle,Left_HipAnkle,Right_HipAnkle,Left_Thigh,Right_Thigh,Left_Shank,Right_Shank,Left_Knee,Right_Knee,Left_Ankle,Right_Ankle,Left_Elbow,Right_Elbow\n";
 
     for (let i = 0; i < poseResults.length; i++) {
       const pose = poseResults[i];
       if (!pose?.landmarks) {
-        csv += `${i},,,,,,,,,,,\n`;
+        csv += `${i},,,,,,,,,,,,,\n`;
         continue;
       }
 
@@ -774,7 +809,9 @@ const App: React.FC = () => {
         angles.kneeFlex.left?.toFixed(2) ?? ""
       },${angles.kneeFlex.right?.toFixed(2) ?? ""},${
         angles.ankleFlex.left?.toFixed(2) ?? ""
-      },${angles.ankleFlex.right?.toFixed(2) ?? ""}\n`;
+      },${angles.ankleFlex.right?.toFixed(2) ?? ""},${
+        angles.elbowAngle.left?.toFixed(2) ?? ""
+      },${angles.elbowAngle.right?.toFixed(2) ?? ""}\n`;
     }
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -2015,6 +2052,12 @@ const App: React.FC = () => {
                   <div>
                     右膝: {currentAngles.kneeFlex.right?.toFixed(1)}°
                   </div>
+                  <div>
+                    左肘: {currentAngles.elbowAngle.left?.toFixed(1) ?? 'ー'}°
+                  </div>
+                  <div>
+                    右肘: {currentAngles.elbowAngle.right?.toFixed(1) ?? 'ー'}°
+                  </div>
                 </div>
               </div>
             )}
@@ -2153,6 +2196,14 @@ const App: React.FC = () => {
                     <div className="angle-item">
                       <span className="angle-label">右 足首</span>
                       <span className="angle-value">{currentAngles.ankleFlex.right?.toFixed(1)}°</span>
+                    </div>
+                    <div className="angle-item">
+                      <span className="angle-label">左 肘屈曲</span>
+                      <span className="angle-value">{currentAngles.elbowAngle.left?.toFixed(1) ?? 'ー'}°</span>
+                    </div>
+                    <div className="angle-item">
+                      <span className="angle-label">右 肘屈曲</span>
+                      <span className="angle-value">{currentAngles.elbowAngle.right?.toFixed(1) ?? 'ー'}°</span>
                     </div>
                   </div>
                 </div>
@@ -2319,7 +2370,7 @@ const App: React.FC = () => {
               {/* 3局面角度 */}
               {threePhaseAngles.length > 0 && (
                 <div className="result-card">
-                  <h3 className="result-card-title">3局面の関節角度</h3>
+                  <h3 className="result-card-title">3局面の関節角度（接地期前半15%、中判50%、後半85%）</h3>
                   <div className="table-scroll">
                     <table className="phase-table-compact">
                       <thead>
@@ -2331,12 +2382,14 @@ const App: React.FC = () => {
                           <th>R Hip-Ankle</th>
                           <th>L 膝</th>
                           <th>R 膝</th>
+                          <th>L 肘</th>
+                          <th>R 肘</th>
                         </tr>
                       </thead>
                       <tbody>
                         {threePhaseAngles.map((p, i) => (
                           <tr key={i}>
-                            <td>{p.phase}</td>
+                            <td>{p.phase === 'initial' ? '前半(15%)' : p.phase === 'mid' ? '中判(50%)' : '後半(85%)'}</td>
                             <td>{p.frame}</td>
                             <td>{p.angles.trunkAngle?.toFixed(1)}°</td>
                             <td>{p.angles.hipAnkleAngle.left?.toFixed(1)}°</td>
@@ -2345,6 +2398,8 @@ const App: React.FC = () => {
                             </td>
                             <td>{p.angles.kneeFlex.left?.toFixed(1)}°</td>
                             <td>{p.angles.kneeFlex.right?.toFixed(1)}°</td>
+                            <td>{p.angles.elbowAngle.left?.toFixed(1) ?? 'ー'}°</td>
+                            <td>{p.angles.elbowAngle.right?.toFixed(1) ?? 'ー'}°</td>
                           </tr>
                         ))}
                       </tbody>

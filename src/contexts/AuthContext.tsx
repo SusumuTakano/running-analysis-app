@@ -20,32 +20,76 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ユーザープロフィールを取得
   const fetchUserProfile = async (authUser: User) => {
     try {
+      console.log('📋 Fetching profile for user:', authUser.id);
+      
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', authUser.id)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error fetching user profile:', error);
+        console.error('Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        throw error;
+      }
+
+      console.log('✅ Profile fetched successfully:', data);
       setUser(data);
     } catch (error) {
-      console.error('Error fetching user profile:', error);
-      setUser(null);
+      console.error('❌ Failed to fetch user profile:', error);
+      
+      // プロフィールが存在しない場合は、基本的なユーザー情報だけで設定
+      console.log('⚠️ Using fallback user data from auth');
+      setUser({
+        id: authUser.id,
+        email: authUser.email || '',
+        full_name: authUser.user_metadata?.full_name || '',
+        role: 'guest',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      } as any);
     }
   };
 
   // 初期化：認証状態の確認
   useEffect(() => {
     const initAuth = async () => {
+      console.log('🔐 AuthContext: Initializing authentication...');
+      
+      // タイムアウト設定（3秒）- より短く
+      const timeoutId = setTimeout(() => {
+        console.error('⏰ AuthContext: Timeout after 3s - forcing loading=false');
+        setLoading(false);
+      }, 3000);
+      
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        console.log('🔐 AuthContext: Calling supabase.auth.getSession()...');
+        const { data: { session }, error } = await supabase.auth.getSession();
+        clearTimeout(timeoutId);
+        
+        if (error) {
+          console.error('❌ AuthContext: Error getting session:', error);
+          setLoading(false);
+          return;
+        }
+        
+        console.log('🔐 AuthContext: Session retrieved:', session ? 'User logged in' : 'No session');
         
         if (session?.user) {
+          console.log('🔐 AuthContext: Fetching user profile...');
           await fetchUserProfile(session.user);
         }
       } catch (error) {
-        console.error('Error initializing auth:', error);
+        console.error('❌ Error initializing auth:', error);
+        clearTimeout(timeoutId);
       } finally {
+        console.log('✅ AuthContext: Loading complete, setting loading=false');
         setLoading(false);
       }
     };
@@ -71,11 +115,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // サインイン
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    console.log('🔐 Attempting sign in for:', email);
+    
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
-    if (error) throw error;
+    
+    if (error) {
+      console.error('❌ Sign in error:', error);
+      throw error;
+    }
+    
+    console.log('✅ Sign in successful:', data.user?.email);
+    
+    // プロフィールを取得
+    if (data.user) {
+      await fetchUserProfile(data.user);
+    }
   };
 
   // 通常のサインアップ（有料会員想定）
@@ -87,6 +144,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         data: {
           full_name: fullName,
         },
+        emailRedirectTo: window.location.origin,
       },
     });
 
@@ -99,6 +157,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: data.user.email,
         full_name: fullName,
         role: 'paid', // デフォルトは有料会員想定
+        subscription_status: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
@@ -106,11 +165,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (profileError) {
         console.error('Error creating profile:', profileError);
       }
+
+      // ユーザー情報を即座に取得
+      if (data.session) {
+        await fetchUserProfile(data.user);
+      }
     }
   };
 
   // ゲストとしてサインアップ（1週間トライアル）
   const signUpAsGuest = async (email: string, password: string, fullName?: string) => {
+    console.log('🎁 Starting guest signup for:', email);
+    
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -118,15 +184,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         data: {
           full_name: fullName,
         },
+        emailRedirectTo: window.location.origin,
       },
     });
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ Signup error:', error);
+      throw error;
+    }
+
+    console.log('✅ Auth signup successful:', data);
 
     // ゲストプロフィール作成（1週間のトライアル期間）
     if (data.user) {
       const now = new Date();
       const trialEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7日後
+
+      console.log('📝 Creating guest profile with trial:', {
+        trialStart: now.toISOString(),
+        trialEnd: trialEnd.toISOString()
+      });
 
       const { error: profileError } = await supabase.from('profiles').upsert({
         id: data.user.id,
@@ -141,7 +218,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (profileError) {
-        console.error('Error creating guest profile:', profileError);
+        console.error('❌ Error creating guest profile:', profileError);
+        throw profileError;
+      }
+
+      console.log('✅ Guest profile created successfully');
+
+      // セッションがある場合は即座にユーザー情報を取得
+      if (data.session) {
+        console.log('✅ Session exists, fetching user profile');
+        await fetchUserProfile(data.user);
+      } else {
+        console.log('⚠️ No session - email confirmation required');
       }
     }
   };
@@ -172,9 +260,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // トライアル期間が終了しているかチェック
   const isTrialExpired = (): boolean => {
-    if (!user || user.role !== 'guest') return false;
+    if (!user || user.role !== 'guest') {
+      return false;
+    }
     
-    if (!user.trial_end_date) return true;
+    if (!user.trial_end_date) {
+      return true;
+    }
     
     const trialEnd = new Date(user.trial_end_date);
     const now = new Date();
