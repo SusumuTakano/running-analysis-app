@@ -133,14 +133,23 @@ const calculateAngles = (
     const ankle = getPoint(ankleIdx);
     const toe = getPoint(toeIdx);
 
+    // Hip-Ankle角度：腰から足首への角度（参考値）
     const hipAnkleAngle =
       (Math.atan2(ankle.x - hip.x, -(ankle.y - hip.y)) * 180) / Math.PI;
 
-    const thighAngle =
-      (Math.atan2(knee.x - hip.x, -(knee.y - hip.y)) * 180) / Math.PI;
+    // 大腿角度：鉛直下向きを0°として、前方がマイナス、後方がプラス
+    // atan2(dx, dy)で計算し、符号を反転（右方向がマイナス、左方向がプラス）
+    const dx = knee.x - hip.x;
+    const dy = knee.y - hip.y; // yは下向きが正
+    let thighAngle = (Math.atan2(dx, dy) * 180) / Math.PI;
+    // 符号を反転：右（前方）をマイナス、左（後方）をプラス
+    thighAngle = -thighAngle;
 
-    const shankAngle =
-      (Math.atan2(ankle.x - knee.x, -(ankle.y - knee.y)) * 180) / Math.PI;
+    // 下腿角度：鉛直下向きを0°として計算
+    const shankDx = ankle.x - knee.x;
+    const shankDy = ankle.y - knee.y;
+    let shankAngle = (Math.atan2(shankDx, shankDy) * 180) / Math.PI;
+    shankAngle = -shankAngle;
 
     const v1 = { x: knee.x - hip.x, y: knee.y - hip.y };
     const v2 = { x: ankle.x - knee.x, y: ankle.y - knee.y };
@@ -789,7 +798,8 @@ const App: React.FC = () => {
     }
 
     let csv =
-      "Frame,Trunk_Angle,Left_HipAnkle,Right_HipAnkle,Left_Thigh,Right_Thigh,Left_Shank,Right_Shank,Left_Knee,Right_Knee,Left_Ankle,Right_Ankle,Left_Elbow,Right_Elbow\n";
+      "Frame,Trunk_Angle,Left_HipAnkle,Right_HipAnkle,Left_Thigh_deg,Right_Thigh_deg,Left_Shank_deg,Right_Shank_deg,Left_Knee,Right_Knee,Left_Ankle,Right_Ankle,Left_Elbow,Right_Elbow\n" +
+      "# 大腿角度(Thigh)と下腿角度(Shank)は鉛直下向きを0°、前方がマイナス、後方がプラス\n";
 
     for (let i = 0; i < poseResults.length; i++) {
       const pose = poseResults[i];
@@ -2371,6 +2381,9 @@ const App: React.FC = () => {
               {threePhaseAngles.length > 0 && (
                 <div className="result-card">
                   <h3 className="result-card-title">3局面の関節角度（接地期前半15%、中判50%、後半85%）</h3>
+                  <p style={{ fontSize: '0.85rem', color: '#6b7280', marginTop: '0.5rem', marginBottom: '1rem' }}>
+                    ※ 大腿角度：鉛直下向きを0°、前方がマイナス（-）、後方がプラス（+）
+                  </p>
                   <div className="table-scroll">
                     <table className="phase-table-compact">
                       <thead>
@@ -2378,8 +2391,8 @@ const App: React.FC = () => {
                           <th>局面</th>
                           <th>フレーム</th>
                           <th>体幹</th>
-                          <th>L Hip-Ankle</th>
-                          <th>R Hip-Ankle</th>
+                          <th>L 大腿</th>
+                          <th>R 大腿</th>
                           <th>L 膝</th>
                           <th>R 膝</th>
                           <th>L 肘</th>
@@ -2392,10 +2405,8 @@ const App: React.FC = () => {
                             <td>{p.phase === 'initial' ? '前半(15%)' : p.phase === 'mid' ? '中判(50%)' : '後半(85%)'}</td>
                             <td>{p.frame}</td>
                             <td>{p.angles.trunkAngle?.toFixed(1)}°</td>
-                            <td>{p.angles.hipAnkleAngle.left?.toFixed(1)}°</td>
-                            <td>
-                              {p.angles.hipAnkleAngle.right?.toFixed(1)}°
-                            </td>
+                            <td>{p.angles.thighAngle.left?.toFixed(1)}°</td>
+                            <td>{p.angles.thighAngle.right?.toFixed(1)}°</td>
                             <td>{p.angles.kneeFlex.left?.toFixed(1)}°</td>
                             <td>{p.angles.kneeFlex.right?.toFixed(1)}°</td>
                             <td>{p.angles.elbowAngle.left?.toFixed(1) ?? 'ー'}°</td>
