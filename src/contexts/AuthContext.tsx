@@ -124,7 +124,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     if (error) {
       console.error('❌ Sign in error:', error);
-      throw error;
+      console.error('Error details:', {
+        message: error.message,
+        status: error.status,
+        name: error.name,
+      });
+      
+      // よりユーザーフレンドリーなエラーメッセージ
+      if (error.message.includes('Email not confirmed')) {
+        throw new Error('メールアドレスが確認されていません。確認メールをチェックしてください。');
+      } else if (error.message.includes('Invalid login credentials')) {
+        throw new Error('メールアドレスまたはパスワードが間違っています。');
+      } else {
+        throw error;
+      }
     }
     
     console.log('✅ Sign in successful:', data.user?.email);
