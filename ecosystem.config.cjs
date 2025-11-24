@@ -6,7 +6,9 @@ module.exports = {
       args: 'vite --host 0.0.0.0 --port 3000',
       env: {
         NODE_ENV: 'development',
-        PORT: 3000
+        PORT: 3000,
+        VITE_SUPABASE_URL: 'https://fiertkuxlafeeqycywjh.supabase.co',
+        VITE_SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpZXJ0a3V4bGFmZWVxeWN5d2poIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQyNzc5MzAsImV4cCI6MjA1OTg1MzkzMH0.VB4afTl9wLxtdodrf7klAyCQIVMuLc2I1gRwh1v23tg'
       },
       watch: false,
       instances: 1,
