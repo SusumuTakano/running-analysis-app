@@ -105,10 +105,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // 認証状態の変更を監視
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('🔐 Auth state change detected:', event, session?.user?.email);
+        
         if (event === 'SIGNED_IN' && session?.user) {
+          console.log('✅ User signed in, fetching profile...');
           await fetchUserProfile(session.user);
         } else if (event === 'SIGNED_OUT') {
+          console.log('👋 User signed out');
           setUser(null);
+        } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+          console.log('🔄 Token refreshed');
+          // トークンがリフレッシュされた場合も、ユーザー情報を更新
+          if (!user || user.id !== session.user.id) {
+            await fetchUserProfile(session.user);
+          }
         }
         setLoading(false);
       }

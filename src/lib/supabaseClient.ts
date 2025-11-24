@@ -21,6 +21,8 @@ export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    storageKey: 'running-analysis-supabase-auth-token',
     // 開発環境ではメール確認をスキップ（本番環境では削除してください）
     // flowType: 'pkce'
   },
