@@ -297,9 +297,6 @@ const App: React.FC = () => {
   const [footZoomEnabled, setFootZoomEnabled] = useState(false);
   const [zoomScale, setZoomScale] = useState(3);
 
-  // 3局面スライダー用のインデックス (0: 前半, 1: 中半, 2: 後半)
-  const [phaseIndex, setPhaseIndex] = useState(0);
-
   // ------------ 姿勢推定関連 -----------------
   const [poseResults, setPoseResults] = useState<(FramePoseData | null)[]>([]);
   const [isPoseProcessing, setIsPoseProcessing] = useState(false);
@@ -2203,104 +2200,65 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* 3局面の関節角度表示（スライダー付き単一表示） */}
-              {threePhaseAngles.length > 0 && (
+              {/* 現在フレームの関節角度（フレームスライダー連動） */}
+              {currentAngles && (
                 <div className="angle-display-result">
-                  <h4>3局面の関節角度と足先距離</h4>
-                  <p style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '0.25rem', marginBottom: '0.5rem' }}>
-                    ※ 接地期前半：接地脚が大転子から鉛直に下ろした線より前方にある接地ポイント<br/>
-                    ※ 接地期中半：接地脚が大転子から鉛直に下ろした線と重なる接地ポイント（大腿角0°）<br/>
-                    ※ 接地期後半：接地脚が大転子から鉛直に下ろした線より後方にある離地ポイント
+                  <h4>現在フレーム ({currentFrame}) の関節角度と足先距離</h4>
+                  <p style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '0.25rem', marginBottom: '0.75rem' }}>
+                    ※ 大腿角度：鉛直下向きを0°、前方がマイナス（-）、後方がプラス（+）<br/>
+                    ※ 足先距離：大転子から鉛直下方向を0cm、前方がマイナス（-）、後方がプラス（+）
                   </p>
                   
-                  {/* スライダーで局面を切り替え */}
-                  <div style={{ marginBottom: '1rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
-                      <label style={{ fontSize: '0.9rem', fontWeight: 'bold', minWidth: '80px' }}>
-                        局面選択:
-                      </label>
-                      <input
-                        type="range"
-                        min="0"
-                        max="2"
-                        step="1"
-                        value={phaseIndex}
-                        onChange={(e) => setPhaseIndex(Number(e.target.value))}
-                        style={{ flex: 1, cursor: 'pointer' }}
-                      />
+                  <div className="angle-grid-result">
+                    <div className="angle-item">
+                      <span className="angle-label">体幹角度</span>
+                      <span className="angle-value">{currentAngles.trunkAngle?.toFixed(1)}°</span>
+                      <span className="angle-hint">
+                        {currentAngles.trunkAngle && currentAngles.trunkAngle < 85 ? '前傾' : 
+                         currentAngles.trunkAngle && currentAngles.trunkAngle > 95 ? '後傾' : '垂直'}
+                      </span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#6b7280', paddingLeft: '80px', paddingRight: '10px' }}>
-                      <span>前半（接地）</span>
-                      <span>中半（垂直）</span>
-                      <span>後半（離地）</span>
+                    <div className="angle-item">
+                      <span className="angle-label">左 大腿角</span>
+                      <span className="angle-value">{currentAngles.thighAngle.left?.toFixed(1)}°</span>
+                    </div>
+                    <div className="angle-item">
+                      <span className="angle-label">右 大腿角</span>
+                      <span className="angle-value">{currentAngles.thighAngle.right?.toFixed(1)}°</span>
+                    </div>
+                    <div className="angle-item">
+                      <span className="angle-label">左 足先距離</span>
+                      <span className="angle-value">{currentAngles.toeHorizontalDistance.left?.toFixed(1) ?? 'ー'}cm</span>
+                    </div>
+                    <div className="angle-item">
+                      <span className="angle-label">右 足先距離</span>
+                      <span className="angle-value">{currentAngles.toeHorizontalDistance.right?.toFixed(1) ?? 'ー'}cm</span>
+                    </div>
+                    <div className="angle-item">
+                      <span className="angle-label">左 膝屈曲</span>
+                      <span className="angle-value">{currentAngles.kneeFlex.left?.toFixed(1)}°</span>
+                    </div>
+                    <div className="angle-item">
+                      <span className="angle-label">右 膝屈曲</span>
+                      <span className="angle-value">{currentAngles.kneeFlex.right?.toFixed(1)}°</span>
+                    </div>
+                    <div className="angle-item">
+                      <span className="angle-label">左 足首</span>
+                      <span className="angle-value">{currentAngles.ankleFlex.left?.toFixed(1)}°</span>
+                    </div>
+                    <div className="angle-item">
+                      <span className="angle-label">右 足首</span>
+                      <span className="angle-value">{currentAngles.ankleFlex.right?.toFixed(1)}°</span>
+                    </div>
+                    <div className="angle-item">
+                      <span className="angle-label">左 肘屈曲</span>
+                      <span className="angle-value">{currentAngles.elbowAngle.left?.toFixed(1) ?? 'ー'}°</span>
+                    </div>
+                    <div className="angle-item">
+                      <span className="angle-label">右 肘屈曲</span>
+                      <span className="angle-value">{currentAngles.elbowAngle.right?.toFixed(1) ?? 'ー'}°</span>
                     </div>
                   </div>
-
-                  {(() => {
-                    const currentPhase = threePhaseAngles[phaseIndex];
-                    if (!currentPhase) return null;
-                    
-                    const p = currentPhase;
-                    return (
-                      <div>
-                        <h5 style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#374151', marginBottom: '0.75rem', padding: '0.5rem', backgroundColor: '#f3f4f6', borderRadius: '0.5rem' }}>
-                          {p.phase === 'initial' ? '接地期前半（接地）' : 
-                           p.phase === 'mid' ? '接地期中半（垂直）' : 
-                           '接地期後半（離地）'} - フレーム {p.frame}
-                        </h5>
-                        <div className="angle-grid-result">
-                          <div className="angle-item">
-                            <span className="angle-label">体幹角度</span>
-                            <span className="angle-value">{p.angles.trunkAngle?.toFixed(1)}°</span>
-                            <span className="angle-hint">
-                              {p.angles.trunkAngle && p.angles.trunkAngle < 85 ? '前傾' : 
-                               p.angles.trunkAngle && p.angles.trunkAngle > 95 ? '後傾' : '垂直'}
-                            </span>
-                          </div>
-                          <div className="angle-item">
-                            <span className="angle-label">左 大腿角</span>
-                            <span className="angle-value">{p.angles.thighAngle.left?.toFixed(1)}°</span>
-                          </div>
-                          <div className="angle-item">
-                            <span className="angle-label">右 大腿角</span>
-                            <span className="angle-value">{p.angles.thighAngle.right?.toFixed(1)}°</span>
-                          </div>
-                          <div className="angle-item">
-                            <span className="angle-label">左 足先距離</span>
-                            <span className="angle-value">{p.angles.toeHorizontalDistance.left?.toFixed(1) ?? 'ー'}cm</span>
-                          </div>
-                          <div className="angle-item">
-                            <span className="angle-label">右 足先距離</span>
-                            <span className="angle-value">{p.angles.toeHorizontalDistance.right?.toFixed(1) ?? 'ー'}cm</span>
-                          </div>
-                          <div className="angle-item">
-                            <span className="angle-label">左 膝屈曲</span>
-                            <span className="angle-value">{p.angles.kneeFlex.left?.toFixed(1)}°</span>
-                          </div>
-                          <div className="angle-item">
-                            <span className="angle-label">右 膝屈曲</span>
-                            <span className="angle-value">{p.angles.kneeFlex.right?.toFixed(1)}°</span>
-                          </div>
-                          <div className="angle-item">
-                            <span className="angle-label">左 足首</span>
-                            <span className="angle-value">{p.angles.ankleFlex.left?.toFixed(1)}°</span>
-                          </div>
-                          <div className="angle-item">
-                            <span className="angle-label">右 足首</span>
-                            <span className="angle-value">{p.angles.ankleFlex.right?.toFixed(1)}°</span>
-                          </div>
-                          <div className="angle-item">
-                            <span className="angle-label">左 肘屈曲</span>
-                            <span className="angle-value">{p.angles.elbowAngle.left?.toFixed(1) ?? 'ー'}°</span>
-                          </div>
-                          <div className="angle-item">
-                            <span className="angle-label">右 肘屈曲</span>
-                            <span className="angle-value">{p.angles.elbowAngle.right?.toFixed(1) ?? 'ー'}°</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
                 </div>
               )}
             </div>
