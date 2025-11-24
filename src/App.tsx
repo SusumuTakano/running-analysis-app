@@ -58,6 +58,7 @@ type AngleData = {
   kneeFlex: { left: number | null; right: number | null };
   ankleFlex: { left: number | null; right: number | null };
   elbowAngle: { left: number | null; right: number | null };
+  toeHorizontalDistance: { left: number | null; right: number | null };
 };
 
 /** 3局面での角度データ */
@@ -99,6 +100,7 @@ const calculateAngles = (
       kneeFlex: { left: null, right: null },
       ankleFlex: { left: null, right: null },
       elbowAngle: { left: null, right: null },
+      toeHorizontalDistance: { left: null, right: null },
     };
   }
 
@@ -167,12 +169,28 @@ const calculateAngles = (
     const ankleAngleRad = Math.acos(clamp(cosAngle2, -1, 1));
     const ankleFlex = 180 - (ankleAngleRad * 180) / Math.PI;
 
+    // 足先の水平距離を計算
+    // 大転子（hip）から鉛直下方向に対する足先（toe）の水平距離
+    // 正規化座標（0-1）なので、大腿長を基準にcm換算する
+    const thighLength = mag1; // 大腿の長さ（正規化座標）
+    const toeHorizontalOffset = toe.x - hip.x; // 水平方向のオフセット
+    // 符号を反転：右（前方）をマイナス、左（後方）をプラス
+    const toeHorizontalDistance = -toeHorizontalOffset;
+    
+    // 実際の距離に変換するため、平均的な大腿長を50cmと仮定
+    // これにより、正規化座標を実際のcmに変換
+    const ASSUMED_THIGH_LENGTH_CM = 50;
+    const toeHorizontalDistanceCm = thighLength > 0 
+      ? (toeHorizontalDistance / thighLength) * ASSUMED_THIGH_LENGTH_CM 
+      : null;
+
     return {
       hipAnkleAngle,
       thighAngle,
       shankAngle,
       kneeFlex,
       ankleFlex,
+      toeHorizontalDistanceCm,
     };
   };
 
@@ -226,6 +244,7 @@ const calculateAngles = (
     kneeFlex: { left: left.kneeFlex, right: right.kneeFlex },
     ankleFlex: { left: left.ankleFlex, right: right.ankleFlex },
     elbowAngle: { left: leftElbow, right: rightElbow },
+    toeHorizontalDistance: { left: left.toeHorizontalDistanceCm, right: right.toeHorizontalDistanceCm },
   };
 };
 
@@ -798,13 +817,14 @@ const App: React.FC = () => {
     }
 
     let csv =
-      "Frame,Trunk_Angle,Left_HipAnkle,Right_HipAnkle,Left_Thigh_deg,Right_Thigh_deg,Left_Shank_deg,Right_Shank_deg,Left_Knee,Right_Knee,Left_Ankle,Right_Ankle,Left_Elbow,Right_Elbow\n" +
-      "# 大腿角度(Thigh)と下腿角度(Shank)は鉛直下向きを0°、前方がマイナス、後方がプラス\n";
+      "Frame,Trunk_Angle,Left_HipAnkle,Right_HipAnkle,Left_Thigh_deg,Right_Thigh_deg,Left_Shank_deg,Right_Shank_deg,Left_Knee,Right_Knee,Left_Ankle,Right_Ankle,Left_Elbow,Right_Elbow,Left_Toe_Distance_cm,Right_Toe_Distance_cm\n" +
+      "# 大腿角度(Thigh)と下腿角度(Shank)は鉛直下向きを0°、前方がマイナス、後方がプラス\n" +
+      "# 足先距離(Toe_Distance)は大転子から鉛直下方向を0cm、前方がマイナス、後方がプラス\n";
 
     for (let i = 0; i < poseResults.length; i++) {
       const pose = poseResults[i];
       if (!pose?.landmarks) {
-        csv += `${i},,,,,,,,,,,,,\n`;
+        csv += `${i},,,,,,,,,,,,,,,\n`;
         continue;
       }
 
@@ -821,7 +841,9 @@ const App: React.FC = () => {
         angles.ankleFlex.left?.toFixed(2) ?? ""
       },${angles.ankleFlex.right?.toFixed(2) ?? ""},${
         angles.elbowAngle.left?.toFixed(2) ?? ""
-      },${angles.elbowAngle.right?.toFixed(2) ?? ""}\n`;
+      },${angles.elbowAngle.right?.toFixed(2) ?? ""},${
+        angles.toeHorizontalDistance.left?.toFixed(2) ?? ""
+      },${angles.toeHorizontalDistance.right?.toFixed(2) ?? ""}\n`;
     }
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -2380,9 +2402,10 @@ const App: React.FC = () => {
               {/* 3局面角度 */}
               {threePhaseAngles.length > 0 && (
                 <div className="result-card">
-                  <h3 className="result-card-title">3局面の関節角度（接地期前半15%、中判50%、後半85%）</h3>
+                  <h3 className="result-card-title">3局面の関節角度と足先距離（接地期前半15%、中判50%、後半85%）</h3>
                   <p style={{ fontSize: '0.85rem', color: '#6b7280', marginTop: '0.5rem', marginBottom: '1rem' }}>
-                    ※ 大腿角度：鉛直下向きを0°、前方がマイナス（-）、後方がプラス（+）
+                    ※ 大腿角度：鉛直下向きを0°、前方がマイナス（-）、後方がプラス（+）<br/>
+                    ※ 足先距離：大転子から鉛直下方向を0cm、前方がマイナス（-）、後方がプラス（+）
                   </p>
                   <div className="table-scroll">
                     <table className="phase-table-compact">
@@ -2393,6 +2416,8 @@ const App: React.FC = () => {
                           <th>体幹</th>
                           <th>L 大腿</th>
                           <th>R 大腿</th>
+                          <th>L 足先距離</th>
+                          <th>R 足先距離</th>
                           <th>L 膝</th>
                           <th>R 膝</th>
                           <th>L 肘</th>
@@ -2407,6 +2432,8 @@ const App: React.FC = () => {
                             <td>{p.angles.trunkAngle?.toFixed(1)}°</td>
                             <td>{p.angles.thighAngle.left?.toFixed(1)}°</td>
                             <td>{p.angles.thighAngle.right?.toFixed(1)}°</td>
+                            <td>{p.angles.toeHorizontalDistance.left?.toFixed(1) ?? 'ー'}cm</td>
+                            <td>{p.angles.toeHorizontalDistance.right?.toFixed(1) ?? 'ー'}cm</td>
                             <td>{p.angles.kneeFlex.left?.toFixed(1)}°</td>
                             <td>{p.angles.kneeFlex.right?.toFixed(1)}°</td>
                             <td>{p.angles.elbowAngle.left?.toFixed(1) ?? 'ー'}°</td>
