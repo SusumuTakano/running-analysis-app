@@ -62,11 +62,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const initAuth = async () => {
       console.log('🔐 AuthContext: Initializing authentication...');
       
-      // タイムアウト設定（3秒）- より短く
+      // タイムアウト設定（10秒）- 接続が遅い場合に対応
       const timeoutId = setTimeout(() => {
-        console.error('⏰ AuthContext: Timeout after 3s - forcing loading=false');
+        console.error('⏰ AuthContext: Timeout after 10s - forcing loading=false');
         setLoading(false);
-      }, 3000);
+      }, 10000);
       
       try {
         console.log('🔐 AuthContext: Calling supabase.auth.getSession()...');

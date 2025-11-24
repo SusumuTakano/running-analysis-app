@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>認証テスト</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 20px;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      background: #3b82f6;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+    #result {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 4px;
+    }
+    .success {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    .error {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .info {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔐 Supabase認証テスト</h1>
+  
+  <div class="form-group">
+    <label>メールアドレス</label>
+    <input type="email" id="email" value="8460susumu@gmail.com">
+  </div>
+  
+  <div class="form-group">
+    <label>パスワード</label>
+    <input type="password" id="password" value="">
+  </div>
+  
+  <button onclick="testLogin()">ログインテスト</button>
+  <button onclick="testConnection()">接続テスト</button>
+  
+  <div id="result"></div>
+  
+  <script>
+    const SUPABASE_URL = 'https://fiertkuxlafeeqycywjh.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpZXJ0a3V4bGFmZWVxeWN5d2poIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQyNzc5MzAsImV4cCI6MjA1OTg1MzkzMH0.VB4afTl9wLxtdodrf7klAyCQIVMuLc2I1gRwh1v23tg';
+    
+    const { createClient } = supabase;
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    
+    function showResult(message, type) {
+      const result = document.getElementById('result');
+      result.textContent = message;
+      result.className = type;
+    }
+    
+    async function testConnection() {
+      showResult('接続テスト中...', 'info');
+      
+      try {
+        const { data, error } = await supabaseClient.auth.getSession();
+        
+        if (error) {
+          showResult('❌ 接続エラー: ' + error.message, 'error');
+          console.error('Connection error:', error);
+        } else {
+          showResult('✅ Supabase接続成功！セッション: ' + (data.session ? 'あり' : 'なし'), 'success');
+          console.log('Session:', data.session);
+        }
+      } catch (err) {
+        showResult('❌ 例外エラー: ' + err.message, 'error');
+        console.error('Exception:', err);
+      }
+    }
+    
+    async function testLogin() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      
+      if (!email || !password) {
+        showResult('❌ メールアドレスとパスワードを入力してください', 'error');
+        return;
+      }
+      
+      showResult('ログイン中...', 'info');
+      
+      try {
+        const { data, error } = await supabaseClient.auth.signInWithPassword({
+          email: email,
+          password: password,
+        });
+        
+        if (error) {
+          showResult('❌ ログインエラー: ' + error.message, 'error');
+          console.error('Login error:', error);
+        } else {
+          showResult('✅ ログイン成功！ユーザー: ' + data.user.email, 'success');
+          console.log('Login success:', data);
+          
+          // プロフィール取得テスト
+          const { data: profile, error: profileError } = await supabaseClient
+            .from('profiles')
+            .select('*')
+            .eq('id', data.user.id)
+            .single();
+          
+          if (profileError) {
+            console.error('Profile error:', profileError);
+          } else {
+            console.log('Profile:', profile);
+          }
+        }
+      } catch (err) {
+        showResult('❌ 例外エラー: ' + err.message, 'error');
+        console.error('Exception:', err);
+      }
+    }
+    
+    // ページロード時に接続テスト
+    window.onload = () => {
+      testConnection();
+    };
+  </script>
+</body>
+</html>

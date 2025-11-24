@@ -31,7 +31,9 @@ export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
   }
 });
 
-// Supabase認証イベントのデバッグ
+// Supabase認証イベントのデバッグ（重要なイベントのみログ）
 supabase.auth.onAuthStateChange((event, session) => {
-  console.log('🔐 Auth state changed:', event, session?.user?.email);
+  if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
+    console.log('🔐 Auth state changed:', event, session?.user?.email);
+  }
 });
