@@ -28,8 +28,8 @@ export const UserProfile: React.FC = () => {
   };
 
   const getSubscriptionStatus = () => {
-    if (user.role === 'admin') {
-      return <span className="text-green-600">✓ フルアクセス</span>;
+    if (user.is_admin || user.role === 'admin') {
+      return <span className="text-green-600">✓ フルアクセス（管理者）</span>;
     }
 
     if (user.role === 'paid') {

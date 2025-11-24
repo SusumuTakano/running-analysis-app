@@ -157,13 +157,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isSubscriptionActive = (): boolean => {
     if (!user) return false;
     
-    // 有料会員でサブスクリプションがアクティブ
-    if (user.role === 'paid' && user.subscription_status === 'active') {
+    // 管理者は常にアクティブ（is_adminまたはrole='admin'）
+    if (user.is_admin || user.role === 'admin') {
       return true;
     }
     
-    // 管理者は常にアクティブ
-    if (user.role === 'admin') {
+    // 有料会員でサブスクリプションがアクティブ
+    if (user.role === 'paid' && user.subscription_status === 'active') {
       return true;
     }
     

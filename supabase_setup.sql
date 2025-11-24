@@ -14,15 +14,9 @@ CREATE TABLE IF NOT EXISTS system_settings (
 );
 
 -- プロフィールテーブルの拡張（既存テーブルに列を追加）
--- 注: テーブルが既に存在する場合は列が存在しない場合のみ追加
+-- 注: 既存のスキーマに合わせて必要な列のみ追加
 DO $$ 
 BEGIN
-  -- roleカラムが存在しない場合は追加
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                 WHERE table_name='profiles' AND column_name='role') THEN
-    ALTER TABLE profiles ADD COLUMN role TEXT DEFAULT 'guest';
-  END IF;
-
   -- trial_start_dateカラムが存在しない場合は追加
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
                  WHERE table_name='profiles' AND column_name='trial_start_date') THEN
@@ -41,6 +35,9 @@ BEGIN
     ALTER TABLE profiles ADD COLUMN subscription_status TEXT;
   END IF;
 END $$;
+
+-- roleフィールドのデフォルト値を設定（既存レコードでnullの場合）
+UPDATE profiles SET role = 'guest' WHERE role IS NULL;
 
 -- RLS（Row Level Security）ポリシーの設定
 ALTER TABLE system_settings ENABLE ROW LEVEL SECURITY;

@@ -44,8 +44,8 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({
     return <>{children}</>;
   }
 
-  // 管理者は常にアクセス可能
-  if (user.role === 'admin') {
+  // 管理者は常にアクセス可能（is_adminまたはrole='admin'）
+  if (user.is_admin || user.role === 'admin') {
     return <>{children}</>;
   }
 

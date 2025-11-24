@@ -6,8 +6,10 @@ export type Profile = {
   id: string;
   email: string;
   full_name?: string;
-  avatar_url?: string;
-  role: UserRole;
+  organization?: string;
+  organization_id?: string;
+  role?: UserRole | string;
+  is_admin?: boolean;
   trial_start_date?: string;
   trial_end_date?: string;
   subscription_status?: 'active' | 'canceled' | 'past_due' | 'trialing' | null;

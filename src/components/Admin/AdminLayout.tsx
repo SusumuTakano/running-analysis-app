@@ -11,8 +11,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
 
-  // 管理者以外はアクセス不可
-  if (!user || user.role !== 'admin') {
+  // 管理者以外はアクセス不可（is_adminまたはrole='admin'）
+  if (!user || (!user.is_admin && user.role !== 'admin')) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-100">
         <div className="text-center p-8 bg-white rounded-lg shadow-md">

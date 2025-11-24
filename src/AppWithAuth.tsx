@@ -43,7 +43,7 @@ const Navigation: React.FC<{ viewMode: ViewMode; setViewMode: (mode: ViewMode) =
               マイページ
             </button>
 
-            {user.role === 'admin' && (
+            {(user.is_admin || user.role === 'admin') && (
               <button
                 onClick={() => setViewMode('admin')}
                 className={`text-sm ${viewMode === 'admin' ? 'text-purple-600 font-semibold' : 'text-purple-500 hover:text-purple-600'}`}
@@ -82,7 +82,7 @@ const MainApp: React.FC = () => {
   }
 
   // 管理画面を表示（管理者のみ）
-  if (viewMode === 'admin' && user.role === 'admin') {
+  if (viewMode === 'admin' && (user.is_admin || user.role === 'admin')) {
     return <AdminPage />;
   }
 
