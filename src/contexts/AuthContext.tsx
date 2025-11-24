@@ -65,21 +65,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         console.log('🔐 AuthContext: Calling supabase.auth.getSession()...');
         
-        // レースコンディション対策：タイムアウトと並行して実行（30秒に延長）
-        const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Timeout after 30s')), 30000)
-        );
-        
-        const { data: { session }, error } = await Promise.race([
-          sessionPromise,
-          timeoutPromise
-        ]).catch((err) => {
-          console.error('⏰ AuthContext: Timeout or error:', err.message);
-          // タイムアウトしてもエラーにせず、セッションなしとして扱う
-          setLoading(false);
-          return { data: { session: null }, error: null };
-        }) as any;
+        // タイムアウトを削除し、通常のPromiseとして実行
+        const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
           console.error('❌ AuthContext: Error getting session:', error);
