@@ -61,12 +61,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const initAuth = async () => {
       console.log('🔐 AuthContext: Initializing authentication...');
+      console.log('🔐 AuthContext: Current timestamp:', new Date().toISOString());
       
       try {
         console.log('🔐 AuthContext: Calling supabase.auth.getSession()...');
+        const startTime = Date.now();
         
         // タイムアウトを削除し、通常のPromiseとして実行
         const { data: { session }, error } = await supabase.auth.getSession();
+        
+        const elapsed = Date.now() - startTime;
+        console.log(`🔐 AuthContext: getSession() took ${elapsed}ms`);
         
         if (error) {
           console.error('❌ AuthContext: Error getting session:', error);
@@ -75,10 +80,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         
         console.log('🔐 AuthContext: Session retrieved:', session ? 'User logged in' : 'No session');
+        console.log('🔐 AuthContext: Session details:', session ? {
+          user_id: session.user.id,
+          email: session.user.email,
+          expires_at: session.expires_at
+        } : 'null');
         
         if (session?.user) {
           console.log('🔐 AuthContext: Fetching user profile...');
+          const profileStartTime = Date.now();
           await fetchUserProfile(session.user);
+          const profileElapsed = Date.now() - profileStartTime;
+          console.log(`🔐 AuthContext: fetchUserProfile() took ${profileElapsed}ms`);
+        } else {
+          console.log('🔐 AuthContext: No session found, user needs to login');
         }
       } catch (error) {
         console.error('❌ Error initializing auth:', error);
