@@ -82,6 +82,16 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onToggleMode }) => {
           アカウントをお持ちでない方はこちら
         </button>
       </div>
+
+      <div className="mt-4 pt-4 border-t border-gray-200 text-center">
+        <a
+          href="/admin/login"
+          className="text-purple-600 hover:text-purple-700 text-sm font-medium inline-flex items-center"
+        >
+          <span className="mr-1">🛡️</span>
+          管理者としてログイン
+        </a>
+      </div>
     </div>
   );
 };
