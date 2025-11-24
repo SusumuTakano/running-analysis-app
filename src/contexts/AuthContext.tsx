@@ -87,26 +87,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('🔐 AuthContext: Calling supabase.auth.getSession()...');
         const startTime = Date.now();
         
-        // タイムアウトを削除し、通常のPromiseとして実行
-        const { data: { session }, error } = await supabase.auth.getSession();
+        // getSession()にも10秒のタイムアウトを追加
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('getSession timeout after 10s')), 10000)
+        );
+        
+        const { data: { session }, error } = await Promise.race([
+          sessionPromise,
+          timeoutPromise
+        ]).catch((err) => {
+          console.warn('⚠️ getSession failed or timed out:', err.message);
+          return { data: { session: null }, error: err };
+        }) as any;
         
         const elapsed = Date.now() - startTime;
         console.log(`🔐 AuthContext: getSession() took ${elapsed}ms`);
         
         if (error) {
-          console.error('❌ AuthContext: Error getting session:', error);
-          setLoading(false);
-          return;
+          console.warn('⚠️ AuthContext: Error getting session, continuing without session');
         }
         
         console.log('🔐 AuthContext: Session retrieved:', session ? 'User logged in' : 'No session');
-        console.log('🔐 AuthContext: Session details:', session ? {
-          user_id: session.user.id,
-          email: session.user.email,
-          expires_at: session.expires_at
-        } : 'null');
         
         if (session?.user) {
+          console.log('🔐 AuthContext: Session details:', {
+            user_id: session.user.id,
+            email: session.user.email,
+            expires_at: session.expires_at
+          });
           console.log('🔐 AuthContext: Fetching user profile...');
           const profileStartTime = Date.now();
           await fetchUserProfile(session.user);
