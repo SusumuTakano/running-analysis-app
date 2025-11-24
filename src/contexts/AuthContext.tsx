@@ -62,16 +62,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const initAuth = async () => {
       console.log('🔐 AuthContext: Initializing authentication...');
       
-      // タイムアウト設定（10秒）- 接続が遅い場合に対応
-      const timeoutId = setTimeout(() => {
-        console.error('⏰ AuthContext: Timeout after 10s - forcing loading=false');
-        setLoading(false);
-      }, 10000);
-      
       try {
         console.log('🔐 AuthContext: Calling supabase.auth.getSession()...');
-        const { data: { session }, error } = await supabase.auth.getSession();
-        clearTimeout(timeoutId);
+        
+        // レースコンディション対策：タイムアウトと並行して実行
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout after 10s')), 10000)
+        );
+        
+        const { data: { session }, error } = await Promise.race([
+          sessionPromise,
+          timeoutPromise
+        ]).catch((err) => {
+          console.error('⏰ AuthContext: Timeout or error:', err.message);
+          // タイムアウトしてもエラーにせず、セッションなしとして扱う
+          return { data: { session: null }, error: null };
+        }) as any;
         
         if (error) {
           console.error('❌ AuthContext: Error getting session:', error);
@@ -87,7 +94,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } catch (error) {
         console.error('❌ Error initializing auth:', error);
-        clearTimeout(timeoutId);
       } finally {
         console.log('✅ AuthContext: Loading complete, setting loading=false');
         setLoading(false);

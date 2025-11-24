@@ -19,10 +19,15 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onToggleMode }) => {
     setLoading(true);
 
     try {
+      console.log('🔐 LoginForm: Attempting sign in for:', email);
       await signIn(email, password);
+      console.log('✅ LoginForm: Sign in successful');
+      // ログイン成功後、ページをリロードして状態をリフレッシュ
+      window.location.reload();
     } catch (err: any) {
-      setError(err.message || 'ログインに失敗しました');
-    } finally {
+      console.error('❌ LoginForm: Sign in failed:', err);
+      const errorMessage = err.message || 'ログインに失敗しました';
+      setError(errorMessage);
       setLoading(false);
     }
   };
