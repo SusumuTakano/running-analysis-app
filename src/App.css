@@ -73,10 +73,51 @@ body {
   opacity: 0.9;
 }
 
-/* モバイル用ヘッダー最適化 - 完全に非表示 */
+/* モバイル用ヘッダー最適化 - コンパクト表示 */
 @media (max-width: 768px) {
   .app-header-new {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 1001 !important;
+    background: rgba(102, 126, 234, 0.95) !important;
+    backdrop-filter: blur(10px);
+    padding: 8px 12px !important;
+    margin: 0 !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+  
+  .app-title-new {
+    font-size: 1rem !important;
+    margin: 0 !important;
+    font-weight: 700;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+  
+  .app-subtitle-new {
     display: none !important;
+  }
+  
+  /* キャンバスをヘッダーの下に配置 */
+  .canvas-area {
+    top: 42px !important; /* ヘッダー高さ分下げる */
+  }
+  
+  .frame-control {
+    top: calc(42px + min(56.25vw, 50vh)) !important;
+  }
+  
+  .mobile-marking-controls {
+    top: calc(42px + min(56.25vw, 50vh) + 24px) !important;
+  }
+  
+  .wizard-content .section-settings {
+    margin-top: calc(42px + min(56.25vw, 50vh) + 28px) !important;
+  }
+  
+  .wizard-content .marker-controls {
+    margin-top: calc(42px + min(56.25vw, 50vh) + 60px) !important;
   }
 }
 
