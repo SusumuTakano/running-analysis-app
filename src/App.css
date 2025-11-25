@@ -1357,15 +1357,21 @@ body {
   }
 
   /* Step 4と5でキャンバス以外のコンテンツを調整 */
-  .wizard-content .frame-control,
   .wizard-content .section-settings,
   .wizard-content .marker-controls,
-  .wizard-content .mobile-marking-controls,
   .wizard-content .contact-markers,
   .wizard-content .angle-display-compact,
   .wizard-content .wizard-actions {
     position: relative;
     z-index: 1;
+    /* 固定コントロール（キャンバス+スライダー）の下から表示 */
+    margin-top: 140px; /* 30vh + 約100px + 余白 */
+  }
+
+  /* frame-controlとmobile-marking-controlsは固定されているので余白不要 */
+  .wizard-content .frame-control,
+  .wizard-content .mobile-marking-controls {
+    margin-top: 0 !important;
   }
 
   /* すべてのボタンとインタラクティブ要素 */
