@@ -1995,7 +1995,68 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     });
   }, [stepMetrics, threePhaseAngles, stepSummary]);
 
-  // 100m目標記録に基づく科学的アドバイス生成
+  // 松尾氏のデータベース（目標記録に対する最適なピッチとストライド）
+  // 出典: 松尾ら「身体の大きさ、四肢の長さがピッチに大きく影響し、体型によって至適ピッチが選択され、
+  //        そのときのストライド長によってパフォーマンスが決まる」
+  const getOptimalPitchStride = (targetTime: number, currentPitch: number, currentStride: number) => {
+    const targetSpeed = 100 / targetTime;
+    
+    // 松尾氏のデータ: 男子競技者の3つの体型パターン
+    // ピッチ型: 4.66歩/秒、平均型: 4.84歩/秒、ストライド型: ~5.03歩/秒
+    // 女子競技者: ピッチ型: 4.44歩/秒、平均型: 4.65歩/秒、ストライド型: 4.86歩/秒
+    
+    const matsuoData: { [key: string]: { pitch: number; stride: number }[] } = {
+      "9.50": [{ pitch: 4.66, stride: 2.65 }, { pitch: 4.84, stride: 2.54 }, { pitch: 5.03, stride: 2.45 }],
+      "9.60": [{ pitch: 4.66, stride: 2.62 }, { pitch: 4.84, stride: 2.52 }, { pitch: 5.03, stride: 2.42 }],
+      "9.70": [{ pitch: 4.66, stride: 2.59 }, { pitch: 4.84, stride: 2.49 }, { pitch: 5.03, stride: 2.40 }],
+      "9.80": [{ pitch: 4.66, stride: 2.56 }, { pitch: 4.84, stride: 2.46 }, { pitch: 5.03, stride: 2.37 }],
+      "9.90": [{ pitch: 4.66, stride: 2.53 }, { pitch: 4.84, stride: 2.43 }, { pitch: 5.03, stride: 2.34 }],
+      "10.00": [{ pitch: 4.66, stride: 2.50 }, { pitch: 4.84, stride: 2.40 }, { pitch: 5.03, stride: 2.32 }],
+      "10.10": [{ pitch: 4.66, stride: 2.47 }, { pitch: 4.84, stride: 2.38 }, { pitch: 5.03, stride: 2.29 }],
+      "10.20": [{ pitch: 4.66, stride: 2.44 }, { pitch: 4.84, stride: 2.35 }, { pitch: 5.03, stride: 2.26 }],
+      "10.30": [{ pitch: 4.66, stride: 2.41 }, { pitch: 4.84, stride: 2.32 }, { pitch: 5.03, stride: 2.24 }],
+      "10.50": [{ pitch: 4.44, stride: 2.36 }, { pitch: 4.65, stride: 2.26 }, { pitch: 4.86, stride: 2.18 }],
+      "10.60": [{ pitch: 4.44, stride: 2.33 }, { pitch: 4.65, stride: 2.24 }, { pitch: 4.86, stride: 2.15 }],
+      "10.80": [{ pitch: 4.44, stride: 2.27 }, { pitch: 4.65, stride: 2.18 }, { pitch: 4.86, stride: 2.10 }],
+      "11.00": [{ pitch: 4.44, stride: 2.21 }, { pitch: 4.65, stride: 2.12 }, { pitch: 4.86, stride: 2.05 }],
+      "11.20": [{ pitch: 4.44, stride: 2.15 }, { pitch: 4.65, stride: 2.07 }, { pitch: 4.86, stride: 1.99 }],
+      "11.50": [{ pitch: 4.44, stride: 2.24 }, { pitch: 4.65, stride: 2.14 }, { pitch: 4.86, stride: 2.05 }],
+      "12.00": [{ pitch: 4.44, stride: 1.92 }, { pitch: 4.65, stride: 1.84 }, { pitch: 4.86, stride: 1.78 }],
+    };
+    
+    // 目標タイムに最も近いデータを取得
+    const timeStr = targetTime.toFixed(2);
+    let data = matsuoData[timeStr];
+    
+    if (!data) {
+      // 補間または近似
+      const times = Object.keys(matsuoData).map(t => parseFloat(t)).sort((a, b) => a - b);
+      const closestTime = times.reduce((prev, curr) => 
+        Math.abs(curr - targetTime) < Math.abs(prev - targetTime) ? curr : prev
+      );
+      data = matsuoData[closestTime.toFixed(2)];
+    }
+    
+    // 現在のピッチ/ストライド比から体型を判定
+    const pitchStrideRatio = currentPitch / currentStride;
+    
+    let selectedType = 1; // 平均型をデフォルト
+    if (pitchStrideRatio > 2.4) {
+      selectedType = 0; // ピッチ型
+    } else if (pitchStrideRatio < 2.2) {
+      selectedType = 2; // ストライド型
+    }
+    
+    const optimal = data[selectedType];
+    
+    return {
+      pitch: optimal.pitch,
+      stride: optimal.stride,
+      type: selectedType === 0 ? "ピッチ型" : selectedType === 2 ? "ストライド型" : "平均型"
+    };
+  };
+
+  // 100m目標記録に基づく科学的アドバイス生成（松尾氏のデータ使用）
   const generateTargetAdvice = (targetTime: number) => {
     if (!stepSummary.avgSpeedMps || !stepSummary.avgStride || !stepSummary.avgStepPitch) {
       return "現在の走行データが不足しています。マーカーを設定して解析を完了してください。";
@@ -2010,47 +2071,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     const speedGap = targetSpeed - currentSpeed;
     const speedGapPercent = (speedGap / currentSpeed) * 100;
 
-    // 科学的データに基づく最適なピッチとストライドの組み合わせ
-    // 参考: 世界トップスプリンターのデータ
-    // - ウサイン・ボルト (9.58秒): 平均速度 10.44 m/s, ピッチ 4.28歩/秒, ストライド 2.44m
-    // - 100m 10秒台前半: 平均速度 10.0-10.3 m/s, ピッチ 4.4-4.6歩/秒, ストライド 2.2-2.3m
-    // - 100m 11秒台: 平均速度 9.0-9.5 m/s, ピッチ 4.2-4.5歩/秒, ストライド 2.0-2.2m
-    // - 一般ランナー: 平均速度 6.0-8.0 m/s, ピッチ 3.5-4.0歩/秒, ストライド 1.7-2.0m
-    
-    // 目標速度に最適なピッチとストライドの組み合わせを計算
-    // 科学的知見: 最高速度域では「ピッチ 4.3-4.7歩/秒」が理想的
-    // ストライド = 速度 / ピッチ
-    
-    let optimalPitch: number;
-    let optimalStride: number;
-    let referenceData: string;
-    
-    if (targetSpeed >= 10.4) {
-      // 世界トップレベル（9秒台）
-      optimalPitch = 4.3;
-      optimalStride = targetSpeed / optimalPitch;
-      referenceData = "ウサイン・ボルト（9.58秒）: 平均速度 10.44 m/s, ピッチ 4.28歩/秒, ストライド 2.44m";
-    } else if (targetSpeed >= 10.0) {
-      // 10秒台前半
-      optimalPitch = 4.5;
-      optimalStride = targetSpeed / optimalPitch;
-      referenceData = "世界トップスプリンター（10.0-10.3秒）: ピッチ 4.4-4.6歩/秒, ストライド 2.2-2.3m";
-    } else if (targetSpeed >= 9.0) {
-      // 10秒台後半〜11秒台
-      optimalPitch = 4.4;
-      optimalStride = targetSpeed / optimalPitch;
-      referenceData = "国内トップスプリンター（11.0-11.5秒）: ピッチ 4.2-4.5歩/秒, ストライド 2.0-2.2m";
-    } else if (targetSpeed >= 7.5) {
-      // 12秒台〜13秒台
-      optimalPitch = 4.2;
-      optimalStride = targetSpeed / optimalPitch;
-      referenceData = "中級ランナー（12-13秒台）: ピッチ 4.0-4.3歩/秒, ストライド 1.8-2.0m";
-    } else {
-      // 14秒以降（一般ランナー）
-      optimalPitch = 4.0;
-      optimalStride = targetSpeed / optimalPitch;
-      referenceData = "一般ランナー（14秒以降）: ピッチ 3.5-4.0歩/秒, ストライド 1.7-2.0m";
-    }
+    // 松尾氏のデータから最適なピッチとストライドを取得
+    const optimal = getOptimalPitchStride(targetTime, currentPitch, currentStride);
+    const optimalPitch = optimal.pitch;
+    const optimalStride = optimal.stride;
+    const bodyType = optimal.type;
     
     // 現在との差分を計算
     const strideGap = optimalStride - currentStride;
@@ -2064,21 +2089,43 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     advice += `### 📊 現状分析\n`;
     advice += `- **現在の平均速度**: ${currentSpeed.toFixed(2)} m/s\n`;
     advice += `- **現在のピッチ**: ${currentPitch.toFixed(2)} 歩/秒\n`;
-    advice += `- **現在のストライド**: ${currentStride.toFixed(2)} m\n\n`;
+    advice += `- **現在のストライド**: ${currentStride.toFixed(2)} m\n`;
+    advice += `- **判定された体型**: ${bodyType}\n\n`;
     
-    advice += `### 🎯 目標値（科学的データに基づく）\n`;
+    advice += `### 🎯 目標値（松尾氏の研究データに基づく）\n`;
     advice += `- **必要な平均速度**: ${targetSpeed.toFixed(2)} m/s\n`;
-    advice += `- **最適なピッチ**: ${optimalPitch.toFixed(2)} 歩/秒\n`;
-    advice += `- **最適なストライド**: ${optimalStride.toFixed(2)} m\n\n`;
+    advice += `- **最適なピッチ（${bodyType}）**: ${optimalPitch.toFixed(2)} 歩/秒\n`;
+    advice += `- **最適なストライド（${bodyType}）**: ${optimalStride.toFixed(2)} m\n\n`;
     
-    advice += `> 📚 **参考データ**: ${referenceData}\n\n`;
+    advice += `> 📚 **科学的根拠**: 松尾ら「身体の大きさ、四肢の長さがピッチに大きく影響し、体型によって至適ピッチが選択され、そのときのストライド長によってパフォーマンスが決まる」\n\n`;
     
     advice += `### 📈 改善が必要な項目\n`;
     advice += `- **速度**: ${speedGap >= 0 ? '+' : ''}${speedGap.toFixed(2)} m/s (${speedGapPercent >= 0 ? '+' : ''}${speedGapPercent.toFixed(1)}%)\n`;
-    advice += `- **ピッチ**: ${pitchGap >= 0 ? '+' : ''}${pitchGap.toFixed(2)} 歩/秒 (現在の${(pitchRatio * 100).toFixed(1)}%)\n`;
-    advice += `- **ストライド**: ${strideGap >= 0 ? '+' : ''}${strideGap.toFixed(2)} m (現在の${(strideRatio * 100).toFixed(1)}%)\n\n`;
+    advice += `- **ピッチ**: ${pitchGap >= 0 ? '+' : ''}${pitchGap.toFixed(2)} 歩/秒 (現在は最適値の${(pitchRatio * 100).toFixed(1)}%)\n`;
+    advice += `- **ストライド**: ${strideGap >= 0 ? '+' : ''}${strideGap.toFixed(2)} m (現在は最適値の${(strideRatio * 100).toFixed(1)}%)\n\n`;
     
-    advice += `### 💡 科学的知見\n`;
+    advice += `### 💡 体型別の特徴\n`;
+    if (bodyType === "ピッチ型") {
+      advice += `あなたは**ピッチ型**です。以下の特徴があります：\n`;
+      advice += `- 高いピッチ（歩/秒）で走るタイプ\n`;
+      advice += `- 接地時間が短く、素早い足の回転が得意\n`;
+      advice += `- ストライドは相対的に短め\n`;
+      advice += `- **強化ポイント**: 接地時間の短縮、爆発的な地面反力の向上\n\n`;
+    } else if (bodyType === "ストライド型") {
+      advice += `あなたは**ストライド型**です。以下の特徴があります：\n`;
+      advice += `- 大きなストライド（歩幅）で走るタイプ\n`;
+      advice += `- 股関節の可動域が広く、滞空時間が長い\n`;
+      advice += `- ピッチは相対的に低め\n`;
+      advice += `- **強化ポイント**: 股関節周辺の筋力強化、柔軟性向上\n\n`;
+    } else {
+      advice += `あなたは**平均型**です。以下の特徴があります：\n`;
+      advice += `- ピッチとストライドのバランスが取れたタイプ\n`;
+      advice += `- 両方の要素を均等に活用できる\n`;
+      advice += `- 汎用性が高く、様々なトレーニングに対応可能\n`;
+      advice += `- **強化ポイント**: ピッチとストライドの両方を段階的に向上\n\n`;
+    }
+    
+    advice += `### 🔬 速度の方程式\n`;
     advice += `速度 = ピッチ × ストライド の関係式から、目標速度達成には以下の組み合わせが必要です：\n`;
     advice += `${targetSpeed.toFixed(2)} m/s = ${optimalPitch.toFixed(2)} 歩/秒 × ${optimalStride.toFixed(2)} m\n\n`;
 
