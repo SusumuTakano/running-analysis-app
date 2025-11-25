@@ -1341,55 +1341,8 @@ const App: React.FC = () => {
     height: number,
     currentFrameNum: number
   ) => {
-    // デバッグ：マーカーを常に画面上部に表示
-    const markerX = width / 2;
-    const markerY = 80; // 画面上部に固定
-    
-    ctx.fillStyle = "#10b981";
-    ctx.beginPath();
-    ctx.arc(markerX, markerY, 60, 0, 2 * Math.PI);
-    ctx.fill();
-    
-    ctx.strokeStyle = "white";
-    ctx.lineWidth = 5;
-    ctx.stroke();
-    
-    ctx.fillStyle = "white";
-    ctx.font = "bold 28px sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("TEST", markerX, markerY);
-    
-    // 実際のマーカーも描画
-    contactFrames.forEach((markerFrame, index) => {
-      if (markerFrame === currentFrameNum) {
-        const isContact = index % 2 === 0;
-        const color = isContact ? "#10b981" : "#ef4444";
-        const label = isContact ? "接地" : "離地";
-        
-        const markerX2 = width / 2;
-        const markerY2 = height / 2;
-        
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(markerX2, markerY2, 50, 0, 2 * Math.PI);
-        ctx.fill();
-        
-        ctx.strokeStyle = "white";
-        ctx.lineWidth = 4;
-        ctx.stroke();
-        
-        ctx.fillStyle = "white";
-        ctx.font = "bold 24px sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(label, markerX2, markerY2);
-        
-        ctx.fillStyle = color;
-        ctx.font = "bold 18px sans-serif";
-        ctx.fillText(`#${index + 1}`, markerX2, markerY2 + 65);
-      }
-    });
+    // キャンバス上のマーカー描画は不要（コントロール下のエリアに表示）
+    // 空の関数として残す
   };
 
   const drawSectionMarkers = (
@@ -2385,6 +2338,52 @@ const App: React.FC = () => {
                   +10 ▶▶
                 </button>
               </div>
+            </div>
+
+            {/* マーカー表示エリア - コントロールの下に配置 */}
+            <div className="mobile-marker-display">
+              {contactFrames.map((markerFrame, index) => {
+                if (markerFrame === currentFrame) {
+                  const isContact = index % 2 === 0;
+                  const color = isContact ? "#10b981" : "#ef4444";
+                  const label = isContact ? "接地" : "離地";
+                  const bgColor = isContact ? "bg-green-500" : "bg-red-500";
+                  
+                  return (
+                    <div 
+                      key={index}
+                      className="marker-indicator"
+                      style={{
+                        backgroundColor: color,
+                        color: "white",
+                        padding: "16px",
+                        borderRadius: "12px",
+                        fontSize: "24px",
+                        fontWeight: "bold",
+                        textAlign: "center",
+                        boxShadow: "0 4px 8px rgba(0,0,0,0.3)"
+                      }}
+                    >
+                      {label} #{index + 1}
+                    </div>
+                  );
+                }
+                return null;
+              })}
+              {contactFrames.every(f => f !== currentFrame) && (
+                <div 
+                  style={{
+                    backgroundColor: "#e5e7eb",
+                    color: "#6b7280",
+                    padding: "16px",
+                    borderRadius: "12px",
+                    fontSize: "16px",
+                    textAlign: "center"
+                  }}
+                >
+                  マーカーなし
+                </div>
+              )}
             </div>
 
             <div className="frame-control">
