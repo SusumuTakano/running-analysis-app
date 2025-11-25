@@ -126,21 +126,36 @@ VITE_SUPABASE_URL=your-supabase-url
 VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
-### 2. データベースのセットアップ
+### 2. データベースのセットアップ（必須）
 
-Supabaseのダッシュボードで必要なSQLファイルを実行：
+**⚠️ 重要：必ずこの手順を実行してください**
 
-```bash
-# 1. メインスキーマのセットアップ（まだ実行していない場合）
-# Supabase SQL Editorで supabase_setup.sql を実行
+Supabaseダッシュボードで以下のSQLを実行：
 
-# 2. ユーザープロフィール拡張（新規追加）
-# Supabase SQL Editorで supabase_users_migration.sql を実行
-```
+#### 手順：
+1. **Supabaseダッシュボードにログイン**
+   - https://supabase.com/dashboard にアクセス
+   - プロジェクトを選択
 
-**重要:** `supabase_users_migration.sql`を実行して、以下のテーブルと機能を追加してください：
-- `user_profiles` テーブル（名前、かな、性別、年齢、身長、都道府県、所属）
-- デベロッパー版期限チェック関数（2025年12月31日まで有効）
+2. **SQL Editorを開く**
+   - 左メニュー → `SQL Editor` → `New Query`
+
+3. **supabase_setup_complete.sql の内容を実行**
+   - ファイル内のすべてのSQLをコピー＆ペースト
+   - `Run` をクリック
+
+4. **成功確認**
+   - エラーがないことを確認
+   - 最後の確認クエリで `user_profiles` テーブルの列とポリシーが表示されることを確認
+
+#### このSQLで作成されるもの：
+- ✅ `user_profiles` テーブル（名前、かな、性別、生年月日、年齢、身長、都道府県、所属）
+- ✅ 更新日時自動更新トリガー
+- ✅ RLS（Row Level Security）ポリシー
+- ✅ テーブル権限設定
+- ✅ デベロッパー版期限チェック関数（2025年12月31日まで有効）
+
+**注意：** このSQL実行なしではログインできません！
 
 ### 3. 依存関係のインストール
 
