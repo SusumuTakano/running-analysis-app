@@ -190,6 +190,8 @@ export async function logoutUser() {
  * 現在のユーザーのプロフィールを取得
  */
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
+  console.log('Getting profile for user:', userId);
+  
   const { data, error } = await supabase
     .from('user_profiles')
     .select('*')
@@ -197,10 +199,28 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
     .single();
 
   if (error) {
-    console.error('Get profile error:', error);
+    console.error('Get profile error:', {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code
+    });
+    
+    // RLSポリシーエラーの場合
+    if (error.code === 'PGRST116' || error.message.includes('row-level security')) {
+      console.error('❌ RLS policy is blocking access to user_profiles table');
+      console.error('Please run supabase_rls_minimal.sql to disable RLS temporarily');
+    }
+    
     return null;
   }
 
+  if (!data) {
+    console.warn('⚠️ Profile data is null for user:', userId);
+    return null;
+  }
+
+  console.log('✅ Profile loaded successfully:', data.name);
   return data;
 }
 
