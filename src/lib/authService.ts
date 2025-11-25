@@ -3,13 +3,13 @@ import { supabase } from './supabaseClient';
 export type UserProfile = {
   id: string;
   name: string;
-  name_kana: string;
-  gender: 'male' | 'female' | 'other';
-  birthdate: string;
-  age: number;
-  height_cm: number;
-  prefecture: string;
-  organization?: string;
+  name_kana?: string | null;
+  gender?: 'male' | 'female' | 'other' | null;
+  birthdate?: string | null;
+  age?: number | null;
+  height_cm?: number | null;
+  prefecture?: string | null;
+  organization?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -66,7 +66,7 @@ export async function registerUser(data: RegisterData) {
   }
 
   // 2. user_profilesに詳細情報を登録
-  const age = calculateAge(data.birthdate);
+  const age = data.birthdate ? calculateAge(data.birthdate) : null;
   
   console.log('Creating user profile:', {
     userId: authData.user.id,
@@ -74,19 +74,25 @@ export async function registerUser(data: RegisterData) {
     email: data.email
   });
   
+  const profileData: any = {
+    id: authData.user.id,
+    name: data.name || data.email, // 名前がない場合はメールアドレスを使用
+  };
+  
+  // オプション項目は値がある場合のみ追加
+  if (data.nameKana) profileData.name_kana = data.nameKana;
+  if (data.gender) profileData.gender = data.gender;
+  if (data.birthdate) {
+    profileData.birthdate = data.birthdate;
+    profileData.age = age;
+  }
+  if (data.height) profileData.height_cm = parseFloat(data.height);
+  if (data.prefecture) profileData.prefecture = data.prefecture;
+  if (data.organization) profileData.organization = data.organization;
+  
   const { error: profileError } = await supabase
     .from('user_profiles')
-    .insert({
-      id: authData.user.id,
-      name: data.name,
-      name_kana: data.nameKana,
-      gender: data.gender as 'male' | 'female' | 'other',
-      birthdate: data.birthdate,
-      age: age,
-      height_cm: parseFloat(data.height),
-      prefecture: data.prefecture,
-      organization: data.organization || null,
-    });
+    .insert(profileData);
 
   if (profileError) {
     console.error('Profile insert error:', {

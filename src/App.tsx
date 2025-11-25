@@ -275,7 +275,7 @@ const metricColors: Record<GraphMetricKey, string> = {
 
 type AppProps = {
   userProfile: {
-    height_cm: number;
+    height_cm?: number | null;
     name: string;
   } | null;
 };
