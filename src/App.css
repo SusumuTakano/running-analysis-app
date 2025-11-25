@@ -1126,14 +1126,14 @@ body {
   .mobile-marking-controls {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    margin-bottom: 16px;
-    padding: 12px 16px;
+    gap: 8px;
+    margin-bottom: 0;
+    padding: 8px 12px;
     background: white;
     border-radius: 0;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     position: fixed !important;
-    top: calc(30vh + 24px) !important; /* キャンバスの下、スライダーと同じ位置 */
+    top: calc(25vh + 16px) !important; /* キャンバスの下、スライダーと同じ位置 */
     left: 0 !important;
     right: 0 !important;
     z-index: 999 !important;
@@ -1145,8 +1145,8 @@ body {
   /* 大きなマーキングボタン */
   .btn-mark-contact {
     width: 100%;
-    padding: 18px 24px;
-    font-size: 1.1rem;
+    padding: 12px 16px;
+    font-size: 1rem;
     font-weight: 600;
     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
     color: white;
@@ -1177,8 +1177,8 @@ body {
   }
 
   .btn-nav-arrow {
-    padding: 14px 8px;
-    font-size: 0.9rem;
+    padding: 10px 6px;
+    font-size: 0.85rem;
     font-weight: 500;
     background: white;
     color: var(--primary);
@@ -1213,9 +1213,9 @@ body {
     right: 0 !important;
     z-index: 1000 !important;
     background: white;
-    padding: 8px 12px;
+    padding: 4px 8px;
     margin: 0 !important;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     width: 100vw !important;
     border-bottom: 1px solid var(--gray-200);
   }
@@ -1223,7 +1223,7 @@ body {
   .preview-canvas {
     width: 100% !important;
     height: auto !important;
-    max-height: 30vh !important; /* キャンバス高さを少し下げてスライダー分の余裕を確保 */
+    max-height: 25vh !important; /* 高さを小さく */
     object-fit: contain;
     display: block;
     margin: 0 auto;
@@ -1233,12 +1233,12 @@ body {
   /* フレームコントロール（スライダー）も固定 */
   .frame-control {
     position: fixed !important;
-    top: calc(30vh + 24px) !important; /* キャンバスの下に配置 */
+    top: calc(25vh + 16px) !important; /* キャンバスの下に配置 */
     left: 0 !important;
     right: 0 !important;
     z-index: 999 !important;
     background: white;
-    padding: 12px 16px;
+    padding: 8px 12px;
     margin: 0 !important;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     width: 100vw !important;
@@ -1247,11 +1247,11 @@ body {
 
   /* フレーム情報を見やすく */
   .frame-info {
-    font-size: 1rem;
-    padding: 8px 12px;
+    font-size: 0.9rem;
+    padding: 4px 8px;
     background: var(--gray-50);
     border-radius: var(--radius);
-    margin-bottom: 8px;
+    margin-bottom: 4px;
     text-align: center;
     font-weight: 600;
     color: var(--primary);
@@ -1259,7 +1259,7 @@ body {
 
   /* スライダーを大きく */
   .frame-range {
-    height: 44px;
+    height: 36px;
     -webkit-appearance: none;
     appearance: none;
     width: 100%;
@@ -1350,20 +1350,19 @@ body {
     touch-action: pan-y pinch-zoom;
   }
 
-  /* Step 5の場合：marker-controlsがcanvas-areaより前にあるため、
-     固定キャンバス+スライダーの下に表示されるよう位置調整 */
+  /* Step 5: marker-controlsを固定エリアの下に表示 */
   .wizard-content .marker-controls {
     position: relative;
-    margin-top: calc(30vh + 180px); /* 固定キャンバス + 固定スライダーの高さ分 */
-    padding-top: 16px;
+    margin-top: calc(25vh + 100px); /* キャンバス25vh + スライダー約60px + 余白40px */
+    padding-top: 12px;
     z-index: 1;
   }
 
   /* Step 4: section-settingsを固定スライダーの下に配置 */
   .wizard-content .section-settings {
     position: relative;
-    margin-top: calc(30vh + 130px); /* 固定キャンバス + 固定スライダーの高さ分 */
-    padding-top: 16px;
+    margin-top: calc(25vh + 100px); /* キャンバス25vh + スライダー約60px + 余白40px */
+    padding-top: 12px;
     z-index: 1;
   }
 
