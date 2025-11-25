@@ -1350,9 +1350,9 @@ const App: React.FC = () => {
         const color = isContact ? "#10b981" : "#ef4444"; // 緑 or 赤
         const label = isContact ? "接地" : "離地";
         
-        // 画面上部中央にマーカー表示
+        // 画面中央上部にマーカー表示（モバイルでも見えるように）
         const markerX = width / 2;
-        const markerY = 60;
+        const markerY = height * 0.25; // キャンバス高さの25%の位置（上から1/4）
         
         // 背景円
         ctx.fillStyle = color;
@@ -1374,8 +1374,8 @@ const App: React.FC = () => {
         
         // マーカー番号を下に表示
         ctx.fillStyle = color;
-        ctx.font = "bold 12px sans-serif";
-        ctx.fillText(`#${index + 1}`, markerX, markerY + 45);
+        ctx.font = "bold 14px sans-serif";
+        ctx.fillText(`#${index + 1}`, markerX, markerY + 50);
       }
     });
   };
