@@ -395,6 +395,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   // ------------ 接地／離地マーカー（キャリブレーション対応） ------------
   const [calibrationMode, setCalibrationMode] = useState<boolean>(true); // キャリブレーションモード
   const [toeOffThreshold, setToeOffThreshold] = useState<number | null>(null); // つま先上昇閾値（ピクセル）
+  const [baseThreshold, setBaseThreshold] = useState<number | null>(null); // 元の閾値（調整用）
   const [manualContactFrames, setManualContactFrames] = useState<number[]>([]); // 接地フレーム（手動）
   const [autoToeOffFrames, setAutoToeOffFrames] = useState<number[]>([]); // 離地フレーム（自動判定）
   
@@ -415,15 +416,31 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     setAutoToeOffFrames([]);
     setCalibrationMode(true);
     setToeOffThreshold(null);
+    setBaseThreshold(null);
   };
 
-  // つま先のY座標を取得（両足の平均）
+  // つま先のY座標を取得（地面に近い方を基準）
+  // 離地判定には、地面から離れる足（上昇する足）を検出する必要がある
   const getToeY = (poseData: FramePoseData | null): number | null => {
     if (!poseData || !poseData.landmarks) return null;
     const leftToe = poseData.landmarks[31]; // 左足つま先
     const rightToe = poseData.landmarks[32]; // 右足つま先
     if (!leftToe || !rightToe) return null;
-    return (leftToe.y + rightToe.y) / 2;
+    
+    // 接地している足（Y座標が大きい=下にある）を基準にする
+    // 離地するのは接地している足なので、より地面に近い方を追跡
+    return Math.max(leftToe.y, rightToe.y);
+  };
+  
+  // 足首のY座標も取得（補助的な判定）
+  const getAnkleY = (poseData: FramePoseData | null): number | null => {
+    if (!poseData || !poseData.landmarks) return null;
+    const leftAnkle = poseData.landmarks[27]; // 左足首
+    const rightAnkle = poseData.landmarks[28]; // 右足首
+    if (!leftAnkle || !rightAnkle) return null;
+    
+    // 接地している足の足首を基準
+    return Math.max(leftAnkle.y, rightAnkle.y);
   };
 
   // キャリブレーション：接地・離地の閾値を計算
@@ -439,6 +456,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     // Y座標の差分（離地時の方が小さい=上にある）
     const threshold = Math.abs(contactToeY - toeOffToeY);
     setToeOffThreshold(threshold);
+    setBaseThreshold(threshold); // 元の閾値を保存
     setCalibrationMode(false);
     console.log(`✅ キャリブレーション完了: 閾値 = ${threshold.toFixed(4)}`);
     return true;
@@ -450,24 +468,62 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     if (!poseResults.length) return null;
     
     const contactToeY = getToeY(poseResults[contactFrame]);
+    const contactAnkleY = getAnkleY(poseResults[contactFrame]);
     if (contactToeY === null) return null;
     
     // 接地フレームから最大60フレーム先まで検索（2秒程度）
     const maxSearchFrames = 60;
     const endFrame = Math.min(contactFrame + maxSearchFrames, poseResults.length - 1);
     
-    for (let i = contactFrame + 1; i <= endFrame; i++) {
+    let maxRise = 0;
+    let candidateFrame = null;
+    
+    // まず、つま先が上昇しているフレームを全て検出
+    for (let i = contactFrame + 3; i <= endFrame; i++) {  // 最初の数フレームはスキップ（ノイズ除去）
       const currentToeY = getToeY(poseResults[i]);
       if (currentToeY === null) continue;
       
       // Y座標が小さくなる=上昇
       const rise = contactToeY - currentToeY;
-      if (rise >= toeOffThreshold) {
-        console.log(`✅ 離地検出: フレーム ${i} (上昇量: ${rise.toFixed(4)})`);
+      
+      // 閾値の80%を超えたら候補として記録
+      if (rise >= toeOffThreshold * 0.8) {
+        // 足首も考慮（足首が上昇していることを確認）
+        if (contactAnkleY !== null) {
+          const currentAnkleY = getAnkleY(poseResults[i]);
+          if (currentAnkleY !== null) {
+            const ankleRise = contactAnkleY - currentAnkleY;
+            // 足首も上昇している場合のみ有効
+            if (ankleRise > 0) {
+              if (rise > maxRise) {
+                maxRise = rise;
+                candidateFrame = i;
+              }
+            }
+          }
+        } else {
+          // 足首データがない場合はつま先のみで判定
+          if (rise > maxRise) {
+            maxRise = rise;
+            candidateFrame = i;
+          }
+        }
+      }
+      
+      // 閾値を大きく超えたら、そこで確定（早期離脱）
+      if (rise >= toeOffThreshold * 1.5) {
+        console.log(`✅ 離地検出（早期確定）: フレーム ${i} (上昇量: ${rise.toFixed(4)})`);
         return i;
       }
     }
     
+    // 候補が見つかった場合
+    if (candidateFrame !== null) {
+      console.log(`✅ 離地検出: フレーム ${candidateFrame} (最大上昇量: ${maxRise.toFixed(4)})`);
+      return candidateFrame;
+    }
+    
+    console.warn(`⚠️ 離地が検出できませんでした（接地: ${contactFrame}）`);
     return null; // 離地が見つからない
   };
 
@@ -1131,6 +1187,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     setAutoToeOffFrames([]);
     setCalibrationMode(true);
     setToeOffThreshold(null);
+    setBaseThreshold(null);
     setPoseResults([]);
 
     if (file && file.type.startsWith("video/")) {
@@ -2720,15 +2777,61 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 <div style={{
                   background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                   color: 'white',
-                  padding: '12px',
+                  padding: '16px',
                   borderRadius: '8px',
                   margin: '8px 0',
-                  fontSize: '0.9rem',
-                  fontWeight: 'bold',
-                  textAlign: 'center',
                   boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
                 }}>
-                  ✅ キャリブレーション完了（閾値: {(toeOffThreshold * 100).toFixed(1)}%）
+                  <div style={{ fontSize: '0.9rem', fontWeight: 'bold', textAlign: 'center', marginBottom: '12px' }}>
+                    ✅ キャリブレーション完了（閾値: {(toeOffThreshold * 100).toFixed(1)}%）
+                  </div>
+                  
+                  {/* 閾値調整スライダー */}
+                  <div style={{ background: 'rgba(255,255,255,0.2)', padding: '12px', borderRadius: '6px' }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '8px' }}>
+                      🎚️ 閾値の微調整（離地判定の感度）
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}>低</span>
+                      <input
+                        type="range"
+                        min={0.5}
+                        max={2.0}
+                        step={0.1}
+                        value={baseThreshold ? toeOffThreshold! / baseThreshold : 1.0}
+                        onChange={(e) => {
+                          const ratio = parseFloat(e.target.value);
+                          if (baseThreshold) {
+                            setToeOffThreshold(baseThreshold * ratio);
+                            console.log(`🎚️ 閾値調整: ${(baseThreshold * ratio).toFixed(4)} (比率: ${ratio.toFixed(1)}x)`);
+                          }
+                        }}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}>高</span>
+                      <button
+                        onClick={() => {
+                          if (baseThreshold) {
+                            setToeOffThreshold(baseThreshold);
+                          }
+                        }}
+                        style={{
+                          padding: '4px 8px',
+                          fontSize: '0.7rem',
+                          background: 'rgba(255,255,255,0.3)',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        リセット
+                      </button>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', textAlign: 'center', marginTop: '4px', opacity: 0.9 }}>
+                      ※ 離地が<strong>遅すぎる</strong>場合は<strong>低く</strong>、<strong>早すぎる</strong>場合は<strong>高く</strong>調整
+                    </div>
+                  </div>
                 </div>
               )}
               
@@ -3797,6 +3900,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     setAutoToeOffFrames([]);
                     setCalibrationMode(true);
                     setToeOffThreshold(null);
+                    setBaseThreshold(null);
                     setPoseResults([]);
                     setStatus("");
                     setWizardStep(1);
