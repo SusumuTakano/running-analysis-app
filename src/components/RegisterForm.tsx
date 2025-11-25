@@ -17,7 +17,7 @@ type RegisterFormData = {
   password: string;
   passwordConfirm: string;
   gender: 'male' | 'female' | 'other' | '';
-  age: string;
+  birthdate: string;
   height: string;
   prefecture: string;
   organization: string;
@@ -36,7 +36,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSubmit, onCancel }
     password: '',
     passwordConfirm: '',
     gender: '',
-    age: '',
+    birthdate: '',
     height: '',
     prefecture: '',
     organization: ''
@@ -66,10 +66,24 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSubmit, onCancel }
       newErrors.passwordConfirm = 'パスワードが一致しません';
     }
     if (!formData.gender) newErrors.gender = '性別を選択してください';
-    if (!formData.age) {
-      newErrors.age = '年齢を入力してください';
-    } else if (isNaN(Number(formData.age)) || Number(formData.age) < 0 || Number(formData.age) > 150) {
-      newErrors.age = '有効な年齢を入力してください';
+    if (!formData.birthdate) {
+      newErrors.birthdate = '生年月日を入力してください';
+    } else {
+      const birthDate = new Date(formData.birthdate);
+      const today = new Date();
+      const age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      const calculatedAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) 
+        ? age - 1 
+        : age;
+      
+      if (isNaN(birthDate.getTime())) {
+        newErrors.birthdate = '有効な日付を入力してください';
+      } else if (calculatedAge < 0 || calculatedAge > 150) {
+        newErrors.birthdate = '有効な生年月日を入力してください';
+      } else if (birthDate > today) {
+        newErrors.birthdate = '未来の日付は入力できません';
+      }
     }
     if (!formData.height) {
       newErrors.height = '身長を入力してください';
@@ -247,27 +261,38 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({ onSubmit, onCancel }
           {errors.gender && <span style={{ color: 'red', fontSize: '0.85rem' }}>{errors.gender}</span>}
         </div>
 
-        {/* 年齢 */}
+        {/* 生年月日 */}
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', marginBottom: '4px', fontWeight: '500' }}>
-            年齢 <span style={{ color: 'red' }}>*</span>
+            生年月日 <span style={{ color: 'red' }}>*</span>
           </label>
           <input
-            type="number"
-            value={formData.age}
-            onChange={(e) => handleChange('age', e.target.value)}
+            type="date"
+            value={formData.birthdate}
+            onChange={(e) => handleChange('birthdate', e.target.value)}
             style={{
               width: '100%',
               padding: '8px 12px',
-              border: errors.age ? '1px solid red' : '1px solid #ddd',
+              border: errors.birthdate ? '1px solid red' : '1px solid #ddd',
               borderRadius: '6px',
               fontSize: '1rem'
             }}
-            placeholder="30"
-            min="0"
-            max="150"
+            max={new Date().toISOString().split('T')[0]}
           />
-          {errors.age && <span style={{ color: 'red', fontSize: '0.85rem' }}>{errors.age}</span>}
+          {errors.birthdate && <span style={{ color: 'red', fontSize: '0.85rem' }}>{errors.birthdate}</span>}
+          {formData.birthdate && !errors.birthdate && (
+            <span style={{ color: '#666', fontSize: '0.85rem', marginTop: '4px', display: 'block' }}>
+              年齢: {(() => {
+                const birthDate = new Date(formData.birthdate);
+                const today = new Date();
+                const age = today.getFullYear() - birthDate.getFullYear();
+                const monthDiff = today.getMonth() - birthDate.getMonth();
+                return monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) 
+                  ? age - 1 
+                  : age;
+              })()}歳
+            </span>
+          )}
         </div>
 
         {/* 身長 */}

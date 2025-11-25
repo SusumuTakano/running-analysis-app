@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
   name TEXT NOT NULL,
   name_kana TEXT NOT NULL,
   gender TEXT NOT NULL CHECK (gender IN ('male', 'female', 'other')),
+  birthdate DATE NOT NULL,
   age INTEGER NOT NULL CHECK (age >= 0 AND age <= 150),
   height_cm DECIMAL(5,1) NOT NULL CHECK (height_cm >= 50 AND height_cm <= 250),
   prefecture TEXT NOT NULL,

@@ -5,6 +5,7 @@ export type UserProfile = {
   name: string;
   name_kana: string;
   gender: 'male' | 'female' | 'other';
+  birthdate: string;
   age: number;
   height_cm: number;
   prefecture: string;
@@ -20,11 +21,25 @@ export type RegisterData = {
   password: string;
   passwordConfirm: string;
   gender: 'male' | 'female' | 'other' | '';
-  age: string;
+  birthdate: string;
   height: string;
   prefecture: string;
   organization?: string;
 };
+
+/**
+ * 生年月日から年齢を計算
+ */
+function calculateAge(birthdate: string): number {
+  const birthDate = new Date(birthdate);
+  const today = new Date();
+  const age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  
+  return monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) 
+    ? age - 1 
+    : age;
+}
 
 /**
  * ユーザー登録
@@ -51,6 +66,8 @@ export async function registerUser(data: RegisterData) {
   }
 
   // 2. user_profilesに詳細情報を登録
+  const age = calculateAge(data.birthdate);
+  
   const { error: profileError } = await supabase
     .from('user_profiles')
     .insert({
@@ -58,7 +75,8 @@ export async function registerUser(data: RegisterData) {
       name: data.name,
       name_kana: data.nameKana,
       gender: data.gender as 'male' | 'female' | 'other',
-      age: parseInt(data.age),
+      birthdate: data.birthdate,
+      age: age,
       height_cm: parseFloat(data.height),
       prefecture: data.prefecture,
       organization: data.organization || null,
