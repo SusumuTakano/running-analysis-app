@@ -2875,8 +2875,36 @@ const App: React.FC = () => {
     }
   };
 
+  // デバッグ: 画面幅を検出
+  const [screenWidth, setScreenWidth] = React.useState(window.innerWidth);
+  React.useEffect(() => {
+    const handleResize = () => setScreenWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   return (
     <div className="app-container">
+      {/* デバッグ情報 - 画面最下部に固定表示 */}
+      <div style={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        background: 'rgba(255,0,0,0.9)',
+        color: 'white',
+        padding: '8px',
+        fontSize: '14px',
+        zIndex: 99999,
+        display: 'flex',
+        justifyContent: 'space-around',
+        fontWeight: 'bold'
+      }}>
+        <span>幅: {screenWidth}px</span>
+        <span>{screenWidth <= 768 ? 'モバイル✅' : 'デスクトップ❌'}</span>
+        <span>Step: {wizardStep}</span>
+      </div>
+      
       <header className="app-header-new">
         <h1 className="app-title-new">🏃‍♂️ Running Analysis Studio</h1>
         <p className="app-subtitle-new">
