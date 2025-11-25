@@ -201,13 +201,13 @@ const MainApp: React.FC = () => {
   }
 
   // 一般ユーザー画面（/）
-  // 未ログインの場合は認証ページを表示
-  if (!user) {
-    return <AuthPage />;
-  }
-
-  // プロフィールページを表示
+  // ログインなしで誰でもアクセス可能に変更
+  
+  // プロフィールページを表示（ログイン済みのみ）
   if (viewMode === 'profile') {
+    if (!user) {
+      return <AuthPage />;
+    }
     return (
       <div className="min-h-screen bg-gray-100">
         <Navigation viewMode={viewMode} setViewMode={setViewMode} onAdminLogout={handleAdminLogout} />
@@ -219,18 +219,16 @@ const MainApp: React.FC = () => {
   }
 
   // 管理画面を表示（ナビゲーションから）
-  if (viewMode === 'admin' && (user.is_admin || user.role === 'admin')) {
+  if (viewMode === 'admin' && user && (user.is_admin || user.role === 'admin')) {
     return <AdminPage />;
   }
 
-  // ログイン済みの場合は分析アプリを表示（AuthGuardで保護）
+  // 分析アプリを表示（ログイン不要 - AuthGuardを削除）
   return (
-    <AuthGuard requireSubscription={true}>
-      <div className="min-h-screen bg-gray-100">
-        <Navigation viewMode={viewMode} setViewMode={setViewMode} onAdminLogout={handleAdminLogout} />
-        <App />
-      </div>
-    </AuthGuard>
+    <div className="min-h-screen bg-gray-100">
+      {user && <Navigation viewMode={viewMode} setViewMode={setViewMode} onAdminLogout={handleAdminLogout} />}
+      <App />
+    </div>
   );
 };
 

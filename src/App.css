@@ -73,6 +73,23 @@ body {
   opacity: 0.9;
 }
 
+/* モバイル用ヘッダー最適化 */
+@media (max-width: 768px) {
+  .app-header-new {
+    margin-bottom: 12px;
+    padding: 0 8px;
+  }
+  
+  .app-title-new {
+    font-size: 1.5rem;
+    margin-bottom: 4px;
+  }
+  
+  .app-subtitle-new {
+    font-size: 0.8rem;
+  }
+}
+
 /* ========== ステップインジケーター ========== */
 
 .step-progress {
@@ -1112,7 +1129,7 @@ body {
   display: inline;
 }
 
-/* モバイルデバイスでの表示切り替え */
+/* モバイルデバイスでの表示切り替え - 完全に新しいアプローチ */
 @media (max-width: 768px) {
   .mobile-only {
     display: inline;
@@ -1122,46 +1139,142 @@ body {
     display: none;
   }
 
-  /* モバイル用のマーキングコントロールを表示（Step 5用） */
-  .mobile-marking-controls {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 0;
-    padding: 6px 10px;
-    background: white;
-    border-radius: 0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  /* ========== モバイル最適化：キャンバスを最大化、コントロールを最小化 ========== */
+  
+  /* キャンバスエリア：画面上部60%を使用（接地が見える大きさ） */
+  .canvas-area {
     position: fixed !important;
-    top: calc(20vh + 12px) !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: 60vh !important;
+    z-index: 1000 !important;
+    background: #000;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  .preview-canvas {
+    width: 100% !important;
+    height: 60vh !important;
+    object-fit: contain;
+    display: block;
+    margin: 0;
+  }
+
+  /* フレームコントロール（スライダー）：極限まで小さく */
+  .frame-control {
+    position: fixed !important;
+    top: 60vh !important;
     left: 0 !important;
     right: 0 !important;
     z-index: 999 !important;
-    width: 100vw !important;
+    background: rgba(255, 255, 255, 0.98);
+    padding: 3px 8px !important;
     margin: 0 !important;
-    border-bottom: 1px solid var(--gray-200);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid var(--gray-300);
   }
 
-  /* 大きなマーキングボタン */
+  /* フレーム情報：1行のコンパクト表示 */
+  .frame-info {
+    font-size: 0.7rem !important;
+    padding: 0 !important;
+    margin: 0 0 2px 0 !important;
+    background: transparent !important;
+    text-align: center;
+    font-weight: 600;
+    color: var(--gray-700);
+  }
+
+  /* スライダー：薄く小さく */
+  .frame-range {
+    height: 20px !important;
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    background: transparent;
+    margin: 0 !important;
+  }
+
+  .frame-range::-webkit-slider-track {
+    height: 3px;
+    background: var(--gray-300);
+    border-radius: 2px;
+  }
+
+  .frame-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: var(--primary);
+    cursor: pointer;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    margin-top: -8px;
+  }
+
+  .frame-range::-moz-range-track {
+    height: 3px;
+    background: var(--gray-300);
+    border-radius: 2px;
+  }
+
+  .frame-range::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: var(--primary);
+    cursor: pointer;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    border: none;
+  }
+
+  /* デスクトップ用のボタングループを非表示 */
+  .frame-buttons-compact {
+    display: none;
+  }
+
+  /* モバイル用のマーキングコントロール（Step 5用） */
+  .mobile-marking-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 0;
+    padding: 6px 8px;
+    background: rgba(255, 255, 255, 0.98);
+    border-radius: 0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    position: fixed !important;
+    top: calc(60vh + 28px) !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 998 !important;
+    border-bottom: 1px solid var(--gray-300);
+  }
+
+  /* マーキングボタン */
   .btn-mark-contact {
     width: 100%;
-    padding: 10px 14px;
+    padding: 10px;
     font-size: 0.9rem;
     font-weight: 600;
     background: linear-gradient(135deg, #10b981 0%, #059669 100%);
     color: white;
     border: none;
-    border-radius: var(--radius);
+    border-radius: 6px;
     cursor: pointer;
-    box-shadow: var(--shadow-md);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
     transition: var(--transition);
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
   }
 
   .btn-mark-contact:active {
-    transform: scale(0.98);
-    box-shadow: var(--shadow);
+    transform: scale(0.97);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   }
 
   .btn-mark-contact:disabled {
@@ -1169,7 +1282,7 @@ body {
     cursor: not-allowed;
   }
 
-  /* フレーム移動ボタンのグリッド */
+  /* フレーム移動ボタン：2つだけに削減 */
   .mobile-frame-nav {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -1177,13 +1290,13 @@ body {
   }
 
   .btn-nav-arrow {
-    padding: 8px 4px;
-    font-size: 0.75rem;
-    font-weight: 500;
+    padding: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
     background: white;
     color: var(--primary);
     border: 2px solid var(--primary);
-    border-radius: var(--radius);
+    border-radius: 6px;
     cursor: pointer;
     transition: var(--transition);
     touch-action: manipulation;
@@ -1200,121 +1313,112 @@ body {
     cursor: not-allowed;
   }
 
-  /* デスクトップ用のボタングループを小さく */
-  .frame-buttons-compact {
-    display: none; /* モバイルでは非表示 */
+  /* Step 4: section-settingsを固定エリアの下に配置 */
+  .wizard-content .section-settings {
+    position: relative;
+    margin-top: calc(60vh + 36px) !important;
+    padding-top: 16px;
+    z-index: 1;
   }
 
-  /* キャンバスをモバイル画面に完全固定表示 */
-  .canvas-area {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    z-index: 1000 !important;
-    background: white;
-    padding: 4px 8px;
-    margin: 0 !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    width: 100vw !important;
-    border-bottom: 1px solid var(--gray-200);
+  /* Step 5: marker-controlsを固定エリアの下に表示 */
+  .wizard-content .marker-controls {
+    position: relative;
+    margin-top: calc(60vh + 90px) !important;
+    padding: 8px;
+    z-index: 1;
   }
 
-  .preview-canvas {
-    width: 100% !important;
-    height: auto !important;
-    max-height: 20vh !important;
-    object-fit: contain;
-    display: block;
-    margin: 0 auto;
-    border-radius: 4px;
-  }
-
-  /* フレームコントロール（スライダー）も固定 */
-  .frame-control {
-    position: fixed !important;
-    top: calc(20vh + 12px) !important;
-    left: 0 !important;
-    right: 0 !important;
-    z-index: 999 !important;
-    background: white;
-    padding: 6px 10px;
-    margin: 0 !important;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    width: 100vw !important;
-    border-bottom: 1px solid var(--gray-200);
-  }
-
-  /* フレーム情報を見やすく */
-  .frame-info {
-    font-size: 0.75rem;
-    padding: 2px 6px;
-    background: var(--gray-50);
-    border-radius: var(--radius);
-    margin-bottom: 2px;
-    text-align: center;
-    font-weight: 600;
-    color: var(--primary);
-  }
-
-  /* スライダーを大きく */
-  .frame-range {
-    height: 28px;
-    -webkit-appearance: none;
-    appearance: none;
-    width: 100%;
-    background: transparent;
-    margin-bottom: 0;
-  }
-
-  .frame-range::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 32px;
-    height: 32px;
-    background: var(--primary);
-    cursor: pointer;
-    border-radius: 50%;
-    box-shadow: var(--shadow-md);
-  }
-
-  .frame-range::-moz-range-thumb {
-    width: 32px;
-    height: 32px;
-    background: var(--primary);
-    cursor: pointer;
-    border-radius: 50%;
-    box-shadow: var(--shadow-md);
-    border: none;
-  }
-
-  /* マーカーコントロールボタンを大きく */
+  /* マーカーコントロールボタンを見やすく */
   .marker-controls {
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 8px;
+    background: var(--gray-50);
   }
 
   .marker-controls button,
   .marker-controls .toggle-btn {
-    padding: 12px 16px;
-    font-size: 1rem;
-    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 0.9rem;
+    min-height: 42px;
     touch-action: manipulation;
   }
 
   /* 角度表示を縦に並べる */
   .angle-display-compact {
-    padding: 16px;
+    padding: 12px;
   }
 
   .angle-grid-compact {
     grid-template-columns: 1fr;
-    gap: 12px;
+    gap: 8px;
   }
 
   .angle-grid-compact > div {
-    padding: 12px;
-    font-size: 1rem;
+    padding: 10px;
+    font-size: 0.9rem;
+  }
+
+  /* 区間設定の線調整コントロールを小さく */
+  .line-adjust-control {
+    padding: 8px;
+    margin-top: -6px;
+  }
+
+  .adjust-label {
+    font-size: 0.75rem;
+    gap: 6px;
+  }
+
+  .adjust-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 0.8rem;
+  }
+
+  .adjust-slider {
+    height: 4px;
+  }
+
+  .adjust-slider::-webkit-slider-thumb {
+    width: 14px;
+    height: 14px;
+  }
+
+  .adjust-slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+  }
+
+  .adjust-value {
+    min-width: 40px;
+    font-size: 0.75rem;
+  }
+
+  .adjust-reset {
+    padding: 4px 8px;
+    font-size: 0.7rem;
+  }
+
+  /* Section item を小さく */
+  .section-item {
+    padding: 8px;
+    gap: 12px;
+  }
+
+  .section-label {
+    font-size: 0.85rem;
+    gap: 8px;
+  }
+
+  .marker-badge {
+    padding: 3px 8px;
+    font-size: 0.7rem;
+  }
+
+  .section-actions button {
+    padding: 6px 10px;
+    font-size: 0.8rem;
   }
 
   /* モバイルでのスクロール問題を修正 */
@@ -1333,6 +1437,7 @@ body {
     height: auto;
     min-height: auto;
     -webkit-overflow-scrolling: touch;
+    padding-top: 80px !important;
   }
 
   /* ウィザードコンテンツのスクロールを確保 */
@@ -1342,7 +1447,7 @@ body {
     max-height: none;
     height: auto;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: 100px;
+    padding-bottom: 120px;
   }
 
   /* 固定されたキャンバスエリアの子要素 */
@@ -1350,24 +1455,44 @@ body {
     touch-action: pan-y pinch-zoom;
   }
 
-  /* Step 5: marker-controlsを固定エリアの下に表示 */
-  .wizard-content .marker-controls {
-    position: relative;
-    margin-top: calc(20vh + 70px);
-    padding-top: 12px;
-    z-index: 1;
-  }
-
-  /* Step 4: section-settingsを固定スライダーの下に配置 */
-  .wizard-content .section-settings {
-    position: relative;
-    margin-top: calc(20vh + 70px);
-    padding-top: 12px;
-    z-index: 1;
-  }
-
   /* すべてのボタンとインタラクティブ要素 */
   button, input[type="range"], .btn-mark-contact, .btn-nav-arrow {
     touch-action: manipulation;
+  }
+
+  /* ステッププログレスを小さく */
+  .step-progress {
+    padding: 8px 12px;
+    margin-bottom: 12px;
+  }
+
+  .step-progress::before {
+    left: 30px;
+    right: 30px;
+  }
+
+  .step-circle {
+    width: 28px;
+    height: 28px;
+    font-size: 0.75rem;
+  }
+
+  .step-name {
+    font-size: 0.6rem;
+  }
+
+  /* ウィザードメインを小さく */
+  .wizard-main {
+    padding: 16px;
+    min-height: auto;
+  }
+
+  .wizard-step-title {
+    font-size: 1.2rem;
+    margin-bottom: 6px;
+  }
+
+  .wizard-step-desc {
+    font-size: 0.85rem;
   }
 }
