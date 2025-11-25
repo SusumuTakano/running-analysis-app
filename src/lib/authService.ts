@@ -96,16 +96,36 @@ export async function registerUser(data: RegisterData) {
  * ログイン
  */
 export async function loginUser(email: string, password: string) {
+  console.log('Attempting login with Supabase...');
+  
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
 
   if (error) {
-    console.error('Login error:', error);
-    throw new Error('ログインに失敗しました: ' + error.message);
+    console.error('Login error details:', {
+      message: error.message,
+      status: error.status,
+      name: error.name
+    });
+    
+    // より詳細なエラーメッセージ
+    let errorMessage = 'ログインに失敗しました';
+    if (error.message.includes('Invalid login credentials')) {
+      errorMessage = 'メールアドレスまたはパスワードが間違っています';
+    } else if (error.message.includes('Email not confirmed')) {
+      errorMessage = 'メールアドレスが確認されていません。確認メールをご確認ください';
+    } else if (error.message.includes('User not found')) {
+      errorMessage = 'このメールアドレスは登録されていません';
+    } else {
+      errorMessage = 'ログインに失敗しました: ' + error.message;
+    }
+    
+    throw new Error(errorMessage);
   }
 
+  console.log('Login successful, user ID:', data.user?.id);
   return data;
 }
 

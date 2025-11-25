@@ -18,11 +18,17 @@ const AppWithAuth: React.FC = () => {
 
   // 初回ロード時: セッションチェック
   useEffect(() => {
+    console.log('AppWithAuth initialized');
+    console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
+    console.log('Supabase Anon Key exists:', !!import.meta.env.VITE_SUPABASE_ANON_KEY);
+    
     checkSession();
     checkDeveloperPeriod();
 
     // 認証状態の変更を監視
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event, session?.user?.id);
+      
       setUser(session?.user ?? null);
       
       if (session?.user) {
@@ -67,17 +73,25 @@ const AppWithAuth: React.FC = () => {
     setLoading(true);
 
     try {
+      console.log('Login attempt for:', email);
       const data = await loginUser(email, password);
+      console.log('Login successful:', data.user?.id);
+      
       setUser(data.user);
       
       if (data.user) {
+        console.log('Fetching user profile...');
         const profile = await getUserProfile(data.user.id);
+        console.log('Profile loaded:', profile);
         setUserProfile(profile);
       }
       
       setCurrentView('app');
     } catch (err: any) {
-      setError(err.message || 'ログインに失敗しました');
+      console.error('Login error:', err);
+      const errorMessage = err.message || 'ログインに失敗しました';
+      console.error('Error message:', errorMessage);
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
