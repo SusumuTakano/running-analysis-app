@@ -1330,6 +1330,11 @@ body {
     z-index: 1;
   }
 
+  /* Step 5: wizard-step-headerを非表示（無駄な空白を削除） */
+  .wizard-content .wizard-step-header {
+    display: none;
+  }
+
   /* マーカーコントロールボタンを小さく */
   .marker-controls {
     flex-wrap: wrap;
