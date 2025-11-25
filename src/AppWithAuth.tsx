@@ -256,8 +256,11 @@ const AppWithAuth: React.FC = () => {
               <div style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '8px', color: '#333' }}>
                 ログイン中...
               </div>
-              <div style={{ fontSize: '0.9rem', color: '#666' }}>
-                しばらくお待ちください
+              <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '8px' }}>
+                Supabase認証サーバーに接続中
+              </div>
+              <div style={{ fontSize: '0.85rem', color: '#999' }}>
+                15秒以内に応答がない場合は自動でキャンセルされます
               </div>
             </div>
             <style>{`

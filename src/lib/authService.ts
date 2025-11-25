@@ -100,10 +100,19 @@ export async function loginUser(email: string, password: string) {
   console.log('Email:', email);
   console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
   
-  // タイムアウト処理を追加（30秒）
+  // 環境変数チェック
+  if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+    throw new Error('Supabase環境変数が設定されていません。管理者に連絡してください。');
+  }
+  
+  // タイムアウト処理を追加（15秒）
   const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error('ログインがタイムアウトしました。ネットワーク接続を確認してください。')), 30000);
+    setTimeout(() => reject(new Error('ログインがタイムアウトしました（15秒）。ネットワーク接続を確認してください。')), 15000);
   });
+  
+  // AbortController for canceling request
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
   
   const loginPromise = supabase.auth.signInWithPassword({
     email,
@@ -112,6 +121,7 @@ export async function loginUser(email: string, password: string) {
   
   try {
     const { data, error } = await Promise.race([loginPromise, timeoutPromise]) as any;
+    clearTimeout(timeoutId);
     
     if (error) {
       console.error('Login error details:', {
@@ -128,8 +138,10 @@ export async function loginUser(email: string, password: string) {
         errorMessage = 'メールアドレスが確認されていません。確認メールをご確認ください';
       } else if (error.message.includes('User not found')) {
         errorMessage = 'このメールアドレスは登録されていません';
-      } else if (error.message.includes('fetch')) {
-        errorMessage = 'ネットワークエラーが発生しました。インターネット接続を確認してください。';
+      } else if (error.message.includes('fetch') || error.message.includes('NetworkError')) {
+        errorMessage = 'ネットワークエラー: インターネット接続を確認してください（Wi-Fi/モバイルデータ）';
+      } else if (error.message.includes('timeout') || error.message.includes('abort')) {
+        errorMessage = '接続がタイムアウトしました。電波の良い場所で再度お試しください。';
       } else {
         errorMessage = 'ログインに失敗しました: ' + error.message;
       }
