@@ -377,6 +377,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const [distanceInput, setDistanceInput] = useState<string>("10");
   const [labelInput, setLabelInput] = useState<string>("");
   const [notesInput, setNotesInput] = useState<string>("");
+  
+  // ------------ 100m目標記録 ---------------
+  const [target100mInput, setTarget100mInput] = useState<string>("");
+  const [targetAdvice, setTargetAdvice] = useState<string>("");
 
   const distanceValue = useMemo(() => {
     const d = parseFloat(distanceInput);
@@ -1934,6 +1938,119 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     });
   }, [stepMetrics, threePhaseAngles, stepSummary]);
 
+  // 100m目標記録に基づくアドバイス生成
+  const generateTargetAdvice = (targetTime: number) => {
+    if (!stepSummary.avgSpeedMps || !stepSummary.avgStride || !stepSummary.avgStepPitch) {
+      return "現在の走行データが不足しています。マーカーを設定して解析を完了してください。";
+    }
+
+    const currentSpeed = stepSummary.avgSpeedMps;
+    const currentStride = stepSummary.avgStride;
+    const currentPitch = stepSummary.avgStepPitch;
+    
+    // 目標タイム（秒）から必要な速度を計算
+    const targetSpeed = 100 / targetTime; // m/s
+    const speedGap = targetSpeed - currentSpeed;
+    const speedGapPercent = (speedGap / currentSpeed) * 100;
+
+    // 目標達成に必要なストライドとピッチを計算
+    const targetStride = currentStride * (1 + speedGapPercent / 100);
+    const targetPitch = currentPitch * (1 + speedGapPercent / 100);
+    
+    // ストライドとピッチのバランスを分析
+    const strideGap = targetStride - currentStride;
+    const pitchGap = targetPitch - currentPitch;
+
+    let advice = `## 🎯 100m ${targetTime}秒達成のためのアドバイス\n\n`;
+    advice += `### 📊 現状分析\n`;
+    advice += `- **現在の平均速度**: ${currentSpeed.toFixed(2)} m/s\n`;
+    advice += `- **目標速度**: ${targetSpeed.toFixed(2)} m/s\n`;
+    advice += `- **必要な速度向上**: ${speedGap >= 0 ? '+' : ''}${speedGap.toFixed(2)} m/s (${speedGapPercent >= 0 ? '+' : ''}${speedGapPercent.toFixed(1)}%)\n\n`;
+
+    if (speedGap <= 0) {
+      advice += `### ✅ 目標達成可能！\n`;
+      advice += `現在の走力で100m ${targetTime}秒は十分に達成可能です！\n\n`;
+      advice += `**維持すべきポイント**:\n`;
+      advice += `- 現在のストライド（${currentStride.toFixed(2)}m）を維持\n`;
+      advice += `- 現在のピッチ（${currentPitch.toFixed(2)}歩/秒）を維持\n`;
+      advice += `- リラックスした走りで記録を狙いましょう\n`;
+    } else if (speedGapPercent < 5) {
+      advice += `### 🔥 目標達成まであと少し！\n`;
+      advice += `あと${speedGapPercent.toFixed(1)}%の速度向上で目標達成です！\n\n`;
+      advice += `**優先的に改善すべきポイント**:\n`;
+      
+      if (currentPitch < 4.0) {
+        advice += `1. **ピッチ向上** (最優先)\n`;
+        advice += `   - 現在: ${currentPitch.toFixed(2)}歩/秒\n`;
+        advice += `   - 目標: ${targetPitch.toFixed(2)}歩/秒 (+${pitchGap.toFixed(2)}歩/秒)\n`;
+        advice += `   - リズムトレーニングで接地時間を短縮\n`;
+        advice += `   - メトロノームを使った一定リズムの練習\n\n`;
+        advice += `2. **ストライド維持**\n`;
+        advice += `   - 現在のストライド（${currentStride.toFixed(2)}m）を維持\n`;
+        advice += `   - 無理に伸ばさず、効率的な接地を意識\n`;
+      } else if (currentStride < 2.0) {
+        advice += `1. **ストライド向上** (最優先)\n`;
+        advice += `   - 現在: ${currentStride.toFixed(2)}m\n`;
+        advice += `   - 目標: ${targetStride.toFixed(2)}m (+${strideGap.toFixed(2)}m)\n`;
+        advice += `   - 股関節の柔軟性向上トレーニング\n`;
+        advice += `   - 接地位置を意識（体の真下で接地）\n\n`;
+        advice += `2. **ピッチ維持**\n`;
+        advice += `   - 現在のピッチ（${currentPitch.toFixed(2)}歩/秒）を維持\n`;
+      } else {
+        advice += `1. **ピッチとストライドのバランス向上**\n`;
+        advice += `   - ピッチ: ${currentPitch.toFixed(2)} → ${targetPitch.toFixed(2)}歩/秒\n`;
+        advice += `   - ストライド: ${currentStride.toFixed(2)} → ${targetStride.toFixed(2)}m\n`;
+        advice += `   - どちらも少しずつ改善することで目標達成可能\n`;
+      }
+    } else if (speedGapPercent < 10) {
+      advice += `### 💪 目標達成には計画的なトレーニングが必要\n`;
+      advice += `${speedGapPercent.toFixed(1)}%の速度向上が必要です。\n\n`;
+      advice += `**改善プラン**:\n\n`;
+      advice += `1. **ストライド向上** (目標: +${strideGap.toFixed(2)}m)\n`;
+      advice += `   - 股関節の可動域を広げる動的ストレッチ\n`;
+      advice += `   - ランジ、スクワットで下肢筋力強化\n`;
+      advice += `   - バウンディング（跳躍走）でストライド感覚を養う\n\n`;
+      advice += `2. **ピッチ向上** (目標: +${pitchGap.toFixed(2)}歩/秒)\n`;
+      advice += `   - 短い距離でのピッチ走（20-30m）\n`;
+      advice += `   - 接地時間を短くする意識（地面を押す→弾む）\n`;
+      advice += `   - 腕振りのリズムでピッチをコントロール\n\n`;
+      advice += `3. **スピード持久力**\n`;
+      advice += `   - 目標ペースでの60-80m走を反復\n`;
+      advice += `   - インターバルトレーニング（200m × 3-5本）\n`;
+    } else {
+      advice += `### 🏃 長期的なトレーニングで目標達成を目指しましょう\n`;
+      advice += `${speedGapPercent.toFixed(1)}%の速度向上には、段階的なトレーニングが必要です。\n\n`;
+      advice += `**3ヶ月間のトレーニングプラン**:\n\n`;
+      advice += `**フェーズ1（1ヶ月目）: 基礎体力向上**\n`;
+      advice += `- 週3回の筋力トレーニング（下肢中心）\n`;
+      advice += `- ストライド向上のための柔軟性トレーニング\n`;
+      advice += `- 基礎持久力向上（ジョギング 30-40分）\n\n`;
+      advice += `**フェーズ2（2ヶ月目）: スピード強化**\n`;
+      advice += `- ピッチ走（短距離・高頻度）\n`;
+      advice += `- ストライド走（中距離・リラックス）\n`;
+      advice += `- インターバルトレーニング（200m × 3本）\n\n`;
+      advice += `**フェーズ3（3ヶ月目）: スピード持久力**\n`;
+      advice += `- 目標ペースでの80-100m走\n`;
+      advice += `- レース形式の練習（本番を想定）\n`;
+      advice += `- タイムトライアル\n`;
+    }
+
+    // 姿勢に関するアドバイス
+    if (runningEvaluation) {
+      advice += `\n### 🎯 フォーム改善ポイント\n`;
+      advice += runningEvaluation.overallMessage + '\n\n';
+      
+      if (runningEvaluation.evaluations.length > 0) {
+        advice += `**具体的な改善提案**:\n`;
+        runningEvaluation.evaluations.forEach((evaluation, i) => {
+          advice += `${i + 1}. **${evaluation.category}**: ${evaluation.advice}\n`;
+        });
+      }
+    }
+
+    return advice;
+  };
+
   // 認証は AppWithAuth で処理済み
 
   // ステップ変更時にフレームを10に設定
@@ -3068,6 +3185,90 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   </div>
                 </div>
               )}
+
+              {/* 100m目標記録入力セクション */}
+              <div className="result-card" style={{
+                background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                color: 'white'
+              }}>
+                <h3 className="result-card-title" style={{ color: 'white', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🎯 100m 目標記録アドバイス
+                </h3>
+                
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '8px',
+                    fontSize: '0.95rem',
+                    fontWeight: 'bold'
+                  }}>
+                    100mの目標タイム（秒）を入力してください
+                  </label>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="10"
+                      max="30"
+                      value={target100mInput}
+                      onChange={(e) => setTarget100mInput(e.target.value)}
+                      placeholder="例: 14.5"
+                      style={{
+                        flex: 1,
+                        padding: '12px',
+                        fontSize: '1.1rem',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: 'rgba(255,255,255,0.9)',
+                        color: '#1f2937'
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        const targetTime = parseFloat(target100mInput);
+                        if (isNaN(targetTime) || targetTime <= 0) {
+                          alert('正しい目標タイムを入力してください（例: 14.5秒）');
+                          return;
+                        }
+                        if (targetTime < 10 || targetTime > 30) {
+                          alert('目標タイムは10秒〜30秒の範囲で入力してください');
+                          return;
+                        }
+                        const advice = generateTargetAdvice(targetTime);
+                        setTargetAdvice(advice);
+                      }}
+                      style={{
+                        padding: '12px 24px',
+                        fontSize: '1rem',
+                        fontWeight: 'bold',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: 'white',
+                        color: '#f5576c',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      アドバイス生成
+                    </button>
+                  </div>
+                </div>
+
+                {targetAdvice && (
+                  <div style={{
+                    padding: '20px',
+                    background: 'rgba(255,255,255,0.15)',
+                    borderRadius: '12px',
+                    fontSize: '0.9rem',
+                    lineHeight: '1.8',
+                    whiteSpace: 'pre-wrap',
+                    maxHeight: '500px',
+                    overflowY: 'auto'
+                  }}>
+                    {targetAdvice}
+                  </div>
+                )}
+              </div>
 
               {/* ステップメトリクス */}
               <div className="result-card">
