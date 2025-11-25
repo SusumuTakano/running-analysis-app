@@ -3583,11 +3583,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               )}
 
               {/* 100m目標記録入力セクション */}
-              <div className="result-card" style={{
-                background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-                color: 'white'
-              }}>
-                <h3 className="result-card-title" style={{ color: 'white', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="result-card">
+                <h3 className="result-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   🎯 100m 目標記録アドバイス
                 </h3>
                 
@@ -3596,7 +3593,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     display: 'block', 
                     marginBottom: '8px',
                     fontSize: '0.95rem',
-                    fontWeight: 'bold'
+                    fontWeight: 'bold',
+                    color: '#374151'
                   }}>
                     100mの目標タイム（秒）を入力してください
                   </label>
@@ -3614,8 +3612,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                         padding: '12px',
                         fontSize: '1.1rem',
                         borderRadius: '8px',
-                        border: 'none',
-                        background: 'rgba(255,255,255,0.9)',
+                        border: '2px solid #e5e7eb',
+                        background: 'white',
                         color: '#1f2937'
                       }}
                     />
@@ -3639,10 +3637,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                         fontWeight: 'bold',
                         borderRadius: '8px',
                         border: 'none',
-                        background: 'white',
-                        color: '#f5576c',
+                        background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                        color: 'white',
                         cursor: 'pointer',
-                        whiteSpace: 'nowrap'
+                        whiteSpace: 'nowrap',
+                        boxShadow: '0 4px 6px rgba(245, 87, 108, 0.3)'
                       }}
                     >
                       アドバイス生成
@@ -3652,16 +3651,154 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
                 {targetAdvice && (
                   <div style={{
-                    padding: '20px',
-                    background: 'rgba(255,255,255,0.15)',
+                    padding: '24px',
+                    background: 'white',
                     borderRadius: '12px',
-                    fontSize: '0.9rem',
+                    border: '1px solid #e5e7eb',
+                    fontSize: '0.95rem',
                     lineHeight: '1.8',
-                    whiteSpace: 'pre-wrap',
-                    maxHeight: '500px',
-                    overflowY: 'auto'
+                    maxHeight: '600px',
+                    overflowY: 'auto',
+                    color: '#1f2937'
                   }}>
-                    {targetAdvice}
+                    {/* Markdownスタイルのテキストを見やすく表示 */}
+                    <div style={{
+                      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                    }}>
+                      {targetAdvice.split('\n').map((line, i) => {
+                        // 見出し1 (###)
+                        if (line.startsWith('### ')) {
+                          return (
+                            <h3 key={i} style={{
+                              fontSize: '1.3rem',
+                              fontWeight: 'bold',
+                              marginTop: i === 0 ? '0' : '24px',
+                              marginBottom: '12px',
+                              color: '#1f2937',
+                              borderBottom: '2px solid #f093fb',
+                              paddingBottom: '8px'
+                            }}>
+                              {line.replace('### ', '')}
+                            </h3>
+                          );
+                        }
+                        // 見出し2 (####)
+                        if (line.startsWith('#### ')) {
+                          return (
+                            <h4 key={i} style={{
+                              fontSize: '1.15rem',
+                              fontWeight: 'bold',
+                              marginTop: '16px',
+                              marginBottom: '8px',
+                              color: '#374151'
+                            }}>
+                              {line.replace('#### ', '')}
+                            </h4>
+                          );
+                        }
+                        // 見出し3 (#)
+                        if (line.startsWith('## ')) {
+                          return (
+                            <h2 key={i} style={{
+                              fontSize: '1.5rem',
+                              fontWeight: 'bold',
+                              marginTop: i === 0 ? '0' : '28px',
+                              marginBottom: '16px',
+                              color: '#111827',
+                              borderBottom: '3px solid #f5576c',
+                              paddingBottom: '10px'
+                            }}>
+                              {line.replace('## ', '')}
+                            </h2>
+                          );
+                        }
+                        // 箇条書き (-)
+                        if (line.trim().startsWith('- ')) {
+                          return (
+                            <div key={i} style={{
+                              marginLeft: '20px',
+                              marginBottom: '6px',
+                              display: 'flex',
+                              gap: '8px'
+                            }}>
+                              <span style={{ color: '#f093fb', fontWeight: 'bold' }}>•</span>
+                              <span>{line.trim().replace('- ', '')}</span>
+                            </div>
+                          );
+                        }
+                        // 数字付き箇条書き (1. 2. など)
+                        if (/^\d+\.\s/.test(line.trim())) {
+                          return (
+                            <div key={i} style={{
+                              marginLeft: '20px',
+                              marginBottom: '6px',
+                              display: 'flex',
+                              gap: '8px'
+                            }}>
+                              <span style={{ 
+                                color: '#f5576c', 
+                                fontWeight: 'bold',
+                                minWidth: '24px'
+                              }}>
+                                {line.trim().match(/^\d+\./)?.[0]}
+                              </span>
+                              <span>{line.trim().replace(/^\d+\.\s/, '')}</span>
+                            </div>
+                          );
+                        }
+                        // 引用 (>)
+                        if (line.trim().startsWith('> ')) {
+                          return (
+                            <div key={i} style={{
+                              background: '#f3f4f6',
+                              borderLeft: '4px solid #f093fb',
+                              padding: '12px 16px',
+                              marginTop: '12px',
+                              marginBottom: '12px',
+                              borderRadius: '0 8px 8px 0',
+                              fontStyle: 'italic',
+                              color: '#4b5563'
+                            }}>
+                              {line.replace('> ', '')}
+                            </div>
+                          );
+                        }
+                        // 区切り線 (---)
+                        if (line.trim() === '---') {
+                          return (
+                            <hr key={i} style={{
+                              border: 'none',
+                              borderTop: '2px solid #e5e7eb',
+                              margin: '24px 0'
+                            }} />
+                          );
+                        }
+                        // 太字 (**)
+                        if (line.includes('**')) {
+                          const parts = line.split('**');
+                          return (
+                            <p key={i} style={{ marginBottom: '8px', color: '#374151' }}>
+                              {parts.map((part, j) => 
+                                j % 2 === 1 ? <strong key={j} style={{ color: '#1f2937' }}>{part}</strong> : part
+                              )}
+                            </p>
+                          );
+                        }
+                        // 通常のテキスト
+                        if (line.trim()) {
+                          return (
+                            <p key={i} style={{ 
+                              marginBottom: '8px',
+                              color: '#374151'
+                            }}>
+                              {line}
+                            </p>
+                          );
+                        }
+                        // 空行
+                        return <div key={i} style={{ height: '8px' }} />;
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
