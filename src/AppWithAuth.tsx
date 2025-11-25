@@ -298,15 +298,38 @@ const AppWithAuth: React.FC = () => {
   }
 
   // アプリ本体（ログイン済み）
+  const [showUserBar, setShowUserBar] = React.useState(true);
+  const [lastScrollY, setLastScrollY] = React.useState(0);
+
+  // スクロールでヘッダーを自動的に隠す
+  React.useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      
+      if (currentScrollY > lastScrollY && currentScrollY > 50) {
+        // 下にスクロール → ヘッダーを隠す
+        setShowUserBar(false);
+      } else if (currentScrollY < lastScrollY) {
+        // 上にスクロール → ヘッダーを表示
+        setShowUserBar(true);
+      }
+      
+      setLastScrollY(currentScrollY);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [lastScrollY]);
+
   return (
     <div>
-      {/* ユーザー情報バー */}
+      {/* ユーザー情報バー - スクロールで自動的に隠れる */}
       <div style={{
         position: 'fixed',
-        top: 0,
+        top: showUserBar ? 0 : '-100px',
         right: 0,
         padding: '12px 20px',
-        background: 'rgba(102, 126, 234, 0.9)',
+        background: 'rgba(102, 126, 234, 0.95)',
         color: 'white',
         zIndex: 1000,
         borderBottomLeftRadius: '12px',
@@ -314,7 +337,8 @@ const AppWithAuth: React.FC = () => {
         alignItems: 'center',
         gap: '16px',
         fontSize: '0.9rem',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+        boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+        transition: 'top 0.3s ease-in-out'
       }}>
         <span>
           👤 {userProfile?.name || user?.email}
@@ -338,6 +362,30 @@ const AppWithAuth: React.FC = () => {
         >
           ログアウト
         </button>
+      </div>
+
+      {/* 画面タップでヘッダーを表示するトリガー（モバイル用） */}
+      <div
+        onClick={() => setShowUserBar(true)}
+        style={{
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          width: '60px',
+          height: '60px',
+          zIndex: 999,
+          opacity: showUserBar ? 0 : 0.3,
+          background: showUserBar ? 'transparent' : 'linear-gradient(135deg, rgba(102, 126, 234, 0.5) 0%, rgba(118, 75, 162, 0.5) 100%)',
+          borderBottomLeftRadius: '30px',
+          transition: 'opacity 0.3s',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '1.2rem'
+        }}
+      >
+        {!showUserBar && '👤'}
       </div>
 
       {/* アプリ本体 */}
