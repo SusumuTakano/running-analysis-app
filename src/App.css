@@ -1141,14 +1141,14 @@ body {
 
   /* ========== モバイル最適化：キャンバスを最大化、コントロールを最小化 ========== */
   
-  /* キャンバスエリア：より大きく表示（マーカーが完全に見えるように） */
+  /* キャンバスエリア：マーカーが完全に見えるまで拡大 */
   .canvas-area {
     position: fixed !important;
     top: 0 !important;
     left: 0 !important;
     right: 0 !important;
     height: 56.25vw !important; /* 16:9比率 = 9/16 * 100vw = 56.25vw */
-    max-height: 50vh !important; /* 最大50vhに拡大（マーカーが見えるように） */
+    max-height: 55vh !important; /* 最大55vhに拡大（マーカーが完全に見えるように） */
     z-index: 1000 !important;
     background: #000;
     padding: 0 !important;
@@ -1167,7 +1167,7 @@ body {
   /* フレームコントロール（スライダー）：極限まで小さく */
   .frame-control {
     position: fixed !important;
-    top: min(56.25vw, 50vh) !important; /* キャンバスの高さに合わせる */
+    top: min(56.25vw, 55vh) !important; /* キャンバスの高さに合わせる */
     left: 0 !important;
     right: 0 !important;
     z-index: 999 !important;
@@ -1249,7 +1249,7 @@ body {
     border-radius: 0;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
     position: fixed !important;
-    top: calc(min(56.25vw, 50vh) + 24px) !important; /* キャンバス高さ + スライダー高さ */
+    top: calc(min(56.25vw, 55vh) + 24px) !important; /* キャンバス高さ + スライダー高さ */
     left: 0 !important;
     right: 0 !important;
     z-index: 998 !important;
@@ -1317,7 +1317,7 @@ body {
   /* Step 4: section-settingsを固定エリアの下に配置 */
   .wizard-content .section-settings {
     position: relative;
-    margin-top: calc(min(56.25vw, 50vh) + 32px) !important;
+    margin-top: calc(min(56.25vw, 55vh) + 32px) !important;
     padding-top: 12px;
     z-index: 1;
   }
@@ -1325,7 +1325,7 @@ body {
   /* Step 5: marker-controlsを固定エリアの下に表示 */
   .wizard-content .marker-controls {
     position: relative;
-    margin-top: calc(min(56.25vw, 50vh) + 70px) !important;
+    margin-top: calc(min(56.25vw, 55vh) + 70px) !important;
     padding: 6px;
     z-index: 1;
   }
