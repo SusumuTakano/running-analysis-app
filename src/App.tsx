@@ -2299,15 +2299,8 @@ const App: React.FC = () => {
               <canvas ref={displayCanvasRef} className="preview-canvas" />
             </div>
 
-            {/* モバイル用：大きなマーキングボタン */}
+            {/* モバイル用：フレーム移動ボタンのみ */}
             <div className="mobile-marking-controls">
-              <button 
-                className="btn-mark-contact"
-                onClick={() => setContactFrames((prev) => [...prev, currentFrame])}
-                disabled={!ready}
-              >
-                📍 接地/離地マーク
-              </button>
               <div className="mobile-frame-nav">
                 <button 
                   className="btn-nav-arrow" 
@@ -2347,7 +2340,6 @@ const App: React.FC = () => {
                   const isContact = index % 2 === 0;
                   const color = isContact ? "#10b981" : "#ef4444";
                   const label = isContact ? "接地" : "離地";
-                  const bgColor = isContact ? "bg-green-500" : "bg-red-500";
                   
                   return (
                     <div 
@@ -2356,9 +2348,9 @@ const App: React.FC = () => {
                       style={{
                         backgroundColor: color,
                         color: "white",
-                        padding: "16px",
+                        padding: "20px",
                         borderRadius: "12px",
-                        fontSize: "24px",
+                        fontSize: "28px",
                         fontWeight: "bold",
                         textAlign: "center",
                         boxShadow: "0 4px 8px rgba(0,0,0,0.3)"
@@ -2371,18 +2363,26 @@ const App: React.FC = () => {
                 return null;
               })}
               {contactFrames.every(f => f !== currentFrame) && (
-                <div 
+                <button 
+                  className="btn-mark-contact-large"
+                  onClick={() => setContactFrames((prev) => [...prev, currentFrame])}
+                  disabled={!ready}
                   style={{
-                    backgroundColor: "#e5e7eb",
-                    color: "#6b7280",
-                    padding: "16px",
+                    width: "100%",
+                    padding: "20px",
+                    fontSize: "20px",
+                    fontWeight: "bold",
+                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    color: "white",
+                    border: "none",
                     borderRadius: "12px",
-                    fontSize: "16px",
-                    textAlign: "center"
+                    cursor: "pointer",
+                    boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
+                    touchAction: "manipulation"
                   }}
                 >
-                  マーカーなし
-                </div>
+                  📍 接地/離地マーク
+                </button>
               )}
             </div>
 

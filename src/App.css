@@ -1151,6 +1151,11 @@ body {
   display: none;
 }
 
+/* モバイルマーカー表示エリアもデフォルト非表示 */
+.mobile-marker-display {
+  display: none;
+}
+
 /* デスクトップでは通常のテキストを表示 */
 .mobile-only {
   display: none;
@@ -1272,7 +1277,7 @@ body {
 
   /* モバイル用のマーキングコントロール（Step 5用） */
   .mobile-marking-controls {
-    display: flex;
+    display: flex !important;
     flex-direction: column;
     gap: 4px;
     margin-bottom: 0;
@@ -1281,7 +1286,7 @@ body {
     border-radius: 0;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
     position: fixed !important;
-    top: calc(min(56.25vw, 50vh) + 24px) !important;
+    top: calc(42px + min(56.25vw, 50vh) + 24px) !important;
     left: 0 !important;
     right: 0 !important;
     z-index: 998 !important;
@@ -1635,6 +1640,7 @@ body {
 
   /* マーカー表示エリア - コントロールの下に固定 */
   .mobile-marker-display {
+    display: block !important;
     position: fixed !important;
     top: calc(42px + min(56.25vw, 50vh) + 90px) !important;
     left: 0 !important;
