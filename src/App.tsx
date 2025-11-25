@@ -1350,34 +1350,9 @@ const App: React.FC = () => {
         const color = isContact ? "#10b981" : "#ef4444"; // 緑 or 赤
         const label = isContact ? "接地" : "離地";
         
-        // 動画の実際の表示領域を計算（object-fit: contain の場合）
-        let videoDisplayX = 0;
-        let videoDisplayY = 0;
-        let videoDisplayWidth = width;
-        let videoDisplayHeight = height;
-        
-        if (videoRef.current) {
-          const videoAspect = videoRef.current.videoWidth / videoRef.current.videoHeight;
-          const canvasAspect = width / height;
-          
-          if (videoAspect > canvasAspect) {
-            // 動画が横長：上下に黒帯
-            videoDisplayWidth = width;
-            videoDisplayHeight = width / videoAspect;
-            videoDisplayX = 0;
-            videoDisplayY = (height - videoDisplayHeight) / 2;
-          } else {
-            // 動画が縦長：左右に黒帯
-            videoDisplayHeight = height;
-            videoDisplayWidth = height * videoAspect;
-            videoDisplayY = 0;
-            videoDisplayX = (width - videoDisplayWidth) / 2;
-          }
-        }
-        
-        // マーカーを動画表示エリアの中央に配置
-        const markerX = videoDisplayX + videoDisplayWidth / 2;
-        const markerY = videoDisplayY + videoDisplayHeight / 2;
+        // マーカーをキャンバスの中心に絶対配置（黒帯無視）
+        const markerX = width / 2;
+        const markerY = height / 2;
         
         // 背景円（大きく）
         ctx.fillStyle = color;
