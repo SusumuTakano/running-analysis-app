@@ -156,16 +156,27 @@ export async function updateUserProfile(userId: string, updates: Partial<Omit<Us
 
 /**
  * デベロッパー期間が有効かチェック
+ * 2025年12月31日まで有効
  */
 export async function isDeveloperPeriodValid(): Promise<boolean> {
-  const { data, error } = await supabase.rpc('is_developer_period_valid');
-
-  if (error) {
-    console.error('Check developer period error:', error);
-    return false;
+  try {
+    // まずSupabase RPCを試す
+    const { data, error } = await supabase.rpc('is_developer_period_valid');
+    
+    if (!error && data !== null) {
+      return data === true;
+    }
+    
+    // RPCが失敗した場合はフロントエンドで判定
+    console.warn('Using client-side date check for developer period');
+  } catch (err) {
+    console.error('RPC error, falling back to client-side check:', err);
   }
-
-  return data === true;
+  
+  // フォールバック: クライアント側で日付チェック
+  const today = new Date();
+  const endDate = new Date('2025-12-31');
+  return today <= endDate;
 }
 
 /**
