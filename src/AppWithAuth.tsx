@@ -90,6 +90,14 @@ const AppWithAuth: React.FC = () => {
         console.log('Fetching user profile...');
         const profile = await getUserProfile(data.user.id);
         console.log('Profile loaded:', profile);
+        
+        if (!profile) {
+          console.error('Profile not found for user:', data.user.id);
+          setError('ユーザープロフィールが見つかりません。管理者に連絡してください。');
+          setLoading(false);
+          return;
+        }
+        
         setUserProfile(profile);
       }
       
