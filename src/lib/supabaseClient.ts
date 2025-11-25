@@ -23,12 +23,21 @@ export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
     detectSessionInUrl: true,
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
     storageKey: 'running-analysis-supabase-auth-token',
-    // 開発環境ではメール確認をスキップ（本番環境では削除してください）
-    // flowType: 'pkce'
   },
   global: {
     headers: {
       'X-Client-Info': 'running-analysis-app'
+    },
+    fetch: (url, options = {}) => {
+      // タイムアウト設定を追加（30秒）
+      const timeout = 30000;
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeout);
+      
+      return fetch(url, {
+        ...options,
+        signal: controller.signal
+      }).finally(() => clearTimeout(id));
     }
   }
 });

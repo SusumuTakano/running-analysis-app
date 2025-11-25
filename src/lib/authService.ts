@@ -97,36 +97,52 @@ export async function registerUser(data: RegisterData) {
  */
 export async function loginUser(email: string, password: string) {
   console.log('Attempting login with Supabase...');
+  console.log('Email:', email);
+  console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
   
-  const { data, error } = await supabase.auth.signInWithPassword({
+  // タイムアウト処理を追加（30秒）
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('ログインがタイムアウトしました。ネットワーク接続を確認してください。')), 30000);
+  });
+  
+  const loginPromise = supabase.auth.signInWithPassword({
     email,
     password,
   });
-
-  if (error) {
-    console.error('Login error details:', {
-      message: error.message,
-      status: error.status,
-      name: error.name
-    });
+  
+  try {
+    const { data, error } = await Promise.race([loginPromise, timeoutPromise]) as any;
     
-    // より詳細なエラーメッセージ
-    let errorMessage = 'ログインに失敗しました';
-    if (error.message.includes('Invalid login credentials')) {
-      errorMessage = 'メールアドレスまたはパスワードが間違っています';
-    } else if (error.message.includes('Email not confirmed')) {
-      errorMessage = 'メールアドレスが確認されていません。確認メールをご確認ください';
-    } else if (error.message.includes('User not found')) {
-      errorMessage = 'このメールアドレスは登録されていません';
-    } else {
-      errorMessage = 'ログインに失敗しました: ' + error.message;
+    if (error) {
+      console.error('Login error details:', {
+        message: error.message,
+        status: error.status,
+        name: error.name
+      });
+      
+      // より詳細なエラーメッセージ
+      let errorMessage = 'ログインに失敗しました';
+      if (error.message.includes('Invalid login credentials')) {
+        errorMessage = 'メールアドレスまたはパスワードが間違っています';
+      } else if (error.message.includes('Email not confirmed')) {
+        errorMessage = 'メールアドレスが確認されていません。確認メールをご確認ください';
+      } else if (error.message.includes('User not found')) {
+        errorMessage = 'このメールアドレスは登録されていません';
+      } else if (error.message.includes('fetch')) {
+        errorMessage = 'ネットワークエラーが発生しました。インターネット接続を確認してください。';
+      } else {
+        errorMessage = 'ログインに失敗しました: ' + error.message;
+      }
+      
+      throw new Error(errorMessage);
     }
-    
-    throw new Error(errorMessage);
-  }
 
-  console.log('Login successful, user ID:', data.user?.id);
-  return data;
+    console.log('Login successful, user ID:', data.user?.id);
+    return data;
+  } catch (err: any) {
+    console.error('Login exception:', err);
+    throw err;
+  }
 }
 
 /**

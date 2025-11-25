@@ -227,11 +227,45 @@ const AppWithAuth: React.FC = () => {
 
         {loading && (
           <div style={{
-            marginTop: '16px',
-            color: 'white',
-            fontSize: '0.9rem'
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999
           }}>
-            処理中...
+            <div style={{
+              padding: '30px',
+              background: 'white',
+              borderRadius: '12px',
+              textAlign: 'center',
+              maxWidth: '300px'
+            }}>
+              <div style={{
+                fontSize: '3rem',
+                marginBottom: '16px',
+                animation: 'spin 1s linear infinite'
+              }}>
+                ⏳
+              </div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '8px', color: '#333' }}>
+                ログイン中...
+              </div>
+              <div style={{ fontSize: '0.9rem', color: '#666' }}>
+                しばらくお待ちください
+              </div>
+            </div>
+            <style>{`
+              @keyframes spin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+              }
+            `}</style>
           </div>
         )}
       </div>
