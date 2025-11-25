@@ -281,15 +281,7 @@ type AppProps = {
 };
 
 const App: React.FC<AppProps> = ({ userProfile }) => {
-  // ------------ 認証・ユーザー関連 -----------------
-  const [user, setUser] = useState<any>(null);
-  const [isAuthChecking, setIsAuthChecking] = useState(true);
-  const [showAuth, setShowAuth] = useState(false);
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
-  const [authEmail, setAuthEmail] = useState('');
-  const [authPassword, setAuthPassword] = useState('');
-  const [authName, setAuthName] = useState('');
-  const [authError, setAuthError] = useState('');
+  // userProfile は AppWithAuth から渡される（認証済み）
 
   const [wizardStep, setWizardStep] = useState<WizardStep>(1);
 
@@ -1808,22 +1800,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     });
   }, [stepMetrics, threePhaseAngles, stepSummary]);
 
-  // 認証チェック
-  useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
-      setIsAuthChecking(false);
-    };
-    
-    checkAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  // 認証は AppWithAuth で処理済み
 
   // ステップ変更時にフレームを10に設定
   useEffect(() => {
@@ -1835,52 +1812,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   }, [wizardStep, ready, framesCount]);
 
   // 認証ハンドラー
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError('');
-
-    try {
-      if (authMode === 'signup') {
-        // 新規登録
-        const { data, error } = await supabase.auth.signUp({
-          email: authEmail,
-          password: authPassword,
-          options: {
-            data: {
-              full_name: authName,
-              subscription_type: 'developer', // デベロッパー版
-              subscription_expires_at: '2025-01-01' // 12月末まで無料
-            }
-          }
-        });
-        
-        if (error) throw error;
-        
-        // メール確認が必要な場合
-        if (data.user && !data.session) {
-          setAuthError('確認メールを送信しました。メールのリンクをクリックして登録を完了してください。');
-        } else {
-          setShowAuth(false);
-        }
-      } else {
-        // ログイン
-        const { error } = await supabase.auth.signInWithPassword({
-          email: authEmail,
-          password: authPassword,
-        });
-        
-        if (error) throw error;
-        setShowAuth(false);
-      }
-    } catch (error: any) {
-      setAuthError(error.message || '認証エラーが発生しました');
-    }
-  };
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-  };
+  // 認証は AppWithAuth で処理済み
 
   // ------------ ウィザードステップの内容 ------------
   const renderStepContent = () => {
@@ -3223,24 +3155,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // 認証チェック中はローディング表示
-  if (isAuthChecking) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        color: 'white'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏃‍♂️</div>
-          <div style={{ fontSize: '1.2rem' }}>Loading...</div>
-        </div>
-      </div>
-    );
-  }
+  // 認証は AppWithAuth で処理済み
 
   return (
     <div className="app-container">
@@ -3253,10 +3168,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             </p>
           </div>
           <div>
-            {user ? (
+            {userProfile && (
               <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                 <span style={{ fontSize: '0.9rem', opacity: 0.8 }}>
-                  {user.user_metadata?.full_name || user.email}
+                  👤 {userProfile.name}
                 </span>
                 <span style={{ 
                   fontSize: '0.75rem', 
@@ -3267,170 +3182,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 }}>
                   デベロッパー版 (12月末まで無料)
                 </span>
-                <button onClick={handleLogout} className="btn-ghost" style={{ fontSize: '0.9rem' }}>
-                  ログアウト
-                </button>
               </div>
-            ) : (
-              <button onClick={() => setShowAuth(true)} className="btn-primary" style={{ fontSize: '0.9rem' }}>
-                ログイン / 登録
-              </button>
             )}
           </div>
         </div>
       </header>
-
-      {/* 認証モーダル */}
-      {showAuth && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.7)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 10000
-        }}>
-          <div style={{
-            background: 'white',
-            padding: '32px',
-            borderRadius: '12px',
-            maxWidth: '1200px',
-            width: '95%'
-          }}>
-            <h2 style={{ marginBottom: '24px', color: '#1e293b' }}>
-              {authMode === 'login' ? 'ログイン' : '新規登録'}
-            </h2>
-            
-            {authMode === 'signup' && (
-              <div style={{ 
-                padding: '12px', 
-                background: '#e0e7ff', 
-                borderRadius: '8px', 
-                marginBottom: '16px',
-                fontSize: '0.85rem',
-                color: '#3730a3'
-              }}>
-                <strong>🎉 デベロッパー版</strong><br />
-                12月末まで無料でお試しいただけます！
-              </div>
-            )}
-
-            <form onSubmit={handleAuth}>
-              {authMode === 'signup' && (
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ display: 'block', marginBottom: '8px', color: '#1e293b', fontWeight: '500' }}>
-                    お名前 *
-                  </label>
-                  <input
-                    type="text"
-                    value={authName}
-                    onChange={(e) => setAuthName(e.target.value)}
-                    required
-                    style={{
-                      width: '100%',
-                      padding: '10px',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: '6px',
-                      fontSize: '1rem'
-                    }}
-                    placeholder="山田太郎"
-                  />
-                </div>
-              )}
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', marginBottom: '8px', color: '#1e293b', fontWeight: '500' }}>
-                  メールアドレス *
-                </label>
-                <input
-                  type="email"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '6px',
-                    fontSize: '1rem'
-                  }}
-                  placeholder="example@email.com"
-                />
-              </div>
-
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', marginBottom: '8px', color: '#1e293b', fontWeight: '500' }}>
-                  パスワード *
-                </label>
-                <input
-                  type="password"
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '6px',
-                    fontSize: '1rem'
-                  }}
-                  placeholder="6文字以上"
-                />
-              </div>
-
-              {authError && (
-                <div style={{ 
-                  padding: '12px', 
-                  background: '#fee2e2', 
-                  color: '#991b1b', 
-                  borderRadius: '6px',
-                  marginBottom: '16px',
-                  fontSize: '0.9rem'
-                }}>
-                  {authError}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                className="btn-primary"
-                style={{ width: '100%', marginBottom: '12px' }}
-              >
-                {authMode === 'login' ? 'ログイン' : '登録する'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode(authMode === 'login' ? 'signup' : 'login');
-                  setAuthError('');
-                }}
-                className="btn-ghost"
-                style={{ width: '100%', marginBottom: '12px' }}
-              >
-                {authMode === 'login' ? 'アカウントを作成' : 'ログインに戻る'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAuth(false);
-                  setAuthError('');
-                }}
-                className="btn-ghost"
-                style={{ width: '100%' }}
-              >
-                キャンセル
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* ステップインジケーター */}
       <div className="step-progress">
