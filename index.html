@@ -2,8 +2,16 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>ランニング動作解析システム</title>
+  
+  <!-- プルダウンリフレッシュを無効化（iOS Safari） -->
+  <style>
+    html, body {
+      overscroll-behavior-y: contain;
+      touch-action: pan-x pan-y;
+    }
+  </style>
   
   <!-- MediaPipe Pose CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.min.js" crossorigin="anonymous"></script>

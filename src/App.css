@@ -39,6 +39,8 @@ body {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   position: relative;
+  /* プルダウンリフレッシュを無効化（スライダー誤動作防止） */
+  overscroll-behavior-y: contain;
 }
 
 /* ========== コンテナ ========== */
@@ -409,6 +411,7 @@ body {
   appearance: none;
   cursor: pointer;
   margin-bottom: 12px;
+  touch-action: pan-x; /* 横方向のみタッチ許可 */
 }
 
 .frame-range::-webkit-slider-thumb {
@@ -1692,5 +1695,46 @@ body {
   .mobile-view-options .toggle-btn:disabled {
     opacity: 0.3;
     cursor: not-allowed;
+  }
+
+  .zoom-slider-compact {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(37, 99, 235, 0.1);
+    border-radius: 8px;
+    border: 1px solid var(--primary);
+  }
+
+  .zoom-slider-compact input[type="range"] {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--gray-300);
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    touch-action: pan-x;
+  }
+
+  .zoom-slider-compact input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  .zoom-slider-compact input[type="range"]::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   }
 }

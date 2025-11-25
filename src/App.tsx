@@ -2408,6 +2408,23 @@ const App: React.FC = () => {
               >
                 足元拡大 {footZoomEnabled ? "ON" : "OFF"}
               </button>
+              {footZoomEnabled && (
+                <div className="zoom-slider-compact">
+                  <span style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}>倍率:</span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={5}
+                    step={0.5}
+                    value={zoomScale}
+                    onChange={(e) => setZoomScale(Number(e.target.value))}
+                    style={{ flex: 1, minWidth: '80px' }}
+                  />
+                  <span style={{ fontSize: '0.85rem', fontWeight: 'bold', minWidth: '35px', textAlign: 'center' }}>
+                    {zoomScale.toFixed(1)}x
+                  </span>
+                </div>
+              )}
               <button
                 className={showSkeleton ? "toggle-btn active" : "toggle-btn"}
                 onClick={() => setShowSkeleton((v) => !v)}
