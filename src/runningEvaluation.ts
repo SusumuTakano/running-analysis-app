@@ -46,20 +46,12 @@ export function generateRunningEvaluation(
 
   const evaluations: EvaluationItem[] = [];
 
-  // 1. 姿勢評価（体幹角度）
+  // 1. 姿勢評価（体幹角度）- より厳しい基準
   const avgTrunkAngle = phaseAngles.reduce((sum, p) => {
     return sum + (p.angles.trunkAngle ?? 90);
   }, 0) / phaseAngles.length;
 
-  if (avgTrunkAngle >= 88 && avgTrunkAngle <= 92) {
-    evaluations.push({
-      category: '姿勢',
-      score: 'good',
-      icon: '⚠️',
-      message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - ほぼ垂直',
-      advice: '軽い前傾姿勢（85-88°）を意識すると、重心移動がスムーズになり推進力が向上します。'
-    });
-  } else if (avgTrunkAngle >= 85 && avgTrunkAngle < 88) {
+  if (avgTrunkAngle >= 86 && avgTrunkAngle < 88) {
     evaluations.push({
       category: '姿勢',
       score: 'excellent',
@@ -67,7 +59,15 @@ export function generateRunningEvaluation(
       message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 理想的な前傾',
       advice: '素晴らしい前傾姿勢です。股関節の伸展筋群を効率的に使えています。'
     });
-  } else if (avgTrunkAngle < 85) {
+  } else if (avgTrunkAngle >= 88 && avgTrunkAngle <= 90) {
+    evaluations.push({
+      category: '姿勢',
+      score: 'good',
+      icon: '⚠️',
+      message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - ほぼ垂直',
+      advice: '軽い前傾姿勢（86-88°）を意識すると、重心移動がスムーズになり推進力が向上します。'
+    });
+  } else if (avgTrunkAngle < 86) {
     evaluations.push({
       category: '姿勢',
       score: 'poor',
@@ -80,81 +80,89 @@ export function generateRunningEvaluation(
       category: '姿勢',
       score: 'fair',
       icon: '⚠️',
-      message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - やや後傾',
-      advice: '後傾気味です。みぞおちを意識的に前に出すことで、前傾姿勢を作りましょう。'
+      message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 後傾気味',
+      advice: '後傾しています。みぞおちを前に出し、体幹の軸を作ることを意識しましょう。'
     });
   }
 
-  // 2. ピッチとストライドのバランス
+  // 2. ピッチとストライドのバランス - より厳しい基準
   const avgPitch = stepSummary.avgStepPitch ?? 0;
   const avgStride = stepSummary.avgStride ?? 0;
   
   if (avgPitch > 0 && avgStride > 0) {
     const pitchPerMin = avgPitch * 60;
     
-    if (pitchPerMin >= 180 && pitchPerMin <= 190) {
+    if (pitchPerMin >= 185 && pitchPerMin <= 195) {
       evaluations.push({
         category: 'ピッチ・ストライド',
         score: 'excellent',
         icon: '✅',
-        message: 'ピッチ: ' + pitchPerMin.toFixed(0) + '歩/分 - 理想的',
-        advice: '理想的なピッチです。このリズムを維持しながら、ストライドを伸ばすことでスピードアップできます。'
+        message: 'ピッチ: ' + pitchPerMin.toFixed(0) + '歩/分 - 優秀',
+        advice: '理想的なピッチです。このリズムを維持しながら、ストライドを伸ばすことでさらにスピードアップできます。'
       });
-    } else if (pitchPerMin < 180) {
-      const strideAdvice = avgStride > 1.3 ? 'ストライドは十分です。' : 'ストライドも短めです。';
-      evaluations.push({
-        category: 'ピッチ・ストライド',
-        score: 'fair',
-        icon: '⚠️',
-        message: 'ピッチ: ' + pitchPerMin.toFixed(0) + '歩/分 - やや低い',
-        advice: strideAdvice + 'ピッチを180歩/分以上に上げると、接地時間が短くなり効率が向上します。'
-      });
-    } else {
+    } else if (pitchPerMin >= 180 && pitchPerMin < 185) {
       evaluations.push({
         category: 'ピッチ・ストライド',
         score: 'good',
         icon: '✅',
-        message: 'ピッチ: ' + pitchPerMin.toFixed(0) + '歩/分 - 高め',
-        advice: 'ピッチは高いです。余裕があればストライドを伸ばすことでスピードアップできます。'
+        message: 'ピッチ: ' + pitchPerMin.toFixed(0) + '歩/分 - 良好',
+        advice: '良いピッチですが、185歩/分以上を目指すとさらに効率的になります。'
+      });
+    } else if (pitchPerMin < 180) {
+      const strideAdvice = avgStride > 1.4 ? 'ストライドは十分ですが、' : 'ストライドも短めです。';
+      evaluations.push({
+        category: 'ピッチ・ストライド',
+        score: 'fair',
+        icon: '⚠️',
+        message: 'ピッチ: ' + pitchPerMin.toFixed(0) + '歩/分 - 改善が必要',
+        advice: strideAdvice + 'ピッチを180歩/分以上に上げると、接地時間が短くなり効率が大幅に向上します。'
+      });
+    } else {
+      evaluations.push({
+        category: 'ピッチ・ストライド',
+        score: 'fair',
+        icon: '⚠️',
+        message: 'ピッチ: ' + pitchPerMin.toFixed(0) + '歩/分 - 高すぎる',
+        advice: 'ピッチが高すぎます。ストライドを意識的に伸ばし、195歩/分以下を目指しましょう。'
       });
     }
   }
 
-  // 3. 接地時間評価
+  // 3. 接地時間評価 - より厳しい基準
   const avgContact = stepSummary.avgContact ?? 0;
   
   if (avgContact > 0) {
-    if (avgContact <= 0.20) {
+    if (avgContact <= 0.18) {
       evaluations.push({
         category: '接地時間',
         score: 'excellent',
         icon: '✅',
         message: '接地時間: ' + (avgContact * 1000).toFixed(0) + 'ms - エリートレベル',
-        advice: 'トップランナー並みの短い接地時間です。軽快な走りができています。'
+        advice: 'トップランナー並みの非常に短い接地時間です。理想的な軽快な走りができています。'
       });
-    } else if (avgContact <= 0.25) {
+    } else if (avgContact <= 0.22) {
       evaluations.push({
         category: '接地時間',
         score: 'good',
         icon: '✅',
         message: '接地時間: ' + (avgContact * 1000).toFixed(0) + 'ms - 良好',
-        advice: '良好な接地時間です。さらに短縮するには、前足部着地を意識しましょう。'
+        advice: '良好な接地時間です。180ms以下を目指すとエリートレベルに到達できます。'
       });
-    } else if (avgContact <= 0.30) {
+    } else if (avgContact <= 0.26) {
       evaluations.push({
         category: '接地時間',
         score: 'fair',
         icon: '⚠️',
-        message: '接地時間: ' + (avgContact * 1000).toFixed(0) + 'ms - 標準的',
-        advice: '市民ランナーの標準的な値です。ピッチを上げることで短縮できます。'
+        message: '接地時間: ' + (avgContact * 1000).toFixed(0) + 'ms - 改善の余地あり',
+        advice: '接地時間をさらに短縮する必要があります。前足部着地とピッチアップを意識しましょう。'
       });
     } else {
       evaluations.push({
         category: '接地時間',
         score: 'poor',
         icon: '❌',
-        message: '接地時間: ' + (avgContact * 1000).toFixed(0) + 'ms - やや長い',
-        advice: '接地時間が長いです。地面を蹴るのではなく、足を素早く引き上げる意識を持ちましょう。'
+        message: '接地時間: ' + (avgContact * 1000).toFixed(0) + 'ms - 長すぎる',
+        advice: '接地時間が長すぎます。地面を蹴る意識を捨て、足を素早く引き上げることに集中しましょう。260ms以下を目指してください。'
       });
     }
   }
@@ -203,29 +211,37 @@ export function generateRunningEvaluation(
     const minThighAngle = Math.min(...thighAngles);
     const thighRangeOfMotion = maxThighAngle - minThighAngle;
     
-    if (thighRangeOfMotion >= 60) {
+    if (thighRangeOfMotion >= 70) {
       evaluations.push({
         category: '股関節の可動域',
         score: 'excellent',
         icon: '✅',
         message: '大腿角度の可動域: ' + thighRangeOfMotion.toFixed(0) + '° - 優秀',
-        advice: '股関節の可動域が広く、ダイナミックな走りができています。後方へのキックも効いています。'
+        advice: '股関節の可動域が非常に広く、ダイナミックな走りができています。後方へのキックも十分に効いています。'
       });
-    } else if (thighRangeOfMotion >= 50) {
+    } else if (thighRangeOfMotion >= 60) {
       evaluations.push({
         category: '股関節の可動域',
         score: 'good',
         icon: '✅',
         message: '大腿角度の可動域: ' + thighRangeOfMotion.toFixed(0) + '° - 良好',
-        advice: '股関節の使い方は良好です。さらにダイナミックに動かすことでストライドが伸びます。'
+        advice: '股関節の使い方は良好です。70°以上を目指すとさらにダイナミックになります。'
       });
-    } else {
+    } else if (thighRangeOfMotion >= 50) {
       evaluations.push({
         category: '股関節の可動域',
         score: 'fair',
         icon: '⚠️',
-        message: '大腿角度の可動域: ' + thighRangeOfMotion.toFixed(0) + '° - やや小さい',
-        advice: '股関節の可動域が小さめです。後方へのキック（蹴り出し）を意識して、可動域を広げましょう。'
+        message: '大腿角度の可動域: ' + thighRangeOfMotion.toFixed(0) + '° - 改善が必要',
+        advice: '股関節の可動域が不足しています。後方へのキックと前方への引き上げを意識して、60°以上を目指しましょう。'
+      });
+    } else {
+      evaluations.push({
+        category: '股関節の可動域',
+        score: 'poor',
+        icon: '❌',
+        message: '大腿角度の可動域: ' + thighRangeOfMotion.toFixed(0) + '° - 小さすぎる',
+        advice: '股関節の可動域が非常に小さいです。ストレッチと股関節を使った走り込みで、可動域を広げる必要があります。'
       });
     }
   }
