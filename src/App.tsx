@@ -2290,12 +2290,8 @@ const App: React.FC = () => {
           <div className="wizard-content">
             <div className="wizard-step-header">
               <h2 className="wizard-step-title">ステップ 5: 接地/離地マーカー</h2>
-              <p className="wizard-step-desc">
-                <span className="desktop-only">Spaceキーで接地・離地のタイミングにマーカーを打ってください。</span>
-                <span className="mobile-only">「📍 接地/離地マーク」ボタンでマーカーを打ってください。</span>
-                <br />
-                <small className="desktop-only">矢印キー: ←→ (1フレーム移動) / ↑↓ (10フレーム移動)</small>
-                <small className="mobile-only">下のボタンでフレームを移動できます</small>
+              <p className="wizard-step-desc mobile-only" style={{ fontSize: '0.8rem', margin: '4px 0' }}>
+                ボタンでマーカーを打ち、フレームを移動
               </p>
             </div>
 
@@ -2350,13 +2346,6 @@ const App: React.FC = () => {
               <div className="mobile-frame-nav">
                 <button 
                   className="btn-nav-arrow" 
-                  onClick={() => changeFrame(-10)} 
-                  disabled={!ready}
-                >
-                  ⏪ -10
-                </button>
-                <button 
-                  className="btn-nav-arrow" 
                   onClick={() => changeFrame(-1)} 
                   disabled={!ready}
                 >
@@ -2368,13 +2357,6 @@ const App: React.FC = () => {
                   disabled={!ready}
                 >
                   +1 ▶
-                </button>
-                <button 
-                  className="btn-nav-arrow" 
-                  onClick={() => changeFrame(10)} 
-                  disabled={!ready}
-                >
-                  +10 ⏩
                 </button>
               </div>
             </div>

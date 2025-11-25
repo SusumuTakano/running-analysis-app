@@ -1172,8 +1172,8 @@ body {
   /* フレーム移動ボタンのグリッド */
   .mobile-frame-nav {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
   }
 
   .btn-nav-arrow {
