@@ -1356,19 +1356,25 @@ body {
     touch-action: pan-y pinch-zoom;
   }
 
-  /* Step 4と5でキャンバス以外のコンテンツを調整 */
-  .wizard-content .section-settings,
-  .wizard-content .marker-controls,
+  /* Step 4: 固定キャンバス + 固定スライダーの下にコンテンツ表示 */
+  .wizard-content .section-settings {
+    margin-top: calc(30vh + 130px) !important; /* キャンバス30vh + スライダー約110px + 余白20px */
+  }
+
+  /* Step 5: 固定キャンバス + 固定モバイルマーキングの下にコンテンツ表示 */
+  .wizard-content .marker-controls {
+    margin-top: calc(30vh + 180px) !important; /* キャンバス30vh + モバイルマーキング約150px + 余白30px */
+  }
+
+  /* その他のスクロール可能コンテンツ */
   .wizard-content .contact-markers,
   .wizard-content .angle-display-compact,
   .wizard-content .wizard-actions {
     position: relative;
     z-index: 1;
-    /* 固定コントロール（キャンバス+スライダー）の下から表示 */
-    margin-top: 140px; /* 30vh + 約100px + 余白 */
   }
 
-  /* frame-controlとmobile-marking-controlsは固定されているので余白不要 */
+  /* 固定されているコントロールは余白不要 */
   .wizard-content .frame-control,
   .wizard-content .mobile-marking-controls {
     margin-top: 0 !important;

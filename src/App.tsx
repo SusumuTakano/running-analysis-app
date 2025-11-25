@@ -1334,6 +1334,52 @@ const App: React.FC = () => {
   };
 
   // ------------ 区間マーカー線を描画 ------------
+  // 接地/離地マーカーを描画（交互に色を変える）
+  const drawContactMarkers = (
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    currentFrameNum: number
+  ) => {
+    contactFrames.forEach((markerFrame, index) => {
+      // 現在のフレームにマーカーがある場合のみ描画
+      if (markerFrame === currentFrameNum) {
+        // 偶数インデックス（0, 2, 4...）= 接地 = 緑
+        // 奇数インデックス（1, 3, 5...）= 離地 = 赤
+        const isContact = index % 2 === 0;
+        const color = isContact ? "#10b981" : "#ef4444"; // 緑 or 赤
+        const label = isContact ? "接地" : "離地";
+        
+        // 画面上部中央にマーカー表示
+        const markerX = width / 2;
+        const markerY = 60;
+        
+        // 背景円
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(markerX, markerY, 30, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // 白い枠
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        
+        // ラベルテキスト
+        ctx.fillStyle = "white";
+        ctx.font = "bold 16px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, markerX, markerY);
+        
+        // マーカー番号を下に表示
+        ctx.fillStyle = color;
+        ctx.font = "bold 12px sans-serif";
+        ctx.fillText(`#${index + 1}`, markerX, markerY + 45);
+      }
+    });
+  };
+
   const drawSectionMarkers = (
     ctx: CanvasRenderingContext2D,
     width: number,
@@ -1445,6 +1491,9 @@ const App: React.FC = () => {
       
       // 区間マーカー線を描画
       drawSectionMarkers(ctx, w, h, currentFrame);
+      
+      // 接地/離地マーカーを描画
+      drawContactMarkers(ctx, w, h, currentFrame);
     } else {
       let footCenterY = 0.75;
       let footCenterX = 0.5;
@@ -1595,6 +1644,9 @@ const App: React.FC = () => {
         srcH,
         scale: zoomScale,
       });
+      
+      // 拡大表示時も接地/離地マーカーを描画
+      drawContactMarkers(ctx, w, h, currentFrame);
     }
   }, [
     currentFrame,
@@ -1609,6 +1661,7 @@ const App: React.FC = () => {
     startLineOffset,
     midLineOffset,
     endLineOffset,
+    contactFrames,
   ]);
 
   const ready = framesCount > 0;
