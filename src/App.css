@@ -73,20 +73,10 @@ body {
   opacity: 0.9;
 }
 
-/* モバイル用ヘッダー最適化 */
+/* モバイル用ヘッダー最適化 - 完全に非表示 */
 @media (max-width: 768px) {
   .app-header-new {
-    margin-bottom: 12px;
-    padding: 0 8px;
-  }
-  
-  .app-title-new {
-    font-size: 1.5rem;
-    margin-bottom: 4px;
-  }
-  
-  .app-subtitle-new {
-    font-size: 0.8rem;
+    display: none !important;
   }
 }
 
@@ -1141,14 +1131,14 @@ body {
 
   /* ========== モバイル最適化：キャンバスを最大化、コントロールを最小化 ========== */
   
-  /* キャンバスエリア：マーカーが完全に見えるように60vhに拡大 */
+  /* キャンバスエリア：画面の65%を使用してマーカーを確実に表示 */
   .canvas-area {
     position: fixed !important;
     top: 0 !important;
     left: 0 !important;
     right: 0 !important;
-    height: 56.25vw !important; /* 16:9比率 = 9/16 * 100vw = 56.25vw */
-    max-height: 60vh !important; /* 最大60vhに拡大（マーカーが確実に見えるように） */
+    width: 100vw !important;
+    height: 65vh !important; /* 画面の65%を使用 */
     z-index: 1000 !important;
     background: #000;
     padding: 0 !important;
@@ -1167,7 +1157,7 @@ body {
   /* フレームコントロール（スライダー）：極限まで小さく */
   .frame-control {
     position: fixed !important;
-    top: min(56.25vw, 60vh) !important; /* キャンバスの高さに合わせる */
+    top: 65vh !important;
     left: 0 !important;
     right: 0 !important;
     z-index: 999 !important;
@@ -1249,7 +1239,7 @@ body {
     border-radius: 0;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
     position: fixed !important;
-    top: calc(min(56.25vw, 60vh) + 24px) !important; /* キャンバス高さ + スライダー高さ */
+    top: calc(65vh + 24px) !important;
     left: 0 !important;
     right: 0 !important;
     z-index: 998 !important;
@@ -1317,16 +1307,16 @@ body {
   /* Step 4: section-settingsを固定エリアの下に配置 */
   .wizard-content .section-settings {
     position: relative;
-    margin-top: calc(min(56.25vw, 60vh) + 28px) !important;
-    padding: 6px 8px !important;
+    margin-top: calc(65vh + 28px) !important;
+    padding: 4px 6px !important;
     z-index: 1;
-    gap: 8px !important;
+    gap: 6px !important;
   }
 
   /* Step 5: marker-controlsを固定エリアの下に表示 */
   .wizard-content .marker-controls {
     position: relative;
-    margin-top: calc(min(56.25vw, 60vh) + 64px) !important;
+    margin-top: calc(65vh + 60px) !important;
     padding: 4px 6px !important;
     z-index: 1;
   }
