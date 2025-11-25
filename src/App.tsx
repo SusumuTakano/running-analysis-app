@@ -3298,8 +3298,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             background: 'white',
             padding: '32px',
             borderRadius: '12px',
-            maxWidth: '400px',
-            width: '90%'
+            maxWidth: '1200px',
+            width: '95%'
           }}>
             <h2 style={{ marginBottom: '24px', color: '#1e293b' }}>
               {authMode === 'login' ? 'ログイン' : '新規登録'}
