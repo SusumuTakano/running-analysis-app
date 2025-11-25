@@ -1345,39 +1345,26 @@ body {
     padding-bottom: 100px;
   }
 
-  /* Step 4と5ではキャンバス+スライダーが固定されるため、ヘッダーに余白を追加 */
-  .wizard-content:has(.canvas-area) .wizard-step-header {
-    padding-top: calc(30vh + 140px); /* キャンバス30vh + スライダー高さ約100px + 余白40px */
-    margin-top: -20px; /* app-containerのpaddingをキャンセル */
-  }
-
   /* 固定されたキャンバスエリアの子要素 */
   .canvas-area canvas {
     touch-action: pan-y pinch-zoom;
   }
 
-  /* Step 4: 固定キャンバス + 固定スライダーの下にコンテンツ表示 */
-  .wizard-content .section-settings {
-    margin-top: calc(30vh + 130px) !important; /* キャンバス30vh + スライダー約110px + 余白20px */
-  }
-
-  /* Step 5: 固定キャンバス + 固定モバイルマーキングの下にコンテンツ表示 */
+  /* Step 5の場合：marker-controlsがcanvas-areaより前にあるため、
+     固定キャンバス+スライダーの下に表示されるよう位置調整 */
   .wizard-content .marker-controls {
-    margin-top: calc(30vh + 180px) !important; /* キャンバス30vh + モバイルマーキング約150px + 余白30px */
-  }
-
-  /* その他のスクロール可能コンテンツ */
-  .wizard-content .contact-markers,
-  .wizard-content .angle-display-compact,
-  .wizard-content .wizard-actions {
     position: relative;
+    margin-top: calc(30vh + 180px); /* 固定キャンバス + 固定スライダーの高さ分 */
+    padding-top: 16px;
     z-index: 1;
   }
 
-  /* 固定されているコントロールは余白不要 */
-  .wizard-content .frame-control,
-  .wizard-content .mobile-marking-controls {
-    margin-top: 0 !important;
+  /* Step 4: section-settingsを固定スライダーの下に配置 */
+  .wizard-content .section-settings {
+    position: relative;
+    margin-top: calc(30vh + 130px); /* 固定キャンバス + 固定スライダーの高さ分 */
+    padding-top: 16px;
+    z-index: 1;
   }
 
   /* すべてのボタンとインタラクティブ要素 */
