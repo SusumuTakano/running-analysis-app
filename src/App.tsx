@@ -329,6 +329,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
   const [usedTargetFps, setUsedTargetFps] = useState<number | null>(null);
 
+  // チュートリアル
+  const [showTutorial, setShowTutorial] = useState(true); // 初回表示フラグ
+  const [tutorialStep, setTutorialStep] = useState(0); // 現在のステップ
+
   // 足元拡大
   const [footZoomEnabled, setFootZoomEnabled] = useState(false);
   const [zoomScale, setZoomScale] = useState(3);
@@ -4198,8 +4202,178 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
   // 認証は AppWithAuth で処理済み
 
+  // チュートリアルのステップデータ
+  const tutorialSteps = [
+    {
+      title: "ようこそ！ランニング動作解析システムへ",
+      content: "このアプリでは、動画からランニングフォームを科学的に分析できます。\n6つのステップで解析を進めていきましょう。"
+    },
+    {
+      title: "ステップ1: 動画のアップロード",
+      content: "ランニング動画をアップロードしてください。\n\n• 横から撮影した動画が最適です\n• 10m以上の走行が収まっている動画を推奨\n• MP4、MOV、WebM形式に対応"
+    },
+    {
+      title: "ステップ2: フレーム抽出",
+      content: "動画を個別のフレームに分割します。\n\n• 目標FPSを設定（推奨: 30fps）\n• 抽出開始をクリック\n• 処理には数秒かかります"
+    },
+    {
+      title: "ステップ3: 姿勢推定",
+      content: "各フレームから骨格情報を抽出します。\n\n• MediaPipe Poseを使用\n• 自動的に関節位置を検出\n• スケルトン表示で確認可能"
+    },
+    {
+      title: "ステップ4: 区間設定",
+      content: "解析する区間を設定します。\n\n• スタート地点を設定\n• エンド地点を設定\n• 距離（m）を入力（例: 10m）"
+    },
+    {
+      title: "ステップ5: マーカー設定",
+      content: "接地・離地のタイミングをマークします。\n\n• 最初の1歩：手動でマーク（キャリブレーション）\n• 2歩目以降：自動検出\n• PC: Spaceキー、モバイル: タップでマーク"
+    },
+    {
+      title: "ステップ6: 結果確認",
+      content: "解析結果を確認しましょう！\n\n• AI評価：フォームの総合評価\n• ステップメトリクス：接地時間、ピッチ、ストライドなど\n• グラフ：各指標の推移を可視化\n• 100m目標記録：目標達成のためのアドバイス"
+    }
+  ];
+
   return (
     <div className="app-container">
+      {/* チュートリアルモーダル */}
+      {showTutorial && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '16px',
+            maxWidth: '600px',
+            width: '100%',
+            maxHeight: '80vh',
+            overflow: 'auto',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
+          }}>
+            {/* ヘッダー */}
+            <div style={{
+              padding: '24px',
+              borderBottom: '2px solid #f0f0f0',
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: 'white',
+              borderRadius: '16px 16px 0 0'
+            }}>
+              <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold' }}>
+                {tutorialSteps[tutorialStep].title}
+              </h2>
+              <div style={{ marginTop: '12px', fontSize: '0.9rem', opacity: 0.9 }}>
+                ステップ {tutorialStep + 1} / {tutorialSteps.length}
+              </div>
+            </div>
+
+            {/* コンテンツ */}
+            <div style={{
+              padding: '32px 24px',
+              fontSize: '1rem',
+              lineHeight: '1.8',
+              color: '#374151',
+              whiteSpace: 'pre-line'
+            }}>
+              {tutorialSteps[tutorialStep].content}
+            </div>
+
+            {/* プログレスバー */}
+            <div style={{
+              padding: '0 24px 24px',
+              display: 'flex',
+              gap: '8px'
+            }}>
+              {tutorialSteps.map((_, i) => (
+                <div
+                  key={i}
+                  style={{
+                    flex: 1,
+                    height: '4px',
+                    borderRadius: '2px',
+                    background: i <= tutorialStep ? '#667eea' : '#e5e7eb'
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* ボタン */}
+            <div style={{
+              padding: '0 24px 24px',
+              display: 'flex',
+              gap: '12px',
+              justifyContent: 'space-between'
+            }}>
+              <button
+                onClick={() => setShowTutorial(false)}
+                style={{
+                  padding: '12px 24px',
+                  borderRadius: '8px',
+                  border: '2px solid #e5e7eb',
+                  background: 'white',
+                  color: '#6b7280',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  fontSize: '1rem'
+                }}
+              >
+                スキップ
+              </button>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                {tutorialStep > 0 && (
+                  <button
+                    onClick={() => setTutorialStep(tutorialStep - 1)}
+                    style={{
+                      padding: '12px 24px',
+                      borderRadius: '8px',
+                      border: '2px solid #667eea',
+                      background: 'white',
+                      color: '#667eea',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      fontSize: '1rem'
+                    }}
+                  >
+                    戻る
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    if (tutorialStep < tutorialSteps.length - 1) {
+                      setTutorialStep(tutorialStep + 1);
+                    } else {
+                      setShowTutorial(false);
+                    }
+                  }}
+                  style={{
+                    padding: '12px 32px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    color: 'white',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    fontSize: '1rem',
+                    boxShadow: '0 4px 12px rgba(102, 126, 234, 0.4)'
+                  }}
+                >
+                  {tutorialStep < tutorialSteps.length - 1 ? '次へ' : '始める！'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ヘッダー - ステップ1のみ表示 */}
       {wizardStep === 1 && (
         <header className="app-header-new">
@@ -4213,6 +4387,28 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             <div>
               {userProfile && (
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <button
+                    onClick={() => {
+                      setShowTutorial(true);
+                      setTutorialStep(0);
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      border: '2px solid rgba(255,255,255,0.3)',
+                      background: 'rgba(255,255,255,0.1)',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      fontSize: '0.9rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <span>❓</span>
+                    <span>使い方</span>
+                  </button>
                   <span style={{ fontSize: '0.9rem', opacity: 0.8 }}>
                     👤 {userProfile.name}
                   </span>
