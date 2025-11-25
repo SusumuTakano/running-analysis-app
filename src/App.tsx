@@ -283,6 +283,32 @@ type AppProps = {
 const App: React.FC<AppProps> = ({ userProfile }) => {
   // userProfile は AppWithAuth から渡される（認証済み）
 
+  // デバイス判定（PC/モバイル/タブレット）
+  const [isMobile, setIsMobile] = useState(false);
+  const [isTablet, setIsTablet] = useState(false);
+
+  useEffect(() => {
+    const checkDevice = () => {
+      const ua = navigator.userAgent;
+      const width = window.innerWidth;
+      
+      // モバイル判定（iPhone, Android phone）
+      const isMobileDevice = /iPhone|Android.*Mobile/i.test(ua) || width < 768;
+      
+      // タブレット判定（iPad, Android tablet）
+      const isTabletDevice = /iPad|Android(?!.*Mobile)/i.test(ua) || (width >= 768 && width < 1024);
+      
+      setIsMobile(isMobileDevice && !isTabletDevice);
+      setIsTablet(isTabletDevice);
+      
+      console.log(`📱 デバイス判定: ${isMobileDevice ? 'モバイル' : isTabletDevice ? 'タブレット' : 'PC'} (幅: ${width}px)`);
+    };
+    
+    checkDevice();
+    window.addEventListener('resize', checkDevice);
+    return () => window.removeEventListener('resize', checkDevice);
+  }, []);
+
   const [wizardStep, setWizardStep] = useState<WizardStep>(1);
 
   // ------------ 動画・フレーム関連 -----------------
@@ -2505,7 +2531,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               <canvas ref={displayCanvasRef} className="preview-canvas" />
             </div>
 
-            {/* モバイル用：フレーム移動ボタンのみ */}
+            {/* モバイル用：フレーム移動ボタン */}
+            {isMobile && (
             <div className="mobile-marking-controls">
               <div className="mobile-frame-nav">
                 <button 
@@ -2538,8 +2565,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 </button>
               </div>
             </div>
+            )}
 
             {/* マーカー表示エリア - コントロールの下に配置 */}
+            {isMobile && (
             <div className="mobile-marker-display">
               {contactFrames.map((markerFrame, index) => {
                 if (markerFrame === currentFrame) {
@@ -2632,8 +2661,30 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 </button>
               )}
             </div>
+            )}
+            
+            {/* PC用：キーボード操作の説明 */}
+            {!isMobile && (
+              <div style={{
+                background: '#f3f4f6',
+                padding: '16px',
+                borderRadius: '8px',
+                margin: '16px 0',
+                fontSize: '0.9rem'
+              }}>
+                <h4 style={{ margin: '0 0 8px 0', fontWeight: 'bold' }}>⌨️ キーボード操作</h4>
+                <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                  <li><strong>Space</strong>: {calibrationMode 
+                    ? (manualContactFrames.length === 0 ? '接地マーク' : '離地マーク')
+                    : '接地マーク（離地自動）'}</li>
+                  <li><strong>← / →</strong>: 1フレーム移動</li>
+                  <li><strong>↑ / ↓</strong>: 10フレーム移動</li>
+                </ul>
+              </div>
+            )}
 
             {/* 表示オプションボタン - マーカーの下に配置 */}
+            {isMobile && (
             <div className="mobile-view-options">
               <button
                 className={footZoomEnabled ? "toggle-btn active" : "toggle-btn"}
@@ -2666,6 +2717,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 スケルトン {showSkeleton ? "ON" : "OFF"}
               </button>
             </div>
+            )}
 
             <div className="frame-control">
               <div className="frame-info">
@@ -2697,6 +2749,50 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 </button>
               </div>
             </div>
+
+{/* PC用：マーカーリスト表示 */}
+            {!isMobile && contactFrames.length > 0 && (
+              <div style={{
+                background: '#f9fafb',
+                padding: '16px',
+                borderRadius: '8px',
+                margin: '16px 0',
+                maxHeight: '200px',
+                overflowY: 'auto'
+              }}>
+                <h4 style={{ margin: '0 0 12px 0', fontWeight: 'bold' }}>📍 マーカー一覧</h4>
+                <div style={{ display: 'grid', gap: '8px' }}>
+                  {Array.from({ length: Math.floor(contactFrames.length / 2) }, (_, i) => {
+                    const contactFrame = contactFrames[i * 2];
+                    const toeOffFrame = contactFrames[i * 2 + 1];
+                    const isAuto = !calibrationMode && i > 0;
+                    
+                    return (
+                      <div key={i} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '8px',
+                        background: 'white',
+                        borderRadius: '6px',
+                        fontSize: '0.9rem',
+                        border: currentFrame === contactFrame || currentFrame === toeOffFrame ? '2px solid #3b82f6' : '1px solid #e5e7eb'
+                      }}>
+                        <strong>ステップ {i + 1}:</strong>
+                        <span style={{ color: '#10b981', fontWeight: 'bold' }}>
+                          🟢 接地 {contactFrame}
+                        </span>
+                        <span>→</span>
+                        <span style={{ color: '#ef4444', fontWeight: 'bold' }}>
+                          🔴 離地 {toeOffFrame}
+                          {isAuto && <span style={{ fontSize: '0.75rem', marginLeft: '4px', color: '#6b7280' }}>(自動)</span>}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {currentAngles && (
               <div className="angle-display-compact">
