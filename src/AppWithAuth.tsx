@@ -1,120 +1,334 @@
-import React, { useState } from 'react';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { AuthGuard } from './components/Auth/AuthGuard';
-import { AuthPage } from './pages/AuthPage';
-import { AdminPage } from './pages/AdminPage';
+import React, { useState, useEffect } from 'react';
 import App from './App';
+import { LoginForm } from './components/LoginForm';
+import { RegisterForm } from './components/RegisterForm';
+import { supabase } from './lib/supabaseClient';
+import { registerUser, loginUser, logoutUser, getUserProfile, isDeveloperPeriodValid, type UserProfile, type RegisterData } from './lib/authService';
+import type { User } from '@supabase/supabase-js';
 
-type ViewMode = 'app' | 'profile' | 'admin';
+type AuthView = 'login' | 'register' | 'app';
 
-// ナビゲーションヘッダー
-const Navigation: React.FC<{ viewMode: ViewMode; setViewMode: (mode: ViewMode) => void }> = ({ 
-  viewMode, 
-  setViewMode 
-}) => {
-  const { user, signOut } = useAuth();
+const AppWithAuth: React.FC = () => {
+  const [currentView, setCurrentView] = useState<AuthView>('login');
+  const [user, setUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isDeveloperPeriod, setIsDeveloperPeriod] = useState(true);
 
-  if (!user) return null;
+  // 初回ロード時: セッションチェック
+  useEffect(() => {
+    checkSession();
+    checkDeveloperPeriod();
 
-  return (
-    <nav className="bg-white shadow-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          <div className="flex items-center">
-            <h1 className="text-xl font-bold text-gray-800">
-              ランニング動作解析システム
-            </h1>
-          </div>
-          
-          <div className="flex items-center space-x-4">
-            <span className="text-sm text-gray-600">{user.email}</span>
-            
-            <button
-              onClick={() => setViewMode('app')}
-              className={`text-sm ${viewMode === 'app' ? 'text-blue-600 font-semibold' : 'text-gray-500 hover:text-gray-600'}`}
-            >
-              分析画面
-            </button>
-            
-            <button
-              onClick={() => setViewMode('profile')}
-              className={`text-sm ${viewMode === 'profile' ? 'text-blue-600 font-semibold' : 'text-gray-500 hover:text-gray-600'}`}
-            >
-              マイページ
-            </button>
+    // 認証状態の変更を監視
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setUser(session?.user ?? null);
+      
+      if (session?.user) {
+        const profile = await getUserProfile(session.user.id);
+        setUserProfile(profile);
+        setCurrentView('app');
+      } else {
+        setUserProfile(null);
+        setCurrentView('login');
+      }
+    });
 
-            {(user.is_admin || user.role === 'admin') && (
-              <button
-                onClick={() => setViewMode('admin')}
-                className={`text-sm ${viewMode === 'admin' ? 'text-purple-600 font-semibold' : 'text-purple-500 hover:text-purple-600'}`}
-              >
-                🛡️ 管理画面
-              </button>
-            )}
-            
-            <button
-              onClick={async () => {
-                try {
-                  await signOut();
-                } catch (error) {
-                  console.error('Error signing out:', error);
-                }
-              }}
-              className="text-sm text-red-500 hover:text-red-600"
-            >
-              ログアウト
-            </button>
-          </div>
-        </div>
-      </div>
-    </nav>
-  );
-};
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
-// メインアプリケーションコンポーネント
-const MainApp: React.FC = () => {
-  const { user } = useAuth();
-  const [viewMode, setViewMode] = useState<ViewMode>('app');
+  const checkSession = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+      
+      if (session?.user) {
+        const profile = await getUserProfile(session.user.id);
+        setUserProfile(profile);
+        setCurrentView('app');
+      }
+    } catch (err) {
+      console.error('Session check error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  // 未ログインの場合は認証ページを表示
-  if (!user) {
-    return <AuthPage />;
-  }
+  const checkDeveloperPeriod = async () => {
+    const isValid = await isDeveloperPeriodValid();
+    setIsDeveloperPeriod(isValid);
+  };
 
-  // 管理画面を表示（管理者のみ）
-  if (viewMode === 'admin' && (user.is_admin || user.role === 'admin')) {
-    return <AdminPage />;
-  }
+  const handleLogin = async (email: string, password: string) => {
+    setError(null);
+    setLoading(true);
 
-  // プロフィールページを表示
-  if (viewMode === 'profile') {
+    try {
+      const data = await loginUser(email, password);
+      setUser(data.user);
+      
+      if (data.user) {
+        const profile = await getUserProfile(data.user.id);
+        setUserProfile(profile);
+      }
+      
+      setCurrentView('app');
+    } catch (err: any) {
+      setError(err.message || 'ログインに失敗しました');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegister = async (formData: RegisterData) => {
+    setError(null);
+    setLoading(true);
+
+    try {
+      // デベロッパー期間チェック
+      if (!isDeveloperPeriod) {
+        setError('デベロッパー版の期間が終了しました');
+        setLoading(false);
+        return;
+      }
+
+      const registeredUser = await registerUser(formData);
+      
+      // 登録後は自動的にログインされているのでプロフィールを取得
+      const profile = await getUserProfile(registeredUser.id);
+      setUser(registeredUser);
+      setUserProfile(profile);
+      setCurrentView('app');
+      
+      alert('登録が完了しました！デベロッパー版として2025年12月末まで無料でご利用いただけます。');
+    } catch (err: any) {
+      setError(err.message || '登録に失敗しました');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    if (!confirm('ログアウトしますか?')) return;
+
+    try {
+      await logoutUser();
+      setUser(null);
+      setUserProfile(null);
+      setCurrentView('login');
+    } catch (err: any) {
+      alert(err.message || 'ログアウトに失敗しました');
+    }
+  };
+
+  // ローディング中
+  if (loading && !user) {
     return (
-      <div className="min-h-screen bg-gray-100">
-        <Navigation viewMode={viewMode} setViewMode={setViewMode} />
-        <div className="max-w-7xl mx-auto px-4 py-8">
-          <AuthPage />
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+      }}>
+        <div style={{ textAlign: 'center', color: 'white' }}>
+          <div style={{ fontSize: '2rem', marginBottom: '16px' }}>🏃‍♂️</div>
+          <div>読み込み中...</div>
         </div>
       </div>
     );
   }
 
-  // ログイン済みの場合は分析アプリを表示（AuthGuardで保護）
-  return (
-    <AuthGuard requireSubscription={true}>
-      <div className="min-h-screen bg-gray-100">
-        <Navigation viewMode={viewMode} setViewMode={setViewMode} />
-        <App />
-      </div>
-    </AuthGuard>
-  );
-};
+  // ログイン画面
+  if (currentView === 'login') {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        padding: '20px'
+      }}>
+        <div style={{
+          marginBottom: '24px',
+          textAlign: 'center',
+          color: 'white'
+        }}>
+          <h1 style={{ fontSize: '2.5rem', fontWeight: 'bold', marginBottom: '8px' }}>
+            🏃‍♂️ Running Analysis Studio
+          </h1>
+          <p style={{ fontSize: '1.1rem', opacity: 0.9 }}>
+            デベロッパー版 - 2025年12月末まで無料
+          </p>
+        </div>
 
-// 認証プロバイダーでラップしたルートコンポーネント
-const AppWithAuth: React.FC = () => {
+        {error && (
+          <div style={{
+            maxWidth: '400px',
+            width: '100%',
+            padding: '12px',
+            marginBottom: '16px',
+            background: '#fee',
+            border: '1px solid #f88',
+            borderRadius: '8px',
+            color: '#c33',
+            fontSize: '0.9rem'
+          }}>
+            {error}
+          </div>
+        )}
+
+        {!isDeveloperPeriod && (
+          <div style={{
+            maxWidth: '400px',
+            width: '100%',
+            padding: '12px',
+            marginBottom: '16px',
+            background: '#fffacd',
+            border: '1px solid #ffd700',
+            borderRadius: '8px',
+            color: '#856404',
+            fontSize: '0.9rem'
+          }}>
+            ⚠️ デベロッパー版の期間が終了しました。新規登録はできません。
+          </div>
+        )}
+
+        <LoginForm
+          onSubmit={handleLogin}
+          onRegisterClick={() => {
+            if (!isDeveloperPeriod) {
+              alert('デベロッパー版の期間が終了しました');
+              return;
+            }
+            setCurrentView('register');
+            setError(null);
+          }}
+        />
+
+        {loading && (
+          <div style={{
+            marginTop: '16px',
+            color: 'white',
+            fontSize: '0.9rem'
+          }}>
+            処理中...
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // 登録画面
+  if (currentView === 'register') {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        padding: '20px'
+      }}>
+        <div style={{
+          marginBottom: '24px',
+          textAlign: 'center',
+          color: 'white'
+        }}>
+          <h1 style={{ fontSize: '2.5rem', fontWeight: 'bold', marginBottom: '8px' }}>
+            🏃‍♂️ Running Analysis Studio
+          </h1>
+        </div>
+
+        {error && (
+          <div style={{
+            maxWidth: '600px',
+            width: '100%',
+            padding: '12px',
+            marginBottom: '16px',
+            background: '#fee',
+            border: '1px solid #f88',
+            borderRadius: '8px',
+            color: '#c33',
+            fontSize: '0.9rem'
+          }}>
+            {error}
+          </div>
+        )}
+
+        <RegisterForm
+          onSubmit={handleRegister}
+          onCancel={() => {
+            setCurrentView('login');
+            setError(null);
+          }}
+        />
+
+        {loading && (
+          <div style={{
+            marginTop: '16px',
+            color: 'white',
+            fontSize: '0.9rem'
+          }}>
+            登録処理中...
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // アプリ本体（ログイン済み）
   return (
-    <AuthProvider>
-      <MainApp />
-    </AuthProvider>
+    <div>
+      {/* ユーザー情報バー */}
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        right: 0,
+        padding: '12px 20px',
+        background: 'rgba(102, 126, 234, 0.9)',
+        color: 'white',
+        zIndex: 1000,
+        borderBottomLeftRadius: '12px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '16px',
+        fontSize: '0.9rem',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+      }}>
+        <span>
+          👤 {userProfile?.name || user?.email}
+        </span>
+        {userProfile && (
+          <span style={{ opacity: 0.9 }}>
+            身長: {userProfile.height_cm}cm
+          </span>
+        )}
+        <button
+          onClick={handleLogout}
+          style={{
+            padding: '6px 12px',
+            background: 'rgba(255,255,255,0.2)',
+            border: 'none',
+            borderRadius: '6px',
+            color: 'white',
+            cursor: 'pointer',
+            fontSize: '0.85rem'
+          }}
+        >
+          ログアウト
+        </button>
+      </div>
+
+      {/* アプリ本体 */}
+      <App userProfile={userProfile} />
+    </div>
   );
 };
 

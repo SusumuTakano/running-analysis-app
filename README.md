@@ -128,13 +128,19 @@ VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 
 ### 2. データベースのセットアップ
 
-Supabaseのダッシュボードで`supabase_setup.sql`を実行：
+Supabaseのダッシュボードで必要なSQLファイルを実行：
 
 ```bash
-# Supabase SQL Editorで実行
-# または
-supabase db push
+# 1. メインスキーマのセットアップ（まだ実行していない場合）
+# Supabase SQL Editorで supabase_setup.sql を実行
+
+# 2. ユーザープロフィール拡張（新規追加）
+# Supabase SQL Editorで supabase_users_migration.sql を実行
 ```
+
+**重要:** `supabase_users_migration.sql`を実行して、以下のテーブルと機能を追加してください：
+- `user_profiles` テーブル（名前、かな、性別、年齢、身長、都道府県、所属）
+- デベロッパー版期限チェック関数（2025年12月31日まで有効）
 
 ### 3. 依存関係のインストール
 

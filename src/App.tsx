@@ -273,7 +273,14 @@ const metricColors: Record<GraphMetricKey, string> = {
   speedMps: "#dc2626",
 };
 
-const App: React.FC = () => {
+type AppProps = {
+  userProfile: {
+    height_cm: number;
+    name: string;
+  } | null;
+};
+
+const App: React.FC<AppProps> = ({ userProfile }) => {
   // ------------ 認証・ユーザー関連 -----------------
   const [user, setUser] = useState<any>(null);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
