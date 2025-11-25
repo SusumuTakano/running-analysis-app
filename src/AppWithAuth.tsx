@@ -16,6 +16,10 @@ const AppWithAuth: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDeveloperPeriod, setIsDeveloperPeriod] = useState(true);
+  
+  // アプリ画面用の state（条件分岐の外で宣言）
+  const [showUserBar, setShowUserBar] = React.useState(true);
+  const [lastScrollY, setLastScrollY] = React.useState(0);
 
   // 初回ロード時: セッションチェック
   useEffect(() => {
@@ -49,6 +53,26 @@ const AppWithAuth: React.FC = () => {
       subscription.unsubscribe();
     };
   }, []);
+
+  // スクロールでヘッダーを自動的に隠す（アプリ画面でのみ有効）
+  useEffect(() => {
+    if (currentView !== 'app') return;
+
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      
+      if (currentScrollY > lastScrollY && currentScrollY > 50) {
+        setShowUserBar(false);
+      } else if (currentScrollY < lastScrollY) {
+        setShowUserBar(true);
+      }
+      
+      setLastScrollY(currentScrollY);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [lastScrollY, currentView]);
 
   const checkSession = async () => {
     try {
@@ -363,28 +387,7 @@ const AppWithAuth: React.FC = () => {
   }
 
   // アプリ本体（ログイン済み）
-  const [showUserBar, setShowUserBar] = React.useState(true);
-  const [lastScrollY, setLastScrollY] = React.useState(0);
-
-  // スクロールでヘッダーを自動的に隠す
-  React.useEffect(() => {
-    const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-      
-      if (currentScrollY > lastScrollY && currentScrollY > 50) {
-        // 下にスクロール → ヘッダーを隠す
-        setShowUserBar(false);
-      } else if (currentScrollY < lastScrollY) {
-        // 上にスクロール → ヘッダーを表示
-        setShowUserBar(true);
-      }
-      
-      setLastScrollY(currentScrollY);
-    };
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [lastScrollY]);
+  // state と useEffect は最上部で宣言済み
 
   return (
     <div>
