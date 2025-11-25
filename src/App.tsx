@@ -8,6 +8,7 @@ import React, {
 import "./App.css";
 import { supabase } from "./lib/supabaseClient";
 import Chart from "chart.js/auto";
+import { generateRunningEvaluation, type RunningEvaluation } from "./runningEvaluation";
 
 /** ウィザードのステップ */
 type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
@@ -1779,6 +1780,17 @@ const App: React.FC = () => {
     };
   }, [stepMetrics, selectedGraphMetrics, graphType]);
 
+  // AI評価機能
+  const runningEvaluation: RunningEvaluation | null = useMemo(() => {
+    return generateRunningEvaluation(stepMetrics, threePhaseAngles, {
+      avgContact: stepSummary.avgContact ?? 0,
+      avgFlight: stepSummary.avgFlight ?? 0,
+      avgStepPitch: stepSummary.avgStepPitch ?? 0,
+      avgStride: stepSummary.avgStride ?? 0,
+      avgSpeed: stepSummary.avgSpeedMps ?? 0
+    });
+  }, [stepMetrics, threePhaseAngles, stepSummary]);
+
   // ステップ変更時にフレームを10に設定
   useEffect(() => {
     if (wizardStep === 4 || wizardStep === 5) {
@@ -2646,6 +2658,100 @@ const App: React.FC = () => {
             </div>
 
             <div className="results-layout">
+              {/* AI評価セクション */}
+              {runningEvaluation && (
+                <div className="result-card" style={{
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  color: 'white'
+                }}>
+                  <h3 className="result-card-title" style={{ color: 'white', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🤖 AI フォーム評価
+                  </h3>
+                  
+                  {/* 総合評価 */}
+                  <div style={{
+                    padding: '20px',
+                    background: 'rgba(255,255,255,0.15)',
+                    borderRadius: '12px',
+                    marginBottom: '20px',
+                    textAlign: 'center'
+                  }}>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '8px' }}>
+                      {runningEvaluation.overallRating}
+                    </div>
+                    <div style={{ fontSize: '0.95rem', opacity: 0.9 }}>
+                      {runningEvaluation.overallMessage}
+                    </div>
+                    <div style={{ 
+                      marginTop: '12px', 
+                      display: 'flex', 
+                      gap: '4px', 
+                      justifyContent: 'center',
+                      alignItems: 'center'
+                    }}>
+                      {[1, 2, 3, 4].map(i => (
+                        <div
+                          key={i}
+                          style={{
+                            width: '40px',
+                            height: '8px',
+                            borderRadius: '4px',
+                            background: i <= runningEvaluation.avgScore 
+                              ? 'rgba(255,255,255,0.9)' 
+                              : 'rgba(255,255,255,0.2)'
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 詳細評価 */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {runningEvaluation.evaluations.map((evaluation, index) => (
+                      <div
+                        key={index}
+                        style={{
+                          padding: '16px',
+                          background: 'rgba(255,255,255,0.1)',
+                          borderRadius: '12px',
+                          borderLeft: '4px solid ' + (
+                            evaluation.score === 'excellent' ? '#10b981' :
+                            evaluation.score === 'good' ? '#3b82f6' :
+                            evaluation.score === 'fair' ? '#f59e0b' :
+                            '#ef4444'
+                          )
+                        }}
+                      >
+                        <div style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '8px',
+                          marginBottom: '8px'
+                        }}>
+                          <span style={{ fontSize: '1.5rem' }}>{evaluation.icon}</span>
+                          <div>
+                            <div style={{ fontWeight: 'bold', fontSize: '1rem' }}>
+                              {evaluation.category}
+                            </div>
+                            <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
+                              {evaluation.message}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ 
+                          fontSize: '0.85rem', 
+                          lineHeight: '1.5',
+                          opacity: 0.85,
+                          paddingLeft: '36px'
+                        }}>
+                          💡 {evaluation.advice}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* ステップメトリクス */}
               <div className="result-card">
                 <h3 className="result-card-title">ステップメトリクス</h3>
