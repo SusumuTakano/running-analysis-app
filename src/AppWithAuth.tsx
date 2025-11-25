@@ -114,28 +114,31 @@ const AppWithAuth: React.FC = () => {
       setUser(data.user);
       
       if (data.user) {
-        console.log('Fetching user profile for user:', data.user.id);
+        console.log('🔍 Fetching user profile for user ID:', data.user.id);
+        console.log('🔍 User email:', data.user.email);
         try {
           const profile = await getUserProfile(data.user.id);
-          console.log('Profile fetch result:', profile);
+          console.log('🔍 Profile fetch result:', profile);
           
           if (!profile) {
             console.warn('⚠️ Profile not found for user:', data.user.id);
+            console.warn('⚠️ User email:', data.user.email);
             console.warn('User can still use the app, but some features may be limited');
-            // プロフィールがなくてもログインを続行
-            // 後で新規登録フローでプロフィール作成を促す
           } else {
-            console.log('✅ Profile loaded successfully:', profile.name);
+            console.log('✅ Profile loaded successfully!');
+            console.log('✅ Profile name:', profile.name);
+            console.log('✅ Profile user ID:', profile.id);
+            console.log('✅ Full profile:', JSON.stringify(profile, null, 2));
             setUserProfile(profile);
           }
         } catch (profileErr) {
-          console.error('Profile fetch error:', profileErr);
+          console.error('❌ Profile fetch error:', profileErr);
           console.warn('Continuing login without profile');
-          // プロフィール取得失敗でもログインは継続
         }
       }
       
-      console.log('Login complete, transitioning to app view');
+      console.log('✅ Login complete, transitioning to app view');
+      console.log('✅ Current userProfile state:', userProfile);
       setCurrentView('app');
     } catch (err: any) {
       console.error('Login error:', err);
@@ -390,71 +393,6 @@ const AppWithAuth: React.FC = () => {
 
   return (
     <div>
-      {/* ユーザー情報バー - スクロールで自動的に隠れる */}
-      <div style={{
-        position: 'fixed',
-        top: showUserBar ? 0 : '-100px',
-        right: 0,
-        padding: '12px 20px',
-        background: 'rgba(102, 126, 234, 0.95)',
-        color: 'white',
-        zIndex: 1000,
-        borderBottomLeftRadius: '12px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '16px',
-        fontSize: '0.9rem',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-        transition: 'top 0.3s ease-in-out'
-      }}>
-        <span>
-          👤 {userProfile?.name || user?.email || 'ユーザー'}
-        </span>
-        {userProfile?.height_cm && (
-          <span style={{ opacity: 0.9 }}>
-            身長: {userProfile.height_cm}cm
-          </span>
-        )}
-        <button
-          onClick={handleLogout}
-          style={{
-            padding: '6px 12px',
-            background: 'rgba(255,255,255,0.2)',
-            border: 'none',
-            borderRadius: '6px',
-            color: 'white',
-            cursor: 'pointer',
-            fontSize: '0.85rem'
-          }}
-        >
-          ログアウト
-        </button>
-      </div>
-
-      {/* 画面タップでヘッダーを表示するトリガー（モバイル用） */}
-      <div
-        onClick={() => setShowUserBar(true)}
-        style={{
-          position: 'fixed',
-          top: 0,
-          right: 0,
-          width: '60px',
-          height: '60px',
-          zIndex: 999,
-          opacity: showUserBar ? 0 : 0.3,
-          background: showUserBar ? 'transparent' : 'linear-gradient(135deg, rgba(102, 126, 234, 0.5) 0%, rgba(118, 75, 162, 0.5) 100%)',
-          borderBottomLeftRadius: '30px',
-          transition: 'opacity 0.3s',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '1.2rem'
-        }}
-      >
-        {!showUserBar && '👤'}
-      </div>
-
       {/* アプリ本体 */}
       <App userProfile={userProfile} />
     </div>
