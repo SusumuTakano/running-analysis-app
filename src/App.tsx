@@ -2603,6 +2603,103 @@ const App: React.FC = () => {
                 <h3 className="result-card-title">ステップメトリクス</h3>
                 {stepMetrics.length > 0 ? (
                   <>
+                    {/* 中間地点がある場合は前半・後半の比較を表示 */}
+                    {sectionMidFrame != null && (
+                      <div style={{
+                        padding: '16px',
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        borderRadius: '12px',
+                        marginBottom: '20px',
+                        color: 'white'
+                      }}>
+                        <h4 style={{ fontSize: '1.1rem', marginBottom: '12px', fontWeight: '600' }}>
+                          前半 vs 後半 比較
+                        </h4>
+                        {(() => {
+                          const firstHalf = stepMetrics.filter(m => m.contactFrame < sectionMidFrame);
+                          const secondHalf = stepMetrics.filter(m => m.contactFrame >= sectionMidFrame);
+                          
+                          const calcAvg = (arr: StepMetric[], key: keyof StepMetric) => {
+                            const values = arr.map(m => m[key] as number).filter(v => v != null && !isNaN(v));
+                            return values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : null;
+                          };
+                          
+                          const firstHalfAvg = {
+                            contact: calcAvg(firstHalf, 'contactTime'),
+                            flight: calcAvg(firstHalf, 'flightTime'),
+                            pitch: calcAvg(firstHalf, 'stepPitch'),
+                            stride: calcAvg(firstHalf, 'stride'),
+                            speed: calcAvg(firstHalf, 'speedMps'),
+                          };
+                          
+                          const secondHalfAvg = {
+                            contact: calcAvg(secondHalf, 'contactTime'),
+                            flight: calcAvg(secondHalf, 'flightTime'),
+                            pitch: calcAvg(secondHalf, 'stepPitch'),
+                            stride: calcAvg(secondHalf, 'stride'),
+                            speed: calcAvg(secondHalf, 'speedMps'),
+                          };
+                          
+                          return (
+                            <div style={{ 
+                              display: 'grid', 
+                              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', 
+                              gap: '12px' 
+                            }}>
+                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>前半 接地時間</div>
+                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px' }}>
+                                  {firstHalfAvg.contact?.toFixed(3) ?? 'ー'}s
+                                </div>
+                              </div>
+                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>後半 接地時間</div>
+                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px' }}>
+                                  {secondHalfAvg.contact?.toFixed(3) ?? 'ー'}s
+                                </div>
+                              </div>
+                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>前半 ピッチ</div>
+                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px' }}>
+                                  {firstHalfAvg.pitch?.toFixed(2) ?? 'ー'}歩/s
+                                </div>
+                              </div>
+                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>後半 ピッチ</div>
+                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px' }}>
+                                  {secondHalfAvg.pitch?.toFixed(2) ?? 'ー'}歩/s
+                                </div>
+                              </div>
+                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>前半 ストライド</div>
+                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px' }}>
+                                  {firstHalfAvg.stride?.toFixed(2) ?? 'ー'}m
+                                </div>
+                              </div>
+                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>後半 ストライド</div>
+                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px' }}>
+                                  {secondHalfAvg.stride?.toFixed(2) ?? 'ー'}m
+                                </div>
+                              </div>
+                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>前半 スピード</div>
+                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px' }}>
+                                  {firstHalfAvg.speed?.toFixed(2) ?? 'ー'}m/s
+                                </div>
+                              </div>
+                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>後半 スピード</div>
+                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px' }}>
+                                  {secondHalfAvg.speed?.toFixed(2) ?? 'ー'}m/s
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+                    
                     <div className="metrics-summary">
                       <div className="metric-item">
                         <span className="metric-label">ステップ数</span>
