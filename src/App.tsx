@@ -3159,34 +3159,37 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
   return (
     <div className="app-container">
-      <header className="app-header-new">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-          <div>
-            <h1 className="app-title-new">🏃‍♂️ Running Analysis Studio</h1>
-            <p className="app-subtitle-new">
-              フレーム抽出・姿勢推定・関節角度とステップ指標を一括解析
-            </p>
+      {/* ヘッダー - ステップ1のみ表示 */}
+      {wizardStep === 1 && (
+        <header className="app-header-new">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+            <div>
+              <h1 className="app-title-new">🏃‍♂️ Running Analysis Studio</h1>
+              <p className="app-subtitle-new">
+                フレーム抽出・姿勢推定・関節角度とステップ指標を一括解析
+              </p>
+            </div>
+            <div>
+              {userProfile && (
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.9rem', opacity: 0.8 }}>
+                    👤 {userProfile.name}
+                  </span>
+                  <span style={{ 
+                    fontSize: '0.75rem', 
+                    padding: '4px 8px', 
+                    background: 'rgba(255,255,255,0.2)', 
+                    borderRadius: '4px',
+                    fontWeight: 'bold'
+                  }}>
+                    デベロッパー版 (12月末まで無料)
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
-          <div>
-            {userProfile && (
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.9rem', opacity: 0.8 }}>
-                  👤 {userProfile.name}
-                </span>
-                <span style={{ 
-                  fontSize: '0.75rem', 
-                  padding: '4px 8px', 
-                  background: 'rgba(255,255,255,0.2)', 
-                  borderRadius: '4px',
-                  fontWeight: 'bold'
-                }}>
-                  デベロッパー版 (12月末まで無料)
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* ステップインジケーター */}
       <div className="step-progress">
