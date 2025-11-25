@@ -90,6 +90,8 @@ const AppWithAuth: React.FC = () => {
         console.log('Fetching user profile...');
         const profile = await getUserProfile(data.user.id);
         console.log('Profile loaded:', profile);
+        console.log('Profile type:', typeof profile);
+        console.log('Profile keys:', profile ? Object.keys(profile) : 'null');
         
         if (!profile) {
           console.error('Profile not found for user:', data.user.id);
@@ -98,7 +100,9 @@ const AppWithAuth: React.FC = () => {
           return;
         }
         
+        console.log('Setting user profile with name:', profile.name);
         setUserProfile(profile);
+        console.log('User profile set complete');
       }
       
       setCurrentView('app');

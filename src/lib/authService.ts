@@ -247,6 +247,7 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
   }
 
   console.log('✅ Profile loaded successfully:', data.name);
+  console.log('Profile data:', JSON.stringify(data, null, 2));
   return data;
 }
 
