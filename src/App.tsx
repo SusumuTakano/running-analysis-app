@@ -2346,6 +2346,13 @@ const App: React.FC = () => {
               <div className="mobile-frame-nav">
                 <button 
                   className="btn-nav-arrow" 
+                  onClick={() => changeFrame(-10)} 
+                  disabled={!ready}
+                >
+                  ◀◀ -10
+                </button>
+                <button 
+                  className="btn-nav-arrow" 
                   onClick={() => changeFrame(-1)} 
                   disabled={!ready}
                 >
@@ -2357,6 +2364,13 @@ const App: React.FC = () => {
                   disabled={!ready}
                 >
                   +1 ▶
+                </button>
+                <button 
+                  className="btn-nav-arrow" 
+                  onClick={() => changeFrame(10)} 
+                  disabled={!ready}
+                >
+                  +10 ▶▶
                 </button>
               </div>
             </div>
