@@ -140,7 +140,8 @@ Supabaseダッシュボードで以下のSQLを実行：
 2. **SQL Editorを開く**
    - 左メニュー → `SQL Editor` → `New Query`
 
-3. **supabase_setup_complete.sql の内容を実行**
+3. **supabase_setup_final.sql の内容を実行**
+   - ⚠️ 既存のデータがある場合は削除されます
    - ファイル内のすべてのSQLをコピー＆ペースト
    - `Run` をクリック
 
