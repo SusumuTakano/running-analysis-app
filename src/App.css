@@ -1156,6 +1156,11 @@ body {
   display: none;
 }
 
+/* 表示オプションボタンもデフォルト非表示 */
+.mobile-view-options {
+  display: none;
+}
+
 /* デスクトップでは通常のテキストを表示 */
 .mobile-only {
   display: none;
@@ -1649,5 +1654,43 @@ body {
     padding: 8px 12px;
     background: rgba(255, 255, 255, 0.95);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  }
+
+  /* 表示オプションボタン - マーカーの下 */
+  .mobile-view-options {
+    display: flex !important;
+    gap: 8px;
+    position: fixed !important;
+    top: calc(42px + min(56.25vw, 50vh) + 170px) !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 996 !important;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  }
+
+  .mobile-view-options .toggle-btn {
+    flex: 1;
+    padding: 10px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    background: white;
+    color: var(--primary);
+    border: 2px solid var(--primary);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: var(--transition);
+    touch-action: manipulation;
+  }
+
+  .mobile-view-options .toggle-btn.active {
+    background: var(--primary);
+    color: white;
+  }
+
+  .mobile-view-options .toggle-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
   }
 }

@@ -1444,8 +1444,13 @@ const App: React.FC = () => {
     if (!offCtx) return;
     offCtx.putImageData(frame, 0, 0);
 
-    canvas.width = w;
-    canvas.height = h;
+    // Retina対応: デバイスピクセル比を考慮
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
+    ctx.scale(dpr, dpr);
 
     if (!footZoomEnabled) {
       ctx.drawImage(offscreen, 0, 0, w, h, 0, 0, w, h);
@@ -1773,6 +1778,15 @@ const App: React.FC = () => {
       }
     };
   }, [stepMetrics, selectedGraphMetrics, graphType]);
+
+  // ステップ変更時にフレームを10に設定
+  useEffect(() => {
+    if (wizardStep === 4 || wizardStep === 5) {
+      if (ready && framesCount > 10) {
+        setCurrentFrame(10);
+      }
+    }
+  }, [wizardStep, ready, framesCount]);
 
   // ------------ ウィザードステップの内容 ------------
   const renderStepContent = () => {
@@ -2386,6 +2400,23 @@ const App: React.FC = () => {
               )}
             </div>
 
+            {/* 表示オプションボタン - マーカーの下に配置 */}
+            <div className="mobile-view-options">
+              <button
+                className={footZoomEnabled ? "toggle-btn active" : "toggle-btn"}
+                onClick={() => setFootZoomEnabled((v) => !v)}
+              >
+                足元拡大 {footZoomEnabled ? "ON" : "OFF"}
+              </button>
+              <button
+                className={showSkeleton ? "toggle-btn active" : "toggle-btn"}
+                onClick={() => setShowSkeleton((v) => !v)}
+                disabled={!poseResults.length}
+              >
+                スケルトン {showSkeleton ? "ON" : "OFF"}
+              </button>
+            </div>
+
             <div className="frame-control">
               <div className="frame-info">
                 フレーム: {currentLabel} / {maxLabel} | マーカー数:{" "}
@@ -2989,26 +3020,6 @@ const App: React.FC = () => {
 
   return (
     <div className="app-container">
-      {/* デバッグ情報 - 画面最下部に固定表示 */}
-      <div style={{
-        position: 'fixed',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        background: 'rgba(255,0,0,0.9)',
-        color: 'white',
-        padding: '8px',
-        fontSize: '14px',
-        zIndex: 99999,
-        display: 'flex',
-        justifyContent: 'space-around',
-        fontWeight: 'bold'
-      }}>
-        <span>幅: {screenWidth}px</span>
-        <span>{screenWidth <= 768 ? 'モバイル✅' : 'デスクトップ❌'}</span>
-        <span>Step: {wizardStep}</span>
-      </div>
-      
       <header className="app-header-new">
         <h1 className="app-title-new">🏃‍♂️ Running Analysis Studio</h1>
         <p className="app-subtitle-new">
