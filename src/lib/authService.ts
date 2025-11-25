@@ -68,6 +68,12 @@ export async function registerUser(data: RegisterData) {
   // 2. user_profilesに詳細情報を登録
   const age = calculateAge(data.birthdate);
   
+  console.log('Creating user profile:', {
+    userId: authData.user.id,
+    name: data.name,
+    email: data.email
+  });
+  
   const { error: profileError } = await supabase
     .from('user_profiles')
     .insert({
@@ -83,11 +89,25 @@ export async function registerUser(data: RegisterData) {
     });
 
   if (profileError) {
-    console.error('Profile insert error:', profileError);
-    // プロフィール登録失敗時は認証ユーザーも削除
-    await supabase.auth.admin.deleteUser(authData.user.id);
-    throw new Error('プロフィール登録に失敗しました');
+    console.error('Profile insert error:', {
+      message: profileError.message,
+      details: profileError.details,
+      hint: profileError.hint,
+      code: profileError.code
+    });
+    
+    // 注意: admin.deleteUser は管理者権限が必要なため、失敗する可能性がある
+    console.warn('Attempting to delete user due to profile creation failure...');
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.error('Failed to sign out after profile error:', e);
+    }
+    
+    throw new Error('プロフィール登録に失敗しました: ' + profileError.message);
   }
+  
+  console.log('✅ User profile created successfully');
 
   return authData.user;
 }
