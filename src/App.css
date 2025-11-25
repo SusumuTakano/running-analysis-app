@@ -1317,22 +1317,103 @@ body {
   /* Step 4: section-settingsを固定エリアの下に配置 */
   .wizard-content .section-settings {
     position: relative;
-    margin-top: calc(min(56.25vw, 55vh) + 32px) !important;
-    padding-top: 12px;
+    margin-top: calc(min(56.25vw, 55vh) + 28px) !important;
+    padding: 6px 8px !important;
     z-index: 1;
+    gap: 8px !important;
   }
 
   /* Step 5: marker-controlsを固定エリアの下に表示 */
   .wizard-content .marker-controls {
     position: relative;
-    margin-top: calc(min(56.25vw, 55vh) + 70px) !important;
-    padding: 6px;
+    margin-top: calc(min(56.25vw, 55vh) + 64px) !important;
+    padding: 4px 6px !important;
     z-index: 1;
   }
 
   /* Step 5: wizard-step-headerを非表示（無駄な空白を削除） */
   .wizard-content .wizard-step-header {
     display: none;
+  }
+
+  /* Section item をコンパクトに */
+  .section-item {
+    padding: 6px 8px !important;
+    gap: 8px !important;
+    font-size: 0.8rem !important;
+  }
+
+  .section-label {
+    font-size: 0.8rem !important;
+    gap: 6px !important;
+  }
+
+  .marker-badge {
+    padding: 2px 6px !important;
+    font-size: 0.65rem !important;
+  }
+
+  .section-actions button {
+    padding: 4px 8px !important;
+    font-size: 0.75rem !important;
+  }
+
+  /* Section summary をコンパクトに */
+  .section-summary {
+    padding: 8px !important;
+    gap: 8px !important;
+    font-size: 0.75rem !important;
+  }
+
+  /* 線の位置調整コントロールをさらに小さく */
+  .line-adjust-control {
+    padding: 6px !important;
+    margin-top: -4px !important;
+  }
+
+  .adjust-label {
+    font-size: 0.7rem !important;
+    gap: 4px !important;
+  }
+
+  .adjust-btn {
+    width: 24px !important;
+    height: 24px !important;
+    font-size: 0.75rem !important;
+  }
+
+  .adjust-slider {
+    height: 3px !important;
+  }
+
+  .adjust-slider::-webkit-slider-thumb {
+    width: 12px !important;
+    height: 12px !important;
+  }
+
+  .adjust-slider::-moz-range-thumb {
+    width: 12px !important;
+    height: 12px !important;
+  }
+
+  .adjust-value {
+    min-width: 35px !important;
+    font-size: 0.7rem !important;
+  }
+
+  .adjust-reset {
+    padding: 3px 6px !important;
+    font-size: 0.65rem !important;
+  }
+
+  /* Section markers info をコンパクトに */
+  .section-markers-info {
+    padding: 6px 8px !important;
+    margin-bottom: 6px !important;
+  }
+
+  .info-text {
+    font-size: 0.75rem !important;
   }
 
   /* マーカーコントロールボタンを小さく */
@@ -1490,16 +1571,33 @@ body {
 
   /* ウィザードメインを小さく */
   .wizard-main {
-    padding: 16px;
+    padding: 12px;
     min-height: auto;
   }
 
   .wizard-step-title {
-    font-size: 1.2rem;
-    margin-bottom: 6px;
+    font-size: 1.1rem;
+    margin-bottom: 4px;
   }
 
   .wizard-step-desc {
-    font-size: 0.85rem;
+    font-size: 0.8rem;
+  }
+
+  /* Wizard actions をコンパクトに */
+  .wizard-actions {
+    gap: 8px !important;
+    margin-top: 16px !important;
+    padding-top: 12px !important;
+  }
+
+  .btn-primary-large {
+    padding: 10px 16px !important;
+    font-size: 0.9rem !important;
+  }
+
+  .btn-ghost {
+    padding: 10px 16px !important;
+    font-size: 0.85rem !important;
   }
 }
