@@ -234,7 +234,47 @@ npm run build
 
 ## 🌐 デプロイ
 
-現在の開発環境URL:
+### Netlifyへのデプロイ手順
+
+1. **Netlifyアカウントにログイン**
+   - https://app.netlify.com にアクセス
+
+2. **新しいサイトを追加**
+   - "Add new site" → "Import an existing project" をクリック
+   - "Deploy with GitHub" を選択
+
+3. **GitHubリポジトリを選択**
+   - `SusumuTakano/running-analysis-app` を選択
+
+4. **ビルド設定（自動検出されます）**
+   - Build command: `npm run build`
+   - Publish directory: `dist`
+   - Node version: 18
+
+5. **環境変数の設定**
+   - Site configuration → Environment variables
+   - 以下の変数を追加：
+     ```
+     VITE_SUPABASE_URL=your-supabase-url
+     VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+     ```
+
+6. **デプロイ**
+   - "Deploy site" をクリック
+   - 自動的にビルドとデプロイが開始されます
+
+### 自動デプロイ
+
+- `main` ブランチへのプッシュで自動デプロイ
+- プルリクエストごとにプレビューデプロイ生成
+
+### デプロイURL
+
+デプロイ後、以下のようなURLでアクセス可能：
+- **本番:** `https://your-app-name.netlify.app`
+- **管理者ログイン:** `https://your-app-name.netlify.app/admin/login`
+
+### 開発環境URL（Sandbox）:
 - **一般ユーザー:** https://3000-iutfhg38ul7w1p11026dx-cc2fbc16.sandbox.novita.ai
 - **管理者ログイン:** https://3000-iutfhg38ul7w1p11026dx-cc2fbc16.sandbox.novita.ai/admin/login
 
