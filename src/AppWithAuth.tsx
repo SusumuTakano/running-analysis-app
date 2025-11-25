@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import App from './App';
+import ErrorBoundary from './ErrorBoundary';
 import { LoginForm } from './components/LoginForm';
 import { RegisterForm } from './components/RegisterForm';
 import { supabase } from './lib/supabaseClient';
@@ -453,7 +454,9 @@ const AppWithAuth: React.FC = () => {
       </div>
 
       {/* アプリ本体 */}
-      <App userProfile={userProfile} />
+      <ErrorBoundary>
+        <App userProfile={userProfile} />
+      </ErrorBoundary>
     </div>
   );
 };
