@@ -27,15 +27,18 @@ const AppWithAuth: React.FC = () => {
 
     // 認証状態の変更を監視
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event, session?.user?.id);
+      console.log('Auth state changed:', event, session?.user?.email);
       
-      setUser(session?.user ?? null);
+      // SIGNED_IN イベントの場合は handleLogin で処理するのでスキップ
+      if (event === 'SIGNED_IN') {
+        console.log('Skipping SIGNED_IN in listener (handled by handleLogin)');
+        return;
+      }
       
-      if (session?.user) {
-        const profile = await getUserProfile(session.user.id);
-        setUserProfile(profile);
-        setCurrentView('app');
-      } else {
+      // SIGNED_OUT の場合のみログイン画面に戻す
+      if (event === 'SIGNED_OUT' || !session?.user) {
+        console.log('User signed out, returning to login');
+        setUser(null);
         setUserProfile(null);
         setCurrentView('login');
       }
@@ -87,24 +90,28 @@ const AppWithAuth: React.FC = () => {
       setUser(data.user);
       
       if (data.user) {
-        console.log('Fetching user profile...');
-        const profile = await getUserProfile(data.user.id);
-        console.log('Profile loaded:', profile);
-        console.log('Profile type:', typeof profile);
-        console.log('Profile keys:', profile ? Object.keys(profile) : 'null');
-        
-        if (!profile) {
-          console.error('Profile not found for user:', data.user.id);
-          setError('ユーザープロフィールが見つかりません。管理者に連絡してください。');
-          setLoading(false);
-          return;
+        console.log('Fetching user profile for user:', data.user.id);
+        try {
+          const profile = await getUserProfile(data.user.id);
+          console.log('Profile fetch result:', profile);
+          
+          if (!profile) {
+            console.warn('⚠️ Profile not found for user:', data.user.id);
+            console.warn('User can still use the app, but some features may be limited');
+            // プロフィールがなくてもログインを続行
+            // 後で新規登録フローでプロフィール作成を促す
+          } else {
+            console.log('✅ Profile loaded successfully:', profile.name);
+            setUserProfile(profile);
+          }
+        } catch (profileErr) {
+          console.error('Profile fetch error:', profileErr);
+          console.warn('Continuing login without profile');
+          // プロフィール取得失敗でもログインは継続
         }
-        
-        console.log('Setting user profile with name:', profile.name);
-        setUserProfile(profile);
-        console.log('User profile set complete');
       }
       
+      console.log('Login complete, transitioning to app view');
       setCurrentView('app');
     } catch (err: any) {
       console.error('Login error:', err);
