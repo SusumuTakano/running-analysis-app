@@ -72,6 +72,13 @@ const AppWithAuth: React.FC = () => {
     setError(null);
     setLoading(true);
 
+    // 安全装置：20秒後に強制的にローディング解除
+    const safetyTimeout = setTimeout(() => {
+      console.error('Safety timeout triggered - forcing loading to false');
+      setLoading(false);
+      setError('ログイン処理がタイムアウトしました。再度お試しください。');
+    }, 20000);
+
     try {
       console.log('Login attempt for:', email);
       const data = await loginUser(email, password);
@@ -93,6 +100,7 @@ const AppWithAuth: React.FC = () => {
       console.error('Error message:', errorMessage);
       setError(errorMessage);
     } finally {
+      clearTimeout(safetyTimeout);
       setLoading(false);
     }
   };

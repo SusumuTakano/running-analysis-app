@@ -99,20 +99,23 @@ export async function loginUser(email: string, password: string) {
   console.log('Attempting login with Supabase...');
   console.log('Email:', email);
   console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
+  console.log('Start time:', new Date().toISOString());
   
   // 環境変数チェック
   if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
     throw new Error('Supabase環境変数が設定されていません。管理者に連絡してください。');
   }
   
-  // タイムアウト処理を追加（15秒）
-  const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error('ログインがタイムアウトしました（15秒）。ネットワーク接続を確認してください。')), 15000);
-  });
+  // より確実なタイムアウト実装（15秒）
+  const TIMEOUT_MS = 15000;
+  let timeoutId: number;
   
-  // AbortController for canceling request
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      console.log('Login timeout triggered at:', new Date().toISOString());
+      reject(new Error('TIMEOUT'));
+    }, TIMEOUT_MS);
+  });
   
   const loginPromise = supabase.auth.signInWithPassword({
     email,
@@ -120,8 +123,15 @@ export async function loginUser(email: string, password: string) {
   });
   
   try {
-    const { data, error } = await Promise.race([loginPromise, timeoutPromise]) as any;
-    clearTimeout(timeoutId);
+    const result = await Promise.race([
+      loginPromise,
+      timeoutPromise
+    ]);
+    
+    clearTimeout(timeoutId!);
+    console.log('Login completed at:', new Date().toISOString());
+    
+    const { data, error } = result as any;
     
     if (error) {
       console.error('Login error details:', {
@@ -152,7 +162,14 @@ export async function loginUser(email: string, password: string) {
     console.log('Login successful, user ID:', data.user?.id);
     return data;
   } catch (err: any) {
-    console.error('Login exception:', err);
+    clearTimeout(timeoutId!);
+    console.error('Login exception at:', new Date().toISOString(), err);
+    
+    // タイムアウトエラーの場合
+    if (err.message === 'TIMEOUT') {
+      throw new Error('ログインがタイムアウトしました（15秒）。電波の良い場所で再度お試しください。');
+    }
+    
     throw err;
   }
 }
