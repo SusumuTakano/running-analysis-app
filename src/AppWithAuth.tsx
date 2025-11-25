@@ -406,9 +406,9 @@ const AppWithAuth: React.FC = () => {
         transition: 'top 0.3s ease-in-out'
       }}>
         <span>
-          👤 {userProfile?.name || user?.email}
+          👤 {userProfile?.name || user?.email || 'ユーザー'}
         </span>
-        {userProfile && (
+        {userProfile?.height_cm && (
           <span style={{ opacity: 0.9 }}>
             身長: {userProfile.height_cm}cm
           </span>
