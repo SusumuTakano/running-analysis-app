@@ -369,6 +369,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const [targetFpsInput, setTargetFpsInput] = useState<number | null>(null); // FPS変換（null=元のまま）
   const [optimizedVideoUrl, setOptimizedVideoUrl] = useState<string | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [videoDuration, setVideoDuration] = useState(10); // 動画の長さ（デフォルト10秒）
 
   // ------------ 姿勢推定関連 -----------------
   const [poseResults, setPoseResults] = useState<(FramePoseData | null)[]>([]);
@@ -3120,6 +3121,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       }}
                       controls
                       src={videoFile ? URL.createObjectURL(videoFile) : undefined}
+                      onLoadedMetadata={(e) => {
+                        const video = e.currentTarget;
+                        setVideoDuration(video.duration);
+                        console.log('✅ Video loaded, duration:', video.duration);
+                      }}
                     />
                     <div style={{
                       marginTop: '0.5rem',
@@ -3202,14 +3208,16 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                           <input
                             type="range"
                             min="0"
-                            max={videoRef.current?.duration || 10}
+                            max={videoDuration}
                             step="0.1"
                             value={trimStart}
                             onChange={(e) => {
                               const newStart = Number(e.target.value);
                               setTrimStart(newStart);
-                              if (videoRef.current) {
-                                videoRef.current.currentTime = newStart;
+                              const video = videoRef.current;
+                              if (video && !isNaN(video.duration)) {
+                                video.currentTime = newStart;
+                                console.log('🎬 Video seek to:', newStart);
                               }
                             }}
                             className="input-field"
@@ -3225,14 +3233,16 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                           <input
                             type="range"
                             min="0"
-                            max={videoRef.current?.duration || 10}
+                            max={videoDuration}
                             step="0.1"
-                            value={trimEnd || (videoRef.current?.duration || 10)}
+                            value={trimEnd || videoDuration}
                             onChange={(e) => {
                               const newEnd = Number(e.target.value);
                               setTrimEnd(newEnd);
-                              if (videoRef.current) {
-                                videoRef.current.currentTime = newEnd;
+                              const video = videoRef.current;
+                              if (video && !isNaN(video.duration)) {
+                                video.currentTime = newEnd;
+                                console.log('🎬 Video seek to:', newEnd);
                               }
                             }}
                             className="input-field"
@@ -3251,8 +3261,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                         }}>
                           <div style={{
                             position: 'absolute',
-                            left: `${(trimStart / (videoRef.current?.duration || 10)) * 100}%`,
-                            right: trimEnd > 0 ? `${100 - (trimEnd / (videoRef.current?.duration || 10)) * 100}%` : '0%',
+                            left: `${(trimStart / videoDuration) * 100}%`,
+                            right: trimEnd > 0 ? `${100 - (trimEnd / videoDuration) * 100}%` : '0%',
                             height: '100%',
                             background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
                             display: 'flex',
@@ -3262,7 +3272,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                             fontSize: '0.75rem',
                             fontWeight: 'bold'
                           }}>
-                            選択範囲: {((trimEnd > 0 ? trimEnd : (videoRef.current?.duration || 10)) - trimStart).toFixed(2)}秒
+                            選択範囲: {((trimEnd > 0 ? trimEnd : videoDuration) - trimStart).toFixed(2)}秒
                           </div>
                         </div>
                       </div>
