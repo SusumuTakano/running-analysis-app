@@ -671,36 +671,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     return null; // 離地が見つからない
   };
 
-  // ステップ5（区間設定）に入ったら自動的にスタート設定モードを開始
-  useEffect(() => {
-    if (wizardStep === 5 && !sectionStartFrame && !sectionClickMode) {
-      // スタート地点が未設定の場合、自動的にスタート設定モードに入る
-      setSectionClickMode('start');
-      console.log('🎯 自動ガイド: スタート地点の設定を開始');
-    }
-  }, [wizardStep, sectionStartFrame, sectionClickMode]);
 
-  // スタート設定完了後、フィニッシュ地点の設定に進む
-  useEffect(() => {
-    if (wizardStep === 5 && sectionStartFrame && !sectionEndFrame && !sectionClickMode) {
-      // スタート設定完了後、自動的にフィニッシュ設定モードに入る
-      setTimeout(() => {
-        setSectionClickMode('end');
-        console.log('🎯 自動ガイド: フィニッシュ地点の設定を開始');
-      }, 500);
-    }
-  }, [wizardStep, sectionStartFrame, sectionEndFrame, sectionClickMode]);
-
-  // フィニッシュ設定完了後、中間地点の設定に進む
-  useEffect(() => {
-    if (wizardStep === 5 && sectionStartFrame && sectionEndFrame && !sectionMidFrame && !sectionClickMode) {
-      // フィニッシュ設定完了後、自動的に中間地点設定モードに入る
-      setTimeout(() => {
-        setSectionClickMode('mid');
-        console.log('🎯 自動ガイド: 中間地点の設定を開始');
-      }, 500);
-    }
-  }, [wizardStep, sectionStartFrame, sectionEndFrame, sectionMidFrame, sectionClickMode]);
 
   // キーボード操作
   useEffect(() => {
@@ -3164,129 +3135,190 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             <div className="wizard-step-header">
               <h2 className="wizard-step-title">ステップ 5: 区間設定</h2>
               <p className="wizard-step-desc">
-                解析する区間の開始フレームと終了フレームを設定してください。
+                スライダーで簡単に設定できます。自動提案ボタンも用意しています。
               </p>
             </div>
 
-            {/* クリックモードバナー（画面全体に固定） */}
-            {sectionClickMode && (
-              <div style={{
-                position: 'fixed',
-                top: isMobile ? '60px' : '80px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                color: 'white',
-                padding: '16px 32px',
-                borderRadius: '12px',
-                fontWeight: 'bold',
-                fontSize: '1.1rem',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-                zIndex: 10000,
-                pointerEvents: 'none',
-                textAlign: 'center',
-                minWidth: '300px',
-                border: '3px solid white',
-                animation: 'pulse 2s infinite'
-              }}>
-                <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>
-                  {sectionClickMode === 'start' && '🟢'}
-                  {sectionClickMode === 'mid' && '🟡'}
-                  {sectionClickMode === 'end' && '🔴'}
-                </div>
-                <div>
-                  {sectionClickMode === 'start' && 'スタート地点をクリック'}
-                  {sectionClickMode === 'mid' && '中間地点をクリック'}
-                  {sectionClickMode === 'end' && 'フィニッシュ地点をクリック'}
-                </div>
-                <div style={{ fontSize: '0.85rem', marginTop: '4px', opacity: 0.9 }}>
-                  ⬇️ 下のキャンバスをクリックしてください
-                </div>
+            {/* 自動提案ボタン */}
+            <div style={{ 
+              marginBottom: '2rem', 
+              padding: '1.5rem', 
+              background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+              borderRadius: '12px',
+              border: '2px solid #3b82f6'
+            }}>
+              <div style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '0.8rem', color: '#1e40af' }}>
+                💡 自動提案
               </div>
-            )}
+              <button
+                onClick={() => {
+                  const start = Math.floor(framesCount * 0.1);
+                  const end = Math.floor(framesCount * 0.9);
+                  const mid = Math.floor((start + end) / 2);
+                  
+                  setSectionStartFrame(start);
+                  setSectionEndFrame(end);
+                  setSectionMidFrame(mid);
+                  setCurrentFrame(start);
+                  
+                  const startHipX = calculateHipPosition(start);
+                  const endHipX = calculateHipPosition(end);
+                  const midHipX = calculateHipPosition(mid);
+                  
+                  setSavedStartHipX(startHipX);
+                  setSavedEndHipX(endHipX);
+                  setSavedMidHipX(midHipX);
+                  
+                  setStartLineOffset(0);
+                  setEndLineOffset(0);
+                  setMidLineOffset(0);
+                  
+                  console.log(`✨ 自動提案: Start=${start}, Mid=${mid}, End=${end}`);
+                }}
+                className="btn-primary-large"
+                style={{ width: '100%' }}
+              >
+                ✨ 自動で区間を設定（動画の10%〜90%）
+              </button>
+            </div>
 
-            <div className="canvas-area" style={{ position: 'relative' }}>
+            {/* プレビューキャンバス */}
+            <div className="canvas-area" style={{ position: 'relative', marginBottom: '1.5rem' }}>
               <canvas 
                 ref={displayCanvasRef} 
-                className="preview-canvas" 
-                onClick={(e) => {
-                  if (!ready || !sectionClickMode) return;
-                  
-                  // キャンバス上のクリック位置からフレームを特定
-                  const canvas = displayCanvasRef.current;
-                  if (!canvas) return;
-                  
-                  const rect = canvas.getBoundingClientRect();
-                  const clickX = e.clientX - rect.left;
-                  
-                  // 実際のキャンバスサイズを使用（CSS表示サイズではなく）
-                  const canvasWidth = canvas.width;
-                  const displayWidth = rect.width;
-                  
-                  // 表示サイズから実際のキャンバス座標に変換
-                  const actualClickX = (clickX / displayWidth) * canvasWidth;
-                  
-                  // クリック位置の割合からフレーム番号を計算
-                  const clickRatio = actualClickX / canvasWidth;
-                  let targetFrame = Math.round(clickRatio * (framesCount - 1));
-                  targetFrame = Math.max(0, Math.min(framesCount - 1, targetFrame));
-                  
-                  // 最も近い有効なフレームを探す（腰の位置が取得できるフレーム）
-                  let bestFrame = targetFrame;
-                  let bestDistance = Infinity;
-                  
-                  // ターゲットフレーム周辺±30フレームを探索
-                  for (let offset = 0; offset <= 30; offset++) {
-                    for (const testFrame of [targetFrame + offset, targetFrame - offset]) {
-                      if (testFrame < 0 || testFrame >= framesCount) continue;
-                      
-                      const hipX = calculateHipPosition(testFrame);
-                      if (hipX !== null) {
-                        const distance = Math.abs(testFrame - targetFrame);
-                        if (distance < bestDistance) {
-                          bestDistance = distance;
-                          bestFrame = testFrame;
-                        }
-                        break;
-                      }
-                    }
-                    if (bestDistance < Infinity) break;
-                  }
-                  
-                  // フレームを設定してジャンプ
-                  const hipX = calculateHipPosition(bestFrame);
-                  
-                  if (sectionClickMode === 'start') {
-                    setSectionStartFrame(bestFrame);
-                    setStartLineOffset(0);
-                    setSavedStartHipX(hipX);
-                    setCurrentFrame(bestFrame);
-                    console.log(`🟢 スタート設定: Frame ${bestFrame} (クリック位置から自動検出)`);
-                    setSectionClickMode(null);
-                    // スタート設定完了後、useEffectでフィニッシュ設定に自動遷移
-                  } else if (sectionClickMode === 'end') {
-                    setSectionEndFrame(bestFrame);
-                    setEndLineOffset(0);
-                    setSavedEndHipX(hipX);
-                    setCurrentFrame(bestFrame);
-                    console.log(`🔴 フィニッシュ設定: Frame ${bestFrame} (クリック位置から自動検出)`);
-                    setSectionClickMode(null);
-                    // フィニッシュ設定完了後、useEffectで中間地点設定に自動遷移
-                  } else if (sectionClickMode === 'mid') {
-                    setSectionMidFrame(bestFrame);
-                    setMidLineOffset(0);
-                    setSavedMidHipX(hipX);
-                    setCurrentFrame(bestFrame);
-                    console.log(`🟡 中間設定: Frame ${bestFrame} (クリック位置から自動検出)`);
-                    setSectionClickMode(null);
-                    // 中間地点設定完了（全ての設定完了）
-                  }
-                }}
-                style={{
-                  cursor: sectionClickMode ? 'crosshair' : 'default',
-                  border: sectionClickMode ? '4px solid #3b82f6' : 'none'
-                }}
+                className="preview-canvas"
               />
+            </div>
+
+            {/* スライダーコントロール */}
+            <div style={{ 
+              padding: '1.5rem', 
+              background: 'var(--gray-50)', 
+              borderRadius: '12px',
+              marginBottom: '1.5rem'
+            }}>
+              {/* スタート地点 */}
+              <div style={{ marginBottom: '2rem' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  marginBottom: '0.8rem'
+                }}>
+                  <label style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#059669' }}>
+                    🟢 スタート地点
+                  </label>
+                  <div style={{ 
+                    fontSize: '1rem', 
+                    fontWeight: 'bold',
+                    color: '#059669',
+                    background: 'white',
+                    padding: '4px 12px',
+                    borderRadius: '6px'
+                  }}>
+                    フレーム: {sectionStartFrame || 0}
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(framesCount - 1, 0)}
+                  step={1}
+                  value={sectionStartFrame || 0}
+                  onChange={(e) => {
+                    const frame = Number(e.target.value);
+                    setSectionStartFrame(frame);
+                    setCurrentFrame(frame);
+                    const hipX = calculateHipPosition(frame);
+                    setSavedStartHipX(hipX);
+                    setStartLineOffset(0);
+                  }}
+                  className="input-field"
+                  style={{ cursor: 'pointer', width: '100%' }}
+                />
+              </div>
+
+              {/* フィニッシュ地点 */}
+              <div style={{ marginBottom: '2rem' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  marginBottom: '0.8rem'
+                }}>
+                  <label style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#dc2626' }}>
+                    🔴 フィニッシュ地点
+                  </label>
+                  <div style={{ 
+                    fontSize: '1rem', 
+                    fontWeight: 'bold',
+                    color: '#dc2626',
+                    background: 'white',
+                    padding: '4px 12px',
+                    borderRadius: '6px'
+                  }}>
+                    フレーム: {sectionEndFrame || framesCount - 1}
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(framesCount - 1, 0)}
+                  step={1}
+                  value={sectionEndFrame || framesCount - 1}
+                  onChange={(e) => {
+                    const frame = Number(e.target.value);
+                    setSectionEndFrame(frame);
+                    setCurrentFrame(frame);
+                    const hipX = calculateHipPosition(frame);
+                    setSavedEndHipX(hipX);
+                    setEndLineOffset(0);
+                  }}
+                  className="input-field"
+                  style={{ cursor: 'pointer', width: '100%' }}
+                />
+              </div>
+
+              {/* 中間地点 */}
+              <div>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  marginBottom: '0.8rem'
+                }}>
+                  <label style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#f59e0b' }}>
+                    🟡 中間地点（任意）
+                  </label>
+                  <div style={{ 
+                    fontSize: '1rem', 
+                    fontWeight: 'bold',
+                    color: '#f59e0b',
+                    background: 'white',
+                    padding: '4px 12px',
+                    borderRadius: '6px'
+                  }}>
+                    フレーム: {sectionMidFrame || Math.floor(framesCount / 2)}
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(framesCount - 1, 0)}
+                  step={1}
+                  value={sectionMidFrame || Math.floor(framesCount / 2)}
+                  onChange={(e) => {
+                    const frame = Number(e.target.value);
+                    setSectionMidFrame(frame);
+                    setCurrentFrame(frame);
+                    const hipX = calculateHipPosition(frame);
+                    setSavedMidHipX(hipX);
+                    setMidLineOffset(0);
+                  }}
+                  className="input-field"
+                  style={{ cursor: 'pointer', width: '100%' }}
+                />
+              </div>
             </div>
 
             <div className="frame-control">
