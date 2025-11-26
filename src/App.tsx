@@ -4443,10 +4443,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 padding: '16px',
                 borderRadius: '8px',
                 margin: '16px 0',
-                maxHeight: '200px',
+                maxHeight: '500px',
                 overflowY: 'auto'
               }}>
-                <h4 style={{ margin: '0 0 12px 0', fontWeight: 'bold' }}>📍 マーカー一覧</h4>
+                <h4 style={{ margin: '0 0 12px 0', fontWeight: 'bold' }}>📍 マーカー一覧（全 {Math.floor(contactFrames.length / 2)} ステップ）</h4>
                 <div style={{ display: 'grid', gap: '8px' }}>
                   {Array.from({ length: Math.floor(contactFrames.length / 2) }, (_, i) => {
                     const contactFrame = contactFrames[i * 2];
@@ -4476,8 +4476,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                           </span>
                         </div>
                         
-                        {/* 離地フレームの微調整ボタン */}
-                        {isAuto && (
+                        {/* 接地フレームの微調整ボタン（i > 0の場合のみ表示） */}
+                        {i > 0 && (
                           <div style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -4485,18 +4485,15 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                             paddingTop: '8px',
                             borderTop: '1px solid #e5e7eb'
                           }}>
-                            <span style={{ fontSize: '0.8rem', color: '#6b7280', minWidth: '80px' }}>離地を微調整:</span>
+                            <span style={{ fontSize: '0.8rem', color: '#6b7280', minWidth: '80px' }}>接地を微調整:</span>
                             <button
                               onClick={() => {
-                                const newFrames = [...contactFrames];
-                                const adjustedFrame = Math.max(contactFrame + 1, toeOffFrame - 5);
-                                newFrames[i * 2 + 1] = adjustedFrame;
-                                
-                                // manualContactFramesとautoToeOffFramesを再構成
-                                const newManual = newFrames.filter((_, idx) => idx % 2 === 0);
-                                const newAuto = newFrames.filter((_, idx) => idx % 2 === 1).slice(1); // 最初はキャリブレーション
+                                const newManual = [...manualContactFrames];
+                                const prevToeOff = i > 0 ? contactFrames[(i - 1) * 2 + 1] : 0;
+                                const adjustedFrame = Math.max(prevToeOff + 1, contactFrame - 5);
+                                newManual[i] = adjustedFrame;
                                 setManualContactFrames(newManual);
-                                setAutoToeOffFrames(newAuto);
+                                console.log(`✅ ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正`);
                               }}
                               style={{
                                 padding: '4px 12px',
@@ -4512,14 +4509,12 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                             </button>
                             <button
                               onClick={() => {
-                                const newFrames = [...contactFrames];
-                                const adjustedFrame = Math.max(contactFrame + 1, toeOffFrame - 1);
-                                newFrames[i * 2 + 1] = adjustedFrame;
-                                
-                                const newManual = newFrames.filter((_, idx) => idx % 2 === 0);
-                                const newAuto = newFrames.filter((_, idx) => idx % 2 === 1).slice(1);
+                                const newManual = [...manualContactFrames];
+                                const prevToeOff = i > 0 ? contactFrames[(i - 1) * 2 + 1] : 0;
+                                const adjustedFrame = Math.max(prevToeOff + 1, contactFrame - 1);
+                                newManual[i] = adjustedFrame;
                                 setManualContactFrames(newManual);
-                                setAutoToeOffFrames(newAuto);
+                                console.log(`✅ ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正`);
                               }}
                               style={{
                                 padding: '4px 12px',
@@ -4535,14 +4530,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                             </button>
                             <button
                               onClick={() => {
-                                const newFrames = [...contactFrames];
-                                const adjustedFrame = Math.min(framesCount - 1, toeOffFrame + 1);
-                                newFrames[i * 2 + 1] = adjustedFrame;
-                                
-                                const newManual = newFrames.filter((_, idx) => idx % 2 === 0);
-                                const newAuto = newFrames.filter((_, idx) => idx % 2 === 1).slice(1);
+                                const newManual = [...manualContactFrames];
+                                const adjustedFrame = Math.min(toeOffFrame - 1, contactFrame + 1);
+                                newManual[i] = adjustedFrame;
                                 setManualContactFrames(newManual);
-                                setAutoToeOffFrames(newAuto);
+                                console.log(`✅ ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正`);
                               }}
                               style={{
                                 padding: '4px 12px',
@@ -4558,14 +4550,123 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                             </button>
                             <button
                               onClick={() => {
-                                const newFrames = [...contactFrames];
-                                const adjustedFrame = Math.min(framesCount - 1, toeOffFrame + 5);
-                                newFrames[i * 2 + 1] = adjustedFrame;
-                                
-                                const newManual = newFrames.filter((_, idx) => idx % 2 === 0);
-                                const newAuto = newFrames.filter((_, idx) => idx % 2 === 1).slice(1);
+                                const newManual = [...manualContactFrames];
+                                const adjustedFrame = Math.min(toeOffFrame - 1, contactFrame + 5);
+                                newManual[i] = adjustedFrame;
                                 setManualContactFrames(newManual);
+                                console.log(`✅ ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正`);
+                              }}
+                              style={{
+                                padding: '4px 12px',
+                                fontSize: '0.8rem',
+                                borderRadius: '4px',
+                                border: '1px solid #d1d5db',
+                                background: 'white',
+                                cursor: 'pointer',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              +5
+                            </button>
+                            <button
+                              onClick={() => {
+                                setCurrentFrame(contactFrame);
+                              }}
+                              style={{
+                                padding: '4px 12px',
+                                fontSize: '0.8rem',
+                                borderRadius: '4px',
+                                border: '1px solid #10b981',
+                                background: '#f0fdf4',
+                                color: '#10b981',
+                                cursor: 'pointer',
+                                fontWeight: 'bold',
+                                marginLeft: '8px'
+                              }}
+                            >
+                              📍 表示
+                            </button>
+                          </div>
+                        )}
+                        
+                        {/* 離地フレームの微調整ボタン */}
+                        {isAuto && (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            paddingTop: '8px',
+                            borderTop: '1px solid #e5e7eb'
+                          }}>
+                            <span style={{ fontSize: '0.8rem', color: '#6b7280', minWidth: '80px' }}>離地を微調整:</span>
+                            <button
+                              onClick={() => {
+                                // このステップ（i）の離地フレームのみを修正
+                                const newAuto = [...autoToeOffFrames];
+                                const adjustedFrame = Math.max(contactFrame + 1, toeOffFrame - 5);
+                                newAuto[i - 1] = adjustedFrame; // i-1: 最初はキャリブレーション
                                 setAutoToeOffFrames(newAuto);
+                                console.log(`✅ ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正`);
+                              }}
+                              style={{
+                                padding: '4px 12px',
+                                fontSize: '0.8rem',
+                                borderRadius: '4px',
+                                border: '1px solid #d1d5db',
+                                background: 'white',
+                                cursor: 'pointer',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              -5
+                            </button>
+                            <button
+                              onClick={() => {
+                                const newAuto = [...autoToeOffFrames];
+                                const adjustedFrame = Math.max(contactFrame + 1, toeOffFrame - 1);
+                                newAuto[i - 1] = adjustedFrame;
+                                setAutoToeOffFrames(newAuto);
+                                console.log(`✅ ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正`);
+                              }}
+                              style={{
+                                padding: '4px 12px',
+                                fontSize: '0.8rem',
+                                borderRadius: '4px',
+                                border: '1px solid #d1d5db',
+                                background: 'white',
+                                cursor: 'pointer',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              -1
+                            </button>
+                            <button
+                              onClick={() => {
+                                const newAuto = [...autoToeOffFrames];
+                                const adjustedFrame = Math.min(framesCount - 1, toeOffFrame + 1);
+                                newAuto[i - 1] = adjustedFrame;
+                                setAutoToeOffFrames(newAuto);
+                                console.log(`✅ ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正`);
+                              }}
+                              style={{
+                                padding: '4px 12px',
+                                fontSize: '0.8rem',
+                                borderRadius: '4px',
+                                border: '1px solid #d1d5db',
+                                background: 'white',
+                                cursor: 'pointer',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              +1
+                            </button>
+                            <button
+                              onClick={() => {
+                                const newAuto = [...autoToeOffFrames];
+                                const adjustedFrame = Math.min(framesCount - 1, toeOffFrame + 5);
+                                newAuto[i - 1] = adjustedFrame;
+                                setAutoToeOffFrames(newAuto);
+                                console.log(`✅ ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正`);
                               }}
                               style={{
                                 padding: '4px 12px',
