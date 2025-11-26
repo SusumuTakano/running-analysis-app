@@ -3350,23 +3350,149 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     return (
                       <div key={i} style={{
                         display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px',
-                        padding: '8px',
+                        flexDirection: 'column',
+                        gap: '8px',
+                        padding: '12px',
                         background: 'white',
-                        borderRadius: '6px',
+                        borderRadius: '8px',
                         fontSize: '0.9rem',
                         border: currentFrame === contactFrame || currentFrame === toeOffFrame ? '2px solid #3b82f6' : '1px solid #e5e7eb'
                       }}>
-                        <strong>ステップ {i + 1}:</strong>
-                        <span style={{ color: '#10b981', fontWeight: 'bold' }}>
-                          🟢 接地 {contactFrame}
-                        </span>
-                        <span>→</span>
-                        <span style={{ color: '#ef4444', fontWeight: 'bold' }}>
-                          🔴 離地 {toeOffFrame}
-                          {isAuto && <span style={{ fontSize: '0.75rem', marginLeft: '4px', color: '#6b7280' }}>(自動)</span>}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <strong>ステップ {i + 1}:</strong>
+                          <span style={{ color: '#10b981', fontWeight: 'bold' }}>
+                            🟢 接地 {contactFrame}
+                          </span>
+                          <span>→</span>
+                          <span style={{ color: '#ef4444', fontWeight: 'bold' }}>
+                            🔴 離地 {toeOffFrame}
+                            {isAuto && <span style={{ fontSize: '0.75rem', marginLeft: '4px', color: '#6b7280' }}>(自動)</span>}
+                          </span>
+                        </div>
+                        
+                        {/* 離地フレームの微調整ボタン */}
+                        {isAuto && (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            paddingTop: '8px',
+                            borderTop: '1px solid #e5e7eb'
+                          }}>
+                            <span style={{ fontSize: '0.8rem', color: '#6b7280', minWidth: '80px' }}>離地を微調整:</span>
+                            <button
+                              onClick={() => {
+                                const newFrames = [...contactFrames];
+                                const adjustedFrame = Math.max(contactFrame + 1, toeOffFrame - 5);
+                                newFrames[i * 2 + 1] = adjustedFrame;
+                                
+                                // manualContactFramesとautoToeOffFramesを再構成
+                                const newManual = newFrames.filter((_, idx) => idx % 2 === 0);
+                                const newAuto = newFrames.filter((_, idx) => idx % 2 === 1).slice(1); // 最初はキャリブレーション
+                                setManualContactFrames(newManual);
+                                setAutoToeOffFrames(newAuto);
+                              }}
+                              style={{
+                                padding: '4px 12px',
+                                fontSize: '0.8rem',
+                                borderRadius: '4px',
+                                border: '1px solid #d1d5db',
+                                background: 'white',
+                                cursor: 'pointer',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              -5
+                            </button>
+                            <button
+                              onClick={() => {
+                                const newFrames = [...contactFrames];
+                                const adjustedFrame = Math.max(contactFrame + 1, toeOffFrame - 1);
+                                newFrames[i * 2 + 1] = adjustedFrame;
+                                
+                                const newManual = newFrames.filter((_, idx) => idx % 2 === 0);
+                                const newAuto = newFrames.filter((_, idx) => idx % 2 === 1).slice(1);
+                                setManualContactFrames(newManual);
+                                setAutoToeOffFrames(newAuto);
+                              }}
+                              style={{
+                                padding: '4px 12px',
+                                fontSize: '0.8rem',
+                                borderRadius: '4px',
+                                border: '1px solid #d1d5db',
+                                background: 'white',
+                                cursor: 'pointer',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              -1
+                            </button>
+                            <button
+                              onClick={() => {
+                                const newFrames = [...contactFrames];
+                                const adjustedFrame = Math.min(framesCount - 1, toeOffFrame + 1);
+                                newFrames[i * 2 + 1] = adjustedFrame;
+                                
+                                const newManual = newFrames.filter((_, idx) => idx % 2 === 0);
+                                const newAuto = newFrames.filter((_, idx) => idx % 2 === 1).slice(1);
+                                setManualContactFrames(newManual);
+                                setAutoToeOffFrames(newAuto);
+                              }}
+                              style={{
+                                padding: '4px 12px',
+                                fontSize: '0.8rem',
+                                borderRadius: '4px',
+                                border: '1px solid #d1d5db',
+                                background: 'white',
+                                cursor: 'pointer',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              +1
+                            </button>
+                            <button
+                              onClick={() => {
+                                const newFrames = [...contactFrames];
+                                const adjustedFrame = Math.min(framesCount - 1, toeOffFrame + 5);
+                                newFrames[i * 2 + 1] = adjustedFrame;
+                                
+                                const newManual = newFrames.filter((_, idx) => idx % 2 === 0);
+                                const newAuto = newFrames.filter((_, idx) => idx % 2 === 1).slice(1);
+                                setManualContactFrames(newManual);
+                                setAutoToeOffFrames(newAuto);
+                              }}
+                              style={{
+                                padding: '4px 12px',
+                                fontSize: '0.8rem',
+                                borderRadius: '4px',
+                                border: '1px solid #d1d5db',
+                                background: 'white',
+                                cursor: 'pointer',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              +5
+                            </button>
+                            <button
+                              onClick={() => {
+                                setCurrentFrame(toeOffFrame);
+                              }}
+                              style={{
+                                padding: '4px 12px',
+                                fontSize: '0.8rem',
+                                borderRadius: '4px',
+                                border: '1px solid #3b82f6',
+                                background: '#eff6ff',
+                                color: '#3b82f6',
+                                cursor: 'pointer',
+                                fontWeight: 'bold',
+                                marginLeft: '8px'
+                              }}
+                            >
+                              📍 表示
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
