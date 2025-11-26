@@ -3326,6 +3326,103 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                             選択範囲: {((trimEnd > 0 ? trimEnd : videoDuration) - trimStart).toFixed(2)}秒
                           </div>
                         </div>
+                        
+                        {/* トリミング範囲のサムネイルプレビュー */}
+                        {(trimStart > 0 || trimEnd > 0) && (
+                          <div style={{
+                            marginTop: '1rem',
+                            padding: '1rem',
+                            background: 'var(--gray-50)',
+                            borderRadius: '8px',
+                            border: '2px solid var(--success)'
+                          }}>
+                            <div style={{ 
+                              fontSize: '0.9rem', 
+                              fontWeight: 'bold', 
+                              marginBottom: '0.8rem',
+                              color: 'var(--gray-700)'
+                            }}>
+                              📸 トリミング範囲プレビュー
+                            </div>
+                            <div style={{ 
+                              display: 'grid', 
+                              gridTemplateColumns: '1fr 1fr', 
+                              gap: '1rem' 
+                            }}>
+                              {/* 開始位置のサムネイル */}
+                              <div>
+                                <div style={{ 
+                                  fontSize: '0.85rem', 
+                                  color: 'var(--gray-600)', 
+                                  marginBottom: '0.5rem',
+                                  fontWeight: 'bold'
+                                }}>
+                                  🟢 開始: {trimStart.toFixed(2)}秒
+                                </div>
+                                <canvas
+                                  ref={(canvas) => {
+                                    if (canvas && previewVideoRef.current) {
+                                      const video = previewVideoRef.current;
+                                      const ctx = canvas.getContext('2d');
+                                      if (ctx && video.readyState >= 2) {
+                                        canvas.width = 320;
+                                        canvas.height = 180;
+                                        video.currentTime = trimStart;
+                                        video.onseeked = () => {
+                                          ctx.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
+                                          ctx.drawImage(video, 0, 0, 320, 180);
+                                          ctx.filter = 'none';
+                                        };
+                                      }
+                                    }
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    height: 'auto',
+                                    borderRadius: '6px',
+                                    border: '2px solid #10b981'
+                                  }}
+                                />
+                              </div>
+                              
+                              {/* 終了位置のサムネイル */}
+                              <div>
+                                <div style={{ 
+                                  fontSize: '0.85rem', 
+                                  color: 'var(--gray-600)', 
+                                  marginBottom: '0.5rem',
+                                  fontWeight: 'bold'
+                                }}>
+                                  🔴 終了: {(trimEnd > 0 ? trimEnd : videoDuration).toFixed(2)}秒
+                                </div>
+                                <canvas
+                                  ref={(canvas) => {
+                                    if (canvas && previewVideoRef.current) {
+                                      const video = previewVideoRef.current;
+                                      const ctx = canvas.getContext('2d');
+                                      if (ctx && video.readyState >= 2) {
+                                        canvas.width = 320;
+                                        canvas.height = 180;
+                                        video.currentTime = trimEnd > 0 ? trimEnd : videoDuration;
+                                        video.onseeked = () => {
+                                          ctx.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
+                                          ctx.drawImage(video, 0, 0, 320, 180);
+                                          ctx.filter = 'none';
+                                        };
+                                      }
+                                    }
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    height: 'auto',
+                                    borderRadius: '6px',
+                                    border: '2px solid #ef4444'
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <span style={{ fontSize: '0.85rem', color: 'var(--gray-500)' }}>
                         💡 スライダーを動かすと動画がその位置にジャンプします
