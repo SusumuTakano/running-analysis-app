@@ -3921,8 +3921,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '4px', color: '#047857' }}>
                         ⚡ 方式1: 最速・完全自動
                       </div>
-                      <div style={{ fontSize: '0.9rem', color: '#6b7280' }}>
+                      <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '4px' }}>
                         最初の1歩（接地→離地）のみ手動マーク → 残りは「すべて自動検出」ボタンで完全自動
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 'bold' }}>
+                        ⚠️ 姿勢検出（ステップ3）が必須
                       </div>
                     </button>
                     
@@ -3943,8 +3946,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '4px', color: '#1e40af' }}>
                         🎯 方式2: バランス型（推奨）
                       </div>
-                      <div style={{ fontSize: '0.9rem', color: '#6b7280' }}>
+                      <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '4px' }}>
                         最初の1歩（接地→離地）のみ手動マーク → 残りは接地のみ手動、離地は自動検出
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 'bold' }}>
+                        ⚠️ 姿勢検出（ステップ3）が必須
                       </div>
                     </button>
                     
@@ -3965,8 +3971,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '4px', color: '#92400e' }}>
                         ✋ 方式3: 完全手動
                       </div>
-                      <div style={{ fontSize: '0.9rem', color: '#6b7280' }}>
+                      <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '4px' }}>
                         すべての接地と離地を手動でマーク（最も正確だが時間がかかる）
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 'bold' }}>
+                        ✅ 姿勢検出なしでも使用可能
                       </div>
                     </button>
                   </div>
@@ -4153,6 +4162,27 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 </div>
               )}
               
+              {/* 姿勢検出なしの警告 */}
+              {calibrationType && (calibrationType === 1 || calibrationType === 2) && poseResults.length === 0 && (
+                <div style={{
+                  background: '#fef2f2',
+                  border: '2px solid #dc2626',
+                  padding: '16px',
+                  borderRadius: '8px',
+                  margin: '12px 0'
+                }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#dc2626' }}>
+                    ⚠️ 姿勢検出データがありません
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: '#7f1d1d', marginBottom: '8px' }}>
+                    方式{calibrationType}は自動検出を使用するため、姿勢検出（ステップ3）が必須です。
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: '#7f1d1d' }}>
+                    <strong>対処法:</strong> ステップ3に戻って姿勢検出を実行するか、方式3（完全手動）を選択してください。
+                  </div>
+                </div>
+              )}
+              
               {/* キャリブレーション方式別のガイダンス */}
               {calibrationType && calibrationMode < 2 && (
                 <div style={{
@@ -4170,7 +4200,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   <div style={{ fontSize: '0.85rem', color: '#374151' }}>
                     {calibrationType === 1 && '最初の1歩（接地→離地）をマークすると、残りは「すべて自動検出」ボタンで完全自動検出されます。'}
                     {calibrationType === 2 && '最初の1歩（接地→離地）をマークした後、残りの接地のみマークすると離地は自動検出されます。'}
-                    {calibrationType === 3 && 'すべての接地と離地を手動でマークします。最も正確ですが時間がかかります。'}
+                    {calibrationType === 3 && 'すべての接地と離地を手動でマークします。最も正確ですが時間がかかります。姿勢検出なしでも使用可能です。'}
                   </div>
                 </div>
               )}

@@ -382,9 +382,10 @@ body {
   box-shadow: var(--shadow-md);
 }
 
-/* PC版: ステップ5のみキャンバスを固定表示 */
+/* PC版: ステップ4, 5でキャンバスを固定表示 */
 @media (min-width: 769px) {
-  /* ステップ5専用: キャンバス固定 */
+  /* ステップ4, 5共通: キャンバス固定 */
+  .wizard-step-4 .canvas-area,
   .wizard-step-5 .canvas-area {
     position: fixed !important;
     top: 80px !important; /* ヘッダー分の余白 */
@@ -397,19 +398,10 @@ body {
     pointer-events: auto; /* クリック可能に */
   }
 
-  /* ステップ5: キャンバス固定時のコンテンツ余白調整 */
+  /* ステップ4, 5: キャンバス固定時のコンテンツ余白調整 */
+  .wizard-step-4 .wizard-content,
   .wizard-step-5 .wizard-content {
     padding-top: calc(70vh + 40px); /* キャンバス高さ + 余白 */
-  }
-  
-  /* ステップ4: 通常のスクロール表示 */
-  .wizard-step-4 .canvas-area {
-    position: relative;
-    top: 0;
-    left: 0;
-    transform: none;
-    width: 100%;
-    max-width: 100%;
   }
 }
 
