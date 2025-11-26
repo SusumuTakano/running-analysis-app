@@ -2661,31 +2661,67 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 ref={displayCanvasRef} 
                 className="preview-canvas" 
                 onClick={(e) => {
-                  if (!ready) return;
+                  if (!ready || !sectionClickMode) return;
                   
-                  // クリックモードが有効な場合は、現在のフレームを設定
-                  if (sectionClickMode) {
-                    const hipX = calculateHipPosition(currentFrame);
-                    
-                    if (sectionClickMode === 'start') {
-                      setSectionStartFrame(currentFrame);
-                      setStartLineOffset(0);
-                      setSavedStartHipX(hipX);
-                      console.log(`🟢 スタート設定: Frame ${currentFrame}`);
-                      setSectionClickMode(null);
-                    } else if (sectionClickMode === 'mid') {
-                      setSectionMidFrame(currentFrame);
-                      setMidLineOffset(0);
-                      setSavedMidHipX(hipX);
-                      console.log(`🟡 中間設定: Frame ${currentFrame}`);
-                      setSectionClickMode(null);
-                    } else if (sectionClickMode === 'end') {
-                      setSectionEndFrame(currentFrame);
-                      setEndLineOffset(0);
-                      setSavedEndHipX(hipX);
-                      console.log(`🔴 フィニッシュ設定: Frame ${currentFrame}`);
-                      setSectionClickMode(null);
+                  // キャンバス上のクリック位置からフレームを特定
+                  const canvas = displayCanvasRef.current;
+                  if (!canvas) return;
+                  
+                  const rect = canvas.getBoundingClientRect();
+                  const clickX = e.clientX - rect.left;
+                  const canvasWidth = rect.width;
+                  
+                  // クリック位置の割合からフレーム番号を計算
+                  const clickRatio = clickX / canvasWidth;
+                  let targetFrame = Math.round(clickRatio * (framesCount - 1));
+                  targetFrame = Math.max(0, Math.min(framesCount - 1, targetFrame));
+                  
+                  // 最も近い有効なフレームを探す（腰の位置が取得できるフレーム）
+                  let bestFrame = targetFrame;
+                  let bestDistance = Infinity;
+                  
+                  // ターゲットフレーム周辺±30フレームを探索
+                  for (let offset = 0; offset <= 30; offset++) {
+                    for (const testFrame of [targetFrame + offset, targetFrame - offset]) {
+                      if (testFrame < 0 || testFrame >= framesCount) continue;
+                      
+                      const hipX = calculateHipPosition(testFrame);
+                      if (hipX !== null) {
+                        const distance = Math.abs(testFrame - targetFrame);
+                        if (distance < bestDistance) {
+                          bestDistance = distance;
+                          bestFrame = testFrame;
+                        }
+                        break;
+                      }
                     }
+                    if (bestDistance < Infinity) break;
+                  }
+                  
+                  // フレームを設定してジャンプ
+                  const hipX = calculateHipPosition(bestFrame);
+                  
+                  if (sectionClickMode === 'start') {
+                    setSectionStartFrame(bestFrame);
+                    setStartLineOffset(0);
+                    setSavedStartHipX(hipX);
+                    setCurrentFrame(bestFrame);
+                    console.log(`🟢 スタート設定: Frame ${bestFrame} (クリック位置から自動検出)`);
+                    setSectionClickMode(null);
+                  } else if (sectionClickMode === 'mid') {
+                    setSectionMidFrame(bestFrame);
+                    setMidLineOffset(0);
+                    setSavedMidHipX(hipX);
+                    setCurrentFrame(bestFrame);
+                    console.log(`🟡 中間設定: Frame ${bestFrame} (クリック位置から自動検出)`);
+                    setSectionClickMode(null);
+                  } else if (sectionClickMode === 'end') {
+                    setSectionEndFrame(bestFrame);
+                    setEndLineOffset(0);
+                    setSavedEndHipX(hipX);
+                    setCurrentFrame(bestFrame);
+                    console.log(`🔴 フィニッシュ設定: Frame ${bestFrame} (クリック位置から自動検出)`);
+                    setSectionClickMode(null);
                   }
                 }}
                 style={{
@@ -2708,9 +2744,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   zIndex: 10,
                   pointerEvents: 'none'
                 }}>
-                  {sectionClickMode === 'start' && '🟢 キャンバス上でクリックしてスタート地点を設定'}
-                  {sectionClickMode === 'mid' && '🟡 キャンバス上でクリックして中間地点を設定'}
-                  {sectionClickMode === 'end' && '🔴 キャンバス上でクリックしてフィニッシュ地点を設定'}
+                  {sectionClickMode === 'start' && '🟢 スタート地点をクリック（位置から自動検出）'}
+                  {sectionClickMode === 'mid' && '🟡 中間地点をクリック（位置から自動検出）'}
+                  {sectionClickMode === 'end' && '🔴 フィニッシュ地点をクリック（位置から自動検出）'}
                 </div>
               )}
             </div>
@@ -2748,7 +2784,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             <div className="section-settings">
               <div className="section-markers-info">
                 <p className="info-text">
-                  🖱️ 「クリックで設定」ボタンを押してから、キャンバス上でフレームをクリックして設定してください。<br/>
+                  🖱️ 「クリックで設定」ボタンを押してから、キャンバス上の目的の位置を直接クリックしてください。<br/>
+                  ⚡ クリック位置から自動的に最適なフレームが検出・設定されます。<br/>
                   📍 設定後、±ボタンでフレーム単位の微調整ができます。
                 </p>
               </div>
