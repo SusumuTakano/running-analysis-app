@@ -397,6 +397,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       ? distanceValue / sectionTime
       : null;
 
+  // ------------ 区間設定クリックモード ------------
+  const [sectionClickMode, setSectionClickMode] = useState<'start' | 'mid' | 'end' | null>(null);
+
   // ------------ 接地／離地マーカー（キャリブレーション対応） ------------
   const [calibrationMode, setCalibrationMode] = useState<boolean>(true); // キャリブレーションモード
   const [toeOffThreshold, setToeOffThreshold] = useState<number | null>(null); // つま先上昇閾値（ピクセル）
@@ -2653,8 +2656,60 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               </p>
             </div>
 
-            <div className="canvas-area">
-              <canvas ref={displayCanvasRef} className="preview-canvas" />
+            <div className="canvas-area" style={{ position: 'relative' }}>
+              <canvas 
+                ref={displayCanvasRef} 
+                className="preview-canvas" 
+                onClick={(e) => {
+                  if (!ready || !sectionClickMode) return;
+                  
+                  // キャンバス内のクリック位置から腰の位置を計算
+                  const hipX = calculateHipPosition(currentFrame);
+                  
+                  if (sectionClickMode === 'start') {
+                    setSectionStartFrame(currentFrame);
+                    setStartLineOffset(0);
+                    setSavedStartHipX(hipX);
+                    console.log(`🟢 スタート設定（クリック）: Frame ${currentFrame}, HipX=${hipX !== null ? (hipX * 100).toFixed(1) + '%' : 'null'}`);
+                    setSectionClickMode(null);
+                  } else if (sectionClickMode === 'mid') {
+                    setSectionMidFrame(currentFrame);
+                    setMidLineOffset(0);
+                    setSavedMidHipX(hipX);
+                    console.log(`🟡 中間設定（クリック）: Frame ${currentFrame}, HipX=${hipX !== null ? (hipX * 100).toFixed(1) + '%' : 'null'}`);
+                    setSectionClickMode(null);
+                  } else if (sectionClickMode === 'end') {
+                    setSectionEndFrame(currentFrame);
+                    setEndLineOffset(0);
+                    setSavedEndHipX(hipX);
+                    console.log(`🔴 フィニッシュ設定（クリック）: Frame ${currentFrame}, HipX=${hipX !== null ? (hipX * 100).toFixed(1) + '%' : 'null'}`);
+                    setSectionClickMode(null);
+                  }
+                }}
+                style={{
+                  cursor: sectionClickMode ? 'crosshair' : 'default'
+                }}
+              />
+              {sectionClickMode && (
+                <div style={{
+                  position: 'absolute',
+                  top: '10px',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  background: 'rgba(59, 130, 246, 0.95)',
+                  color: 'white',
+                  padding: '12px 24px',
+                  borderRadius: '8px',
+                  fontWeight: 'bold',
+                  fontSize: '1rem',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                  zIndex: 10
+                }}>
+                  {sectionClickMode === 'start' && '🟢 スタートラインを設定するフレームをクリック'}
+                  {sectionClickMode === 'mid' && '🟡 中間ラインを設定するフレームをクリック'}
+                  {sectionClickMode === 'end' && '🔴 フィニッシュラインを設定するフレームをクリック'}
+                </div>
+              )}
             </div>
 
             <div className="frame-control">
@@ -2700,57 +2755,173 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   <strong>フレーム:</strong>{" "}
                   {sectionStartFrame ?? "未設定"}
                 </div>
-                <button
-                  className="btn-secondary"
-                  onClick={() => {
-                    setSectionStartFrame(currentFrame);
-                    setStartLineOffset(0);
-                    // 腰の位置を計算して保存
-                    const hipX = calculateHipPosition(currentFrame);
-                    setSavedStartHipX(hipX);
-                    console.log(`🟢 スタート設定: Frame ${currentFrame}, HipX=${hipX !== null ? (hipX * 100).toFixed(1) + '%' : 'null'}`);
-                  }}
-                  disabled={!ready}
-                >
-                  🟢 現在位置を設定
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    className={sectionClickMode === 'start' ? "btn-primary" : "btn-secondary"}
+                    onClick={() => {
+                      setSectionClickMode(sectionClickMode === 'start' ? null : 'start');
+                    }}
+                    disabled={!ready}
+                  >
+                    {sectionClickMode === 'start' ? '✖️ キャンセル' : '🖱️ クリックで設定'}
+                  </button>
+                  <button
+                    className="btn-ghost-small"
+                    onClick={() => {
+                      setSectionStartFrame(currentFrame);
+                      setStartLineOffset(0);
+                      // 腰の位置を計算して保存
+                      const hipX = calculateHipPosition(currentFrame);
+                      setSavedStartHipX(hipX);
+                      console.log(`🟢 スタート設定: Frame ${currentFrame}, HipX=${hipX !== null ? (hipX * 100).toFixed(1) + '%' : 'null'}`);
+                    }}
+                    disabled={!ready}
+                  >
+                    現在位置
+                  </button>
+                </div>
               </div>
               {sectionStartFrame != null && (
-                <div className="line-adjust-control">
-                  <label className="adjust-label">
-                    <span>線の位置調整:</span>
-                    <div className="adjust-slider-container">
-                      <button
-                        className="adjust-btn"
-                        onClick={() => setStartLineOffset((prev) => prev - 10)}
-                      >
-                        ◀
-                      </button>
-                      <input
-                        type="range"
-                        min={-200}
-                        max={200}
-                        step={1}
-                        value={startLineOffset}
-                        onChange={(e) => setStartLineOffset(Number(e.target.value))}
-                        className="adjust-slider"
-                      />
-                      <button
-                        className="adjust-btn"
-                        onClick={() => setStartLineOffset((prev) => prev + 10)}
-                      >
-                        ▶
-                      </button>
-                      <span className="adjust-value">{startLineOffset}px</span>
-                      <button
-                        className="adjust-reset"
-                        onClick={() => setStartLineOffset(0)}
-                      >
-                        リセット
-                      </button>
-                    </div>
-                  </label>
-                </div>
+                <>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '12px',
+                    background: '#f9fafb',
+                    borderRadius: '8px',
+                    marginTop: '8px'
+                  }}>
+                    <span style={{ fontSize: '0.9rem', color: '#6b7280', minWidth: '100px' }}>フレーム微調整:</span>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.max(0, sectionStartFrame - 5);
+                        setSectionStartFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedStartHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      -5
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.max(0, sectionStartFrame - 1);
+                        setSectionStartFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedStartHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      -1
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.min(framesCount - 1, sectionStartFrame + 1);
+                        setSectionStartFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedStartHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      +1
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.min(framesCount - 1, sectionStartFrame + 5);
+                        setSectionStartFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedStartHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      +5
+                    </button>
+                    <button
+                      onClick={() => setCurrentFrame(sectionStartFrame)}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #3b82f6',
+                        background: '#3b82f6',
+                        color: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold',
+                        marginLeft: '8px'
+                      }}
+                    >
+                      ジャンプ
+                    </button>
+                  </div>
+                  <div className="line-adjust-control">
+                    <label className="adjust-label">
+                      <span>線の位置調整:</span>
+                      <div className="adjust-slider-container">
+                        <button
+                          className="adjust-btn"
+                          onClick={() => setStartLineOffset((prev) => prev - 10)}
+                        >
+                          ◀
+                        </button>
+                        <input
+                          type="range"
+                          min={-200}
+                          max={200}
+                          step={1}
+                          value={startLineOffset}
+                          onChange={(e) => setStartLineOffset(Number(e.target.value))}
+                          className="adjust-slider"
+                        />
+                        <button
+                          className="adjust-btn"
+                          onClick={() => setStartLineOffset((prev) => prev + 10)}
+                        >
+                          ▶
+                        </button>
+                        <span className="adjust-value">{startLineOffset}px</span>
+                        <button
+                          className="adjust-reset"
+                          onClick={() => setStartLineOffset(0)}
+                        >
+                          リセット
+                        </button>
+                      </div>
+                    </label>
+                  </div>
+                </>
               )}
 
               <div className="section-item">
@@ -2759,20 +2930,28 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   <strong>フレーム:</strong>{" "}
                   {sectionMidFrame ?? "未設定"}
                 </div>
-                <div className="section-actions">
+                <div style={{ display: 'flex', gap: '8px' }}>
                   <button
-                    className="btn-secondary"
+                    className={sectionClickMode === 'mid' ? "btn-primary" : "btn-secondary"}
+                    onClick={() => {
+                      setSectionClickMode(sectionClickMode === 'mid' ? null : 'mid');
+                    }}
+                    disabled={!ready}
+                  >
+                    {sectionClickMode === 'mid' ? '✖️ キャンセル' : '🖱️ クリックで設定'}
+                  </button>
+                  <button
+                    className="btn-ghost-small"
                     onClick={() => {
                       setSectionMidFrame(currentFrame);
                       setMidLineOffset(0);
-                      // 腰の位置を計算して保存
                       const hipX = calculateHipPosition(currentFrame);
                       setSavedMidHipX(hipX);
                       console.log(`🟡 中間設定: Frame ${currentFrame}, HipX=${hipX !== null ? (hipX * 100).toFixed(1) + '%' : 'null'}`);
                     }}
                     disabled={!ready}
                   >
-                    🟡 現在位置を設定
+                    現在位置
                   </button>
                   {sectionMidFrame != null && (
                     <button
@@ -2789,41 +2968,146 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 </div>
               </div>
               {sectionMidFrame != null && (
-                <div className="line-adjust-control">
-                  <label className="adjust-label">
-                    <span>線の位置調整:</span>
-                    <div className="adjust-slider-container">
-                      <button
-                        className="adjust-btn"
-                        onClick={() => setMidLineOffset((prev) => prev - 10)}
-                      >
-                        ◀
-                      </button>
-                      <input
-                        type="range"
-                        min={-200}
-                        max={200}
-                        step={1}
-                        value={midLineOffset}
-                        onChange={(e) => setMidLineOffset(Number(e.target.value))}
+                <>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '12px',
+                    background: '#f9fafb',
+                    borderRadius: '8px',
+                    marginTop: '8px'
+                  }}>
+                    <span style={{ fontSize: '0.9rem', color: '#6b7280', minWidth: '100px' }}>フレーム微調整:</span>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.max(0, sectionMidFrame - 5);
+                        setSectionMidFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedMidHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      -5
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.max(0, sectionMidFrame - 1);
+                        setSectionMidFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedMidHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      -1
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.min(framesCount - 1, sectionMidFrame + 1);
+                        setSectionMidFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedMidHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      +1
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.min(framesCount - 1, sectionMidFrame + 5);
+                        setSectionMidFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedMidHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      +5
+                    </button>
+                    <button
+                      onClick={() => setCurrentFrame(sectionMidFrame)}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #3b82f6',
+                        background: '#3b82f6',
+                        color: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold',
+                        marginLeft: '8px'
+                      }}
+                    >
+                      ジャンプ
+                    </button>
+                  </div>
+                  <div className="line-adjust-control">
+                    <label className="adjust-label">
+                      <span>線の位置調整:</span>
+                      <div className="adjust-slider-container">
+                        <button
+                          className="adjust-btn"
+                          onClick={() => setMidLineOffset((prev) => prev - 10)}
+                        >
+                          ◀
+                        </button>
+                        <input
+                          type="range"
+                          min={-200}
+                          max={200}
+                          step={1}
+                          value={midLineOffset}
+                          onChange={(e) => setMidLineOffset(Number(e.target.value))}
                         className="adjust-slider"
-                      />
-                      <button
-                        className="adjust-btn"
-                        onClick={() => setMidLineOffset((prev) => prev + 10)}
-                      >
-                        ▶
-                      </button>
-                      <span className="adjust-value">{midLineOffset}px</span>
-                      <button
-                        className="adjust-reset"
-                        onClick={() => setMidLineOffset(0)}
-                      >
-                        リセット
-                      </button>
-                    </div>
-                  </label>
-                </div>
+                        />
+                        <button
+                          className="adjust-btn"
+                          onClick={() => setMidLineOffset((prev) => prev + 10)}
+                        >
+                          ▶
+                        </button>
+                        <span className="adjust-value">{midLineOffset}px</span>
+                        <button
+                          className="adjust-reset"
+                          onClick={() => setMidLineOffset(0)}
+                        >
+                          リセット
+                        </button>
+                      </div>
+                    </label>
+                  </div>
+                </>
               )}
 
               <div className="section-item">
@@ -2832,57 +3116,172 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   <strong>フレーム:</strong>{" "}
                   {sectionEndFrame ?? "未設定"}
                 </div>
-                <button
-                  className="btn-secondary"
-                  onClick={() => {
-                    setSectionEndFrame(currentFrame);
-                    setEndLineOffset(0);
-                    // 腰の位置を計算して保存
-                    const hipX = calculateHipPosition(currentFrame);
-                    setSavedEndHipX(hipX);
-                    console.log(`🔴 フィニッシュ設定: Frame ${currentFrame}, HipX=${hipX !== null ? (hipX * 100).toFixed(1) + '%' : 'null'}`);
-                  }}
-                  disabled={!ready}
-                >
-                  🔴 現在位置を設定
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    className={sectionClickMode === 'end' ? "btn-primary" : "btn-secondary"}
+                    onClick={() => {
+                      setSectionClickMode(sectionClickMode === 'end' ? null : 'end');
+                    }}
+                    disabled={!ready}
+                  >
+                    {sectionClickMode === 'end' ? '✖️ キャンセル' : '🖱️ クリックで設定'}
+                  </button>
+                  <button
+                    className="btn-ghost-small"
+                    onClick={() => {
+                      setSectionEndFrame(currentFrame);
+                      setEndLineOffset(0);
+                      const hipX = calculateHipPosition(currentFrame);
+                      setSavedEndHipX(hipX);
+                      console.log(`🔴 フィニッシュ設定: Frame ${currentFrame}, HipX=${hipX !== null ? (hipX * 100).toFixed(1) + '%' : 'null'}`);
+                    }}
+                    disabled={!ready}
+                  >
+                    現在位置
+                  </button>
+                </div>
               </div>
               {sectionEndFrame != null && (
-                <div className="line-adjust-control">
-                  <label className="adjust-label">
-                    <span>線の位置調整:</span>
-                    <div className="adjust-slider-container">
-                      <button
-                        className="adjust-btn"
-                        onClick={() => setEndLineOffset((prev) => prev - 10)}
-                      >
-                        ◀
-                      </button>
-                      <input
-                        type="range"
-                        min={-200}
-                        max={200}
-                        step={1}
-                        value={endLineOffset}
-                        onChange={(e) => setEndLineOffset(Number(e.target.value))}
-                        className="adjust-slider"
-                      />
-                      <button
-                        className="adjust-btn"
-                        onClick={() => setEndLineOffset((prev) => prev + 10)}
-                      >
-                        ▶
-                      </button>
-                      <span className="adjust-value">{endLineOffset}px</span>
-                      <button
-                        className="adjust-reset"
-                        onClick={() => setEndLineOffset(0)}
-                      >
-                        リセット
-                      </button>
-                    </div>
-                  </label>
-                </div>
+                <>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '12px',
+                    background: '#f9fafb',
+                    borderRadius: '8px',
+                    marginTop: '8px'
+                  }}>
+                    <span style={{ fontSize: '0.9rem', color: '#6b7280', minWidth: '100px' }}>フレーム微調整:</span>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.max(0, sectionEndFrame - 5);
+                        setSectionEndFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedEndHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      -5
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.max(0, sectionEndFrame - 1);
+                        setSectionEndFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedEndHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      -1
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.min(framesCount - 1, sectionEndFrame + 1);
+                        setSectionEndFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedEndHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      +1
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.min(framesCount - 1, sectionEndFrame + 5);
+                        setSectionEndFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedEndHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      +5
+                    </button>
+                    <button
+                      onClick={() => setCurrentFrame(sectionEndFrame)}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #3b82f6',
+                        background: '#3b82f6',
+                        color: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold',
+                        marginLeft: '8px'
+                      }}
+                    >
+                      ジャンプ
+                    </button>
+                  </div>
+                  <div className="line-adjust-control">
+                    <label className="adjust-label">
+                      <span>線の位置調整:</span>
+                      <div className="adjust-slider-container">
+                        <button
+                          className="adjust-btn"
+                          onClick={() => setEndLineOffset((prev) => prev - 10)}
+                        >
+                          ◀
+                        </button>
+                        <input
+                          type="range"
+                          min={-200}
+                          max={200}
+                          step={1}
+                          value={endLineOffset}
+                          onChange={(e) => setEndLineOffset(Number(e.target.value))}
+                          className="adjust-slider"
+                        />
+                        <button
+                          className="adjust-btn"
+                          onClick={() => setEndLineOffset((prev) => prev + 10)}
+                        >
+                          ▶
+                        </button>
+                        <span className="adjust-value">{endLineOffset}px</span>
+                        <button
+                          className="adjust-reset"
+                          onClick={() => setEndLineOffset(0)}
+                        >
+                          リセット
+                        </button>
+                      </div>
+                    </label>
+                  </div>
+                </>
               )}
 
               <div className="section-summary">
