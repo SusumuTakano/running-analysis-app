@@ -1427,10 +1427,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       preferredFps = 90;
       console.log('⚠️ Mobile detected: Using reduced memory limits');
     } else {
-      // デスクトップ: 通常の制限
-      MAX_FRAMES = 1000;
-      MAX_WIDTH = 960;
-      preferredFps = 120;
+      // デスクトップ: 高性能対応
+      MAX_FRAMES = 3000;  // 240fps × 12秒程度対応
+      MAX_WIDTH = 1920;   // フルHD対応
+      preferredFps = 240; // 240fps対応
+      console.log('💻 Desktop detected: Using high-performance settings (240fps, 1920px)');
     }
     
     const maxFpsForLength = Math.floor(MAX_FRAMES / Math.max(duration, 0.001));
@@ -1440,13 +1441,46 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
     setUsedTargetFps(targetFps);
 
-    const scale = Math.min(1, MAX_WIDTH / video.videoWidth);
+    // 4K動画の検出と確認
+    const is4K = video.videoWidth >= 3840 || video.videoHeight >= 2160;
+    const isHighFps = targetFps >= 120;
+    
+    let scale = Math.min(1, MAX_WIDTH / video.videoWidth);
+    
+    // 4K動画の場合は確認
+    if (is4K && !isMobile) {
+      const fullResMemoryMB = (video.videoWidth * video.videoHeight * totalFrames * 4) / (1024 * 1024);
+      const scaledMemoryMB = (MAX_WIDTH * (video.videoHeight * MAX_WIDTH / video.videoWidth) * totalFrames * 4) / (1024 * 1024);
+      
+      console.log(`📹 4K video detected: ${video.videoWidth}x${video.videoHeight}`);
+      console.log(`💾 Full resolution would use: ${fullResMemoryMB.toFixed(0)}MB`);
+      console.log(`💾 Scaled to ${MAX_WIDTH}px would use: ${scaledMemoryMB.toFixed(0)}MB`);
+      
+      if (confirm(`4K動画が検出されました（${video.videoWidth}x${video.videoHeight}）\n\nフル解像度で処理しますか？\n\n「OK」: フル解像度（${fullResMemoryMB.toFixed(0)}MB使用、高精度）\n「キャンセル」: ${MAX_WIDTH}pxにスケール（${scaledMemoryMB.toFixed(0)}MB使用、推奨）`)) {
+        scale = 1; // フル解像度
+        console.log('✅ Processing at full 4K resolution');
+      } else {
+        console.log(`✅ Scaling to ${MAX_WIDTH}px for performance`);
+      }
+    }
+    
     const targetWidth = Math.round(video.videoWidth * scale);
     const targetHeight = Math.round(video.videoHeight * scale);
     
     // メモリ使用量の推定と警告
     const estimatedMemoryMB = (targetWidth * targetHeight * totalFrames * 4) / (1024 * 1024);
     console.log(`💾 Estimated memory usage: ${estimatedMemoryMB.toFixed(1)}MB for ${totalFrames} frames at ${targetWidth}x${targetHeight}`);
+    console.log(`📊 Video specs: ${targetFps}fps, ${totalFrames} frames, ${duration.toFixed(2)}s`);
+    
+    // 高FPS動画の警告
+    if (isHighFps && estimatedMemoryMB > 500) {
+      console.warn(`⚠️ High FPS video (${targetFps}fps) with large memory usage`);
+      if (!confirm(`高フレームレート動画（${targetFps}fps）が検出されました。\nメモリ使用量: 約${estimatedMemoryMB.toFixed(0)}MB\n\n処理には時間がかかる場合があります。続行しますか？`)) {
+        setIsExtracting(false);
+        setStatus("キャンセルされました");
+        return;
+      }
+    }
     
     if (isIOS && estimatedMemoryMB > 200) {
       console.warn('⚠️ High memory usage detected on iOS. May cause crash.');
