@@ -3198,220 +3198,19 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             <div className="wizard-step-header">
               <h2 className="wizard-step-title">ステップ 5: 区間設定</h2>
               <p className="wizard-step-desc">
-                スライダーでフレームを選んで、ボタンで登録してください。
+                スライダーでフレームを見ながら、下のボタンで登録します。
               </p>
             </div>
 
-            {/* 登録状況表示 - 大きく見やすく */}
-            <div style={{ 
-              marginBottom: '2rem', 
-              padding: '2rem', 
-              background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
-              borderRadius: '16px',
-              border: '3px solid #3b82f6'
-            }}>
-              <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginBottom: '1.5rem', color: '#1e40af' }}>
-                📍 登録状況
-              </div>
-              <div style={{ 
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: '1rem'
-              }}>
-                <div style={{ 
-                  padding: '1.5rem', 
-                  background: sectionStartFrame !== null ? '#d1fae5' : 'white',
-                  borderRadius: '12px',
-                  border: `3px solid ${sectionStartFrame !== null ? '#059669' : '#d1d5db'}`,
-                  textAlign: 'center'
-                }}>
-                  <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
-                    {sectionStartFrame !== null ? '✅' : '⭕'}
-                  </div>
-                  <div style={{ fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '0.5rem', color: '#059669' }}>
-                    🟢 スタート
-                  </div>
-                  <div style={{ fontSize: '1rem', fontWeight: 'bold', color: '#374151' }}>
-                    {sectionStartFrame !== null ? `Frame ${sectionStartFrame}` : '未登録'}
-                  </div>
-                </div>
-                <div style={{ 
-                  padding: '1.5rem', 
-                  background: sectionEndFrame !== null ? '#fee2e2' : 'white',
-                  borderRadius: '12px',
-                  border: `3px solid ${sectionEndFrame !== null ? '#dc2626' : '#d1d5db'}`,
-                  textAlign: 'center'
-                }}>
-                  <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
-                    {sectionEndFrame !== null ? '✅' : '⭕'}
-                  </div>
-                  <div style={{ fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '0.5rem', color: '#dc2626' }}>
-                    🔴 フィニッシュ
-                  </div>
-                  <div style={{ fontSize: '1rem', fontWeight: 'bold', color: '#374151' }}>
-                    {sectionEndFrame !== null ? `Frame ${sectionEndFrame}` : '未登録'}
-                  </div>
-                </div>
-                <div style={{ 
-                  padding: '1.5rem', 
-                  background: sectionMidFrame !== null ? '#fef3c7' : 'white',
-                  borderRadius: '12px',
-                  border: `3px solid ${sectionMidFrame !== null ? '#f59e0b' : '#d1d5db'}`,
-                  textAlign: 'center'
-                }}>
-                  <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
-                    {sectionMidFrame !== null ? '✅' : '⭕'}
-                  </div>
-                  <div style={{ fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '0.5rem', color: '#f59e0b' }}>
-                    🟡 中間（任意）
-                  </div>
-                  <div style={{ fontSize: '1rem', fontWeight: 'bold', color: '#374151' }}>
-                    {sectionMidFrame !== null ? `Frame ${sectionMidFrame}` : '未登録'}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* プレビューキャンバス */}
-            <div className="canvas-area" style={{ position: 'relative', marginBottom: '1.5rem' }}>
+            {/* キャンバス */}
+            <div className="canvas-area" style={{ position: 'relative', marginBottom: '1rem' }}>
               <canvas 
                 ref={displayCanvasRef} 
                 className="preview-canvas"
               />
             </div>
 
-            {/* 登録ボタン - 超大きく明確に */}
-            <div style={{ 
-              padding: '2rem', 
-              background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', 
-              borderRadius: '16px',
-              marginBottom: '2rem',
-              border: '3px solid #f59e0b'
-            }}>
-              <div style={{ 
-                fontSize: '1.5rem', 
-                fontWeight: 'bold', 
-                marginBottom: '1.5rem',
-                color: '#92400e',
-                textAlign: 'center'
-              }}>
-                👇 現在のフレーム: {currentFrame} 👇
-              </div>
-              <div style={{ 
-                display: 'grid', 
-                gridTemplateColumns: 'repeat(3, 1fr)', 
-                gap: '1.5rem' 
-              }}>
-                <button
-                  onClick={() => {
-                    setSectionStartFrame(currentFrame);
-                    const pose = poseResults[currentFrame];
-                    if (pose?.landmarks) {
-                      const leftHip = pose.landmarks[23];
-                      const rightHip = pose.landmarks[24];
-                      if (leftHip && rightHip) {
-                        setSavedStartHipX((leftHip.x + rightHip.x) / 2);
-                      }
-                    }
-                    setStartLineOffset(0);
-                    console.log(`✅ スタート登録成功: Frame ${currentFrame}`);
-                    alert(`✅ スタート地点を登録しました！\n\nFrame ${currentFrame}`);
-                  }}
-                  style={{ 
-                    padding: '20px',
-                    fontSize: '1.2rem',
-                    fontWeight: 'bold',
-                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '12px',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)',
-                    transition: 'transform 0.2s'
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                  onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                >
-                  🟢 スタート登録
-                </button>
-                <button
-                  onClick={() => {
-                    setSectionEndFrame(currentFrame);
-                    const pose = poseResults[currentFrame];
-                    if (pose?.landmarks) {
-                      const leftHip = pose.landmarks[23];
-                      const rightHip = pose.landmarks[24];
-                      if (leftHip && rightHip) {
-                        setSavedEndHipX((leftHip.x + rightHip.x) / 2);
-                      }
-                    }
-                    setEndLineOffset(0);
-                    console.log(`✅ フィニッシュ登録成功: Frame ${currentFrame}`);
-                    alert(`✅ フィニッシュ地点を登録しました！\n\nFrame ${currentFrame}`);
-                  }}
-                  style={{ 
-                    padding: '20px',
-                    fontSize: '1.2rem',
-                    fontWeight: 'bold',
-                    background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '12px',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)',
-                    transition: 'transform 0.2s'
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                  onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                >
-                  🔴 フィニッシュ登録
-                </button>
-                <button
-                  onClick={() => {
-                    setSectionMidFrame(currentFrame);
-                    const pose = poseResults[currentFrame];
-                    if (pose?.landmarks) {
-                      const leftHip = pose.landmarks[23];
-                      const rightHip = pose.landmarks[24];
-                      if (leftHip && rightHip) {
-                        setSavedMidHipX((leftHip.x + rightHip.x) / 2);
-                      }
-                    }
-                    setMidLineOffset(0);
-                    console.log(`✅ 中間登録成功: Frame ${currentFrame}`);
-                    alert(`✅ 中間地点を登録しました！\n\nFrame ${currentFrame}`);
-                  }}
-                  style={{ 
-                    padding: '20px',
-                    fontSize: '1.2rem',
-                    fontWeight: 'bold',
-                    background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '12px',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)',
-                    transition: 'transform 0.2s'
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                  onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                >
-                  🟡 中間登録
-                </button>
-              </div>
-              <div style={{
-                marginTop: '1.5rem',
-                padding: '1rem',
-                background: 'white',
-                borderRadius: '8px',
-                fontSize: '0.95rem',
-                color: '#92400e',
-                textAlign: 'center'
-              }}>
-                💡 スライダーでフレームを選んで、登録したいボタンをクリックしてください
-              </div>
-            </div>
-
+            {/* フレームコントロール */}
             <div className="frame-control">
               <div className="frame-info">
                 フレーム: {currentLabel} / {maxLabel}
@@ -3427,20 +3226,133 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 className="frame-range"
               />
               <div className="frame-buttons-compact">
-                <button onClick={() => changeFrame(-10)} disabled={!ready}>
-                  -10
-                </button>
-                <button onClick={() => changeFrame(-1)} disabled={!ready}>
-                  -1
-                </button>
-                <button onClick={() => changeFrame(1)} disabled={!ready}>
-                  +1
-                </button>
-                <button onClick={() => changeFrame(10)} disabled={!ready}>
-                  +10
-                </button>
+                <button onClick={() => changeFrame(-10)} disabled={!ready}>-10</button>
+                <button onClick={() => changeFrame(-1)} disabled={!ready}>-1</button>
+                <button onClick={() => changeFrame(1)} disabled={!ready}>+1</button>
+                <button onClick={() => changeFrame(10)} disabled={!ready}>+10</button>
               </div>
             </div>
+
+            {/* 登録ボタン */}
+            <div style={{ 
+              marginTop: '1.5rem',
+              padding: '1.5rem', 
+              background: '#f9fafb',
+              borderRadius: '8px',
+              border: '2px solid #e5e7eb'
+            }}>
+              <div style={{ 
+                fontSize: '1rem', 
+                fontWeight: 'bold',
+                marginBottom: '1rem',
+                color: '#374151',
+                textAlign: 'center'
+              }}>
+                現在のフレームを登録:
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                <button
+                  onClick={() => {
+                    setSectionStartFrame(currentFrame);
+                    const pose = poseResults[currentFrame];
+                    if (pose?.landmarks) {
+                      const leftHip = pose.landmarks[23];
+                      const rightHip = pose.landmarks[24];
+                      if (leftHip && rightHip) {
+                        setSavedStartHipX((leftHip.x + rightHip.x) / 2);
+                      }
+                    }
+                    setStartLineOffset(0);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    background: '#10b981',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '1rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🟢 スタート
+                </button>
+                <button
+                  onClick={() => {
+                    setSectionEndFrame(currentFrame);
+                    const pose = poseResults[currentFrame];
+                    if (pose?.landmarks) {
+                      const leftHip = pose.landmarks[23];
+                      const rightHip = pose.landmarks[24];
+                      if (leftHip && rightHip) {
+                        setSavedEndHipX((leftHip.x + rightHip.x) / 2);
+                      }
+                    }
+                    setEndLineOffset(0);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    background: '#ef4444',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '1rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🔴 フィニッシュ
+                </button>
+                <button
+                  onClick={() => {
+                    setSectionMidFrame(currentFrame);
+                    const pose = poseResults[currentFrame];
+                    if (pose?.landmarks) {
+                      const leftHip = pose.landmarks[23];
+                      const rightHip = pose.landmarks[24];
+                      if (leftHip && rightHip) {
+                        setSavedMidHipX((leftHip.x + rightHip.x) / 2);
+                      }
+                    }
+                    setMidLineOffset(0);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    background: '#f59e0b',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '1rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🟡 中間
+                </button>
+              </div>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-around',
+                fontSize: '0.9rem',
+                color: '#6b7280'
+              }}>
+                <div>
+                  🟢 {sectionStartFrame !== null ? `Frame ${sectionStartFrame}` : '未設定'}
+                </div>
+                <div>
+                  🔴 {sectionEndFrame !== null ? `Frame ${sectionEndFrame}` : '未設定'}
+                </div>
+                <div>
+                  🟡 {sectionMidFrame !== null ? `Frame ${sectionMidFrame}` : '未設定'}
+                </div>
+              </div>
+            </div>
+
+
+
 
             <div className="section-settings">
               <div className="section-markers-info">
