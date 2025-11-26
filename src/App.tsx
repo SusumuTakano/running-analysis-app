@@ -1053,20 +1053,21 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
       });
 
-      // デバイスに応じた設定
+      // デバイスに応じた設定（精度優先）
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
       
+      // 精度を上げるため、複雑なモデルを使用し、閾値を下げる
       pose.setOptions({
-        modelComplexity: isMobile ? 0 : 1, // モバイルは軽量モデルを使用
+        modelComplexity: isIOS ? 1 : (isMobile ? 1 : 2), // iOS/Androidは1、デスクトップは2（最高精度）
         smoothLandmarks: true,
         enableSegmentation: false,
         smoothSegmentation: false,
-        minDetectionConfidence: isMobile ? 0.3 : 0.5, // モバイルは検出閾値を下げる
-        minTrackingConfidence: isMobile ? 0.3 : 0.5,
+        minDetectionConfidence: 0.3, // 閾値を下げて検出率向上（0.5 → 0.3）
+        minTrackingConfidence: 0.3,  // トラッキング閾値も下げる
       });
       
-      console.log(`🎯 Pose estimation config: mobile=${isMobile}, iOS=${isIOS}, modelComplexity=${isMobile ? 0 : 1}`);
+      console.log(`🎯 Pose estimation config (High Accuracy Mode): mobile=${isMobile}, iOS=${isIOS}, modelComplexity=${isIOS ? 1 : (isMobile ? 1 : 2)}`);
 
       const results: (FramePoseData | null)[] = [];
 
@@ -1076,16 +1077,31 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         const tempCanvas = document.createElement("canvas");
         tempCanvas.width = frame.width;
         tempCanvas.height = frame.height;
-        const tempCtx = tempCanvas.getContext("2d");
+        const tempCtx = tempCanvas.getContext("2d", { willReadFrequently: true });
         if (!tempCtx) {
           results.push(null);
         } else {
           tempCtx.putImageData(frame, 0, 0);
+          
+          // 画像の明るさとコントラストを調整（検出精度向上）
+          const imageData = tempCtx.getImageData(0, 0, frame.width, frame.height);
+          const data = imageData.data;
+          const brightness = 1.1; // 10%明るく
+          const contrast = 1.2;   // 20%コントラスト強化
+          
+          for (let i = 0; i < data.length; i += 4) {
+            // RGB各チャンネルに対して調整
+            data[i] = Math.min(255, Math.max(0, (data[i] - 128) * contrast + 128 + (brightness - 1) * 255));     // R
+            data[i + 1] = Math.min(255, Math.max(0, (data[i + 1] - 128) * contrast + 128 + (brightness - 1) * 255)); // G
+            data[i + 2] = Math.min(255, Math.max(0, (data[i + 2] - 128) * contrast + 128 + (brightness - 1) * 255)); // B
+          }
+          
+          tempCtx.putImageData(imageData, 0, 0);
 
           try {
-            // デバイスに応じたタイムアウト設定
+            // デバイスに応じたタイムアウト設定（精度優先で長めに）
             const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-            const timeoutDuration = isMobile ? 15000 : 5000; // モバイルは15秒、デスクトップは5秒
+            const timeoutDuration = isMobile ? 20000 : 10000; // モバイルは20秒、デスクトップは10秒（精度優先）
             
             const result = await new Promise<any>((resolve, reject) => {
               const timeout = setTimeout(
