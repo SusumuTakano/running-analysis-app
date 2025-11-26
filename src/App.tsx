@@ -388,7 +388,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
   const sectionRange = useMemo(() => {
     const rawStart = sectionStartFrame ?? 0;
-    const start = Math.max(0, rawStart - 30);
+    // スタートの50フレーム前から解析開始（助走部分も含める）
+    const start = Math.max(0, rawStart - 50);
 
     const end =
       sectionEndFrame ??
@@ -535,8 +536,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     const detectedContacts: number[] = [];
     const detectedToeOffs: number[] = [];
     
-    let currentFrame = sectionStartFrame;
-    let searchStartFrame = currentFrame;
+    // スタートの50フレーム前から検索開始（スタート前の助走も解析）
+    const searchOffset = 50;
+    let searchStartFrame = Math.max(0, sectionStartFrame - searchOffset);
+    console.log(`📍 検索範囲: Frame ${searchStartFrame} ～ ${sectionEndFrame} (スタートの${searchOffset}フレーム前から)`);
     
     // 区間内を順次検索
     while (searchStartFrame < sectionEndFrame) {
