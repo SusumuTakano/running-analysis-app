@@ -1532,12 +1532,33 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       // デスクトップ: 高性能対応
       MAX_FRAMES = 3000;  // 240fps × 12秒程度対応
       MAX_WIDTH = 1920;   // フルHD対応
-      preferredFps = 240; // 240fps対応
-      console.log('💻 Desktop detected: Using high-performance settings (240fps, 1920px)');
+      preferredFps = 120; // デフォルト120fps（240fpsは手動で選択）
+      console.log('💻 Desktop detected: Using high-performance settings (120fps default, 1920px)');
+    }
+    
+    // フレームレートをユーザーに確認
+    const detectedFps = preferredFps;
+    const userFpsInput = prompt(
+      `動画のフレームレート（FPS）を入力してください。\n\n` +
+      `検出された値: ${detectedFps}fps\n` +
+      `一般的な値: 30fps, 60fps, 120fps, 240fps\n\n` +
+      `※ 正確なFPSを入力することで、解析精度が向上します。`,
+      detectedFps.toString()
+    );
+    
+    let confirmedFps = detectedFps;
+    if (userFpsInput) {
+      const parsed = parseInt(userFpsInput);
+      if (!isNaN(parsed) && parsed > 0 && parsed <= 240) {
+        confirmedFps = parsed;
+        console.log(`✅ User confirmed FPS: ${confirmedFps}fps`);
+      } else {
+        console.warn(`⚠️ Invalid FPS input: ${userFpsInput}, using default: ${detectedFps}fps`);
+      }
     }
     
     const maxFpsForLength = Math.floor(MAX_FRAMES / Math.max(duration, 0.001));
-    const targetFps = Math.max(30, Math.min(preferredFps, maxFpsForLength));
+    const targetFps = Math.max(30, Math.min(confirmedFps, maxFpsForLength));
     const dt = 1 / targetFps;
     const totalFrames = Math.max(1, Math.floor(duration * targetFps));
 
