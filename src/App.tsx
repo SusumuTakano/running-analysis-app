@@ -2661,29 +2661,31 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 ref={displayCanvasRef} 
                 className="preview-canvas" 
                 onClick={(e) => {
-                  if (!ready || !sectionClickMode) return;
+                  if (!ready) return;
                   
-                  // キャンバス内のクリック位置から腰の位置を計算
-                  const hipX = calculateHipPosition(currentFrame);
-                  
-                  if (sectionClickMode === 'start') {
-                    setSectionStartFrame(currentFrame);
-                    setStartLineOffset(0);
-                    setSavedStartHipX(hipX);
-                    console.log(`🟢 スタート設定（クリック）: Frame ${currentFrame}, HipX=${hipX !== null ? (hipX * 100).toFixed(1) + '%' : 'null'}`);
-                    setSectionClickMode(null);
-                  } else if (sectionClickMode === 'mid') {
-                    setSectionMidFrame(currentFrame);
-                    setMidLineOffset(0);
-                    setSavedMidHipX(hipX);
-                    console.log(`🟡 中間設定（クリック）: Frame ${currentFrame}, HipX=${hipX !== null ? (hipX * 100).toFixed(1) + '%' : 'null'}`);
-                    setSectionClickMode(null);
-                  } else if (sectionClickMode === 'end') {
-                    setSectionEndFrame(currentFrame);
-                    setEndLineOffset(0);
-                    setSavedEndHipX(hipX);
-                    console.log(`🔴 フィニッシュ設定（クリック）: Frame ${currentFrame}, HipX=${hipX !== null ? (hipX * 100).toFixed(1) + '%' : 'null'}`);
-                    setSectionClickMode(null);
+                  // クリックモードが有効な場合は、現在のフレームを設定
+                  if (sectionClickMode) {
+                    const hipX = calculateHipPosition(currentFrame);
+                    
+                    if (sectionClickMode === 'start') {
+                      setSectionStartFrame(currentFrame);
+                      setStartLineOffset(0);
+                      setSavedStartHipX(hipX);
+                      console.log(`🟢 スタート設定: Frame ${currentFrame}`);
+                      setSectionClickMode(null);
+                    } else if (sectionClickMode === 'mid') {
+                      setSectionMidFrame(currentFrame);
+                      setMidLineOffset(0);
+                      setSavedMidHipX(hipX);
+                      console.log(`🟡 中間設定: Frame ${currentFrame}`);
+                      setSectionClickMode(null);
+                    } else if (sectionClickMode === 'end') {
+                      setSectionEndFrame(currentFrame);
+                      setEndLineOffset(0);
+                      setSavedEndHipX(hipX);
+                      console.log(`🔴 フィニッシュ設定: Frame ${currentFrame}`);
+                      setSectionClickMode(null);
+                    }
                   }
                 }}
                 style={{
@@ -2703,11 +2705,12 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   fontWeight: 'bold',
                   fontSize: '1rem',
                   boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                  zIndex: 10
+                  zIndex: 10,
+                  pointerEvents: 'none'
                 }}>
-                  {sectionClickMode === 'start' && '🟢 スタートラインを設定するフレームをクリック'}
-                  {sectionClickMode === 'mid' && '🟡 中間ラインを設定するフレームをクリック'}
-                  {sectionClickMode === 'end' && '🔴 フィニッシュラインを設定するフレームをクリック'}
+                  {sectionClickMode === 'start' && '🟢 キャンバス上でクリックしてスタート地点を設定'}
+                  {sectionClickMode === 'mid' && '🟡 キャンバス上でクリックして中間地点を設定'}
+                  {sectionClickMode === 'end' && '🔴 キャンバス上でクリックしてフィニッシュ地点を設定'}
                 </div>
               )}
             </div>
@@ -2745,7 +2748,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             <div className="section-settings">
               <div className="section-markers-info">
                 <p className="info-text">
-                  📍 各ポイントを設定すると、腰の位置に垂直線が表示されます。
+                  🖱️ 「クリックで設定」ボタンを押してから、キャンバス上でフレームをクリックして設定してください。<br/>
+                  📍 設定後、±ボタンでフレーム単位の微調整ができます。
                 </p>
               </div>
 
@@ -2755,31 +2759,16 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   <strong>フレーム:</strong>{" "}
                   {sectionStartFrame ?? "未設定"}
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    className={sectionClickMode === 'start' ? "btn-primary" : "btn-secondary"}
-                    onClick={() => {
-                      setSectionClickMode(sectionClickMode === 'start' ? null : 'start');
-                    }}
-                    disabled={!ready}
-                  >
-                    {sectionClickMode === 'start' ? '✖️ キャンセル' : '🖱️ クリックで設定'}
-                  </button>
-                  <button
-                    className="btn-ghost-small"
-                    onClick={() => {
-                      setSectionStartFrame(currentFrame);
-                      setStartLineOffset(0);
-                      // 腰の位置を計算して保存
-                      const hipX = calculateHipPosition(currentFrame);
-                      setSavedStartHipX(hipX);
-                      console.log(`🟢 スタート設定: Frame ${currentFrame}, HipX=${hipX !== null ? (hipX * 100).toFixed(1) + '%' : 'null'}`);
-                    }}
-                    disabled={!ready}
-                  >
-                    現在位置
-                  </button>
-                </div>
+                <button
+                  className={sectionClickMode === 'start' ? "btn-primary" : "btn-secondary"}
+                  onClick={() => {
+                    setSectionClickMode(sectionClickMode === 'start' ? null : 'start');
+                  }}
+                  disabled={!ready}
+                  style={{ width: '100%' }}
+                >
+                  {sectionClickMode === 'start' ? '✖️ キャンセル' : '🖱️ クリックで設定'}
+                </button>
               </div>
               {sectionStartFrame != null && (
                 <>
@@ -2937,21 +2926,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       setSectionClickMode(sectionClickMode === 'mid' ? null : 'mid');
                     }}
                     disabled={!ready}
+                    style={{ flex: 1 }}
                   >
                     {sectionClickMode === 'mid' ? '✖️ キャンセル' : '🖱️ クリックで設定'}
-                  </button>
-                  <button
-                    className="btn-ghost-small"
-                    onClick={() => {
-                      setSectionMidFrame(currentFrame);
-                      setMidLineOffset(0);
-                      const hipX = calculateHipPosition(currentFrame);
-                      setSavedMidHipX(hipX);
-                      console.log(`🟡 中間設定: Frame ${currentFrame}, HipX=${hipX !== null ? (hipX * 100).toFixed(1) + '%' : 'null'}`);
-                    }}
-                    disabled={!ready}
-                  >
-                    現在位置
                   </button>
                   {sectionMidFrame != null && (
                     <button
@@ -3116,30 +3093,16 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   <strong>フレーム:</strong>{" "}
                   {sectionEndFrame ?? "未設定"}
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    className={sectionClickMode === 'end' ? "btn-primary" : "btn-secondary"}
-                    onClick={() => {
-                      setSectionClickMode(sectionClickMode === 'end' ? null : 'end');
-                    }}
-                    disabled={!ready}
-                  >
-                    {sectionClickMode === 'end' ? '✖️ キャンセル' : '🖱️ クリックで設定'}
-                  </button>
-                  <button
-                    className="btn-ghost-small"
-                    onClick={() => {
-                      setSectionEndFrame(currentFrame);
-                      setEndLineOffset(0);
-                      const hipX = calculateHipPosition(currentFrame);
-                      setSavedEndHipX(hipX);
-                      console.log(`🔴 フィニッシュ設定: Frame ${currentFrame}, HipX=${hipX !== null ? (hipX * 100).toFixed(1) + '%' : 'null'}`);
-                    }}
-                    disabled={!ready}
-                  >
-                    現在位置
-                  </button>
-                </div>
+                <button
+                  className={sectionClickMode === 'end' ? "btn-primary" : "btn-secondary"}
+                  onClick={() => {
+                    setSectionClickMode(sectionClickMode === 'end' ? null : 'end');
+                  }}
+                  disabled={!ready}
+                  style={{ width: '100%' }}
+                >
+                  {sectionClickMode === 'end' ? '✖️ キャンセル' : '🖱️ クリックで設定'}
+                </button>
               </div>
               {sectionEndFrame != null && (
                 <>
