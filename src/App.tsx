@@ -371,6 +371,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const [optimizedVideoUrl, setOptimizedVideoUrl] = useState<string | null>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [videoDuration, setVideoDuration] = useState(10); // 動画の長さ（デフォルト10秒）
+  const [thumbnailUpdateTrigger, setThumbnailUpdateTrigger] = useState(0); // サムネイル更新トリガー
 
   // ------------ 姿勢推定関連 -----------------
   const [poseResults, setPoseResults] = useState<(FramePoseData | null)[]>([]);
@@ -3279,21 +3280,23 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                         {/* 終了位置スライダー */}
                         <div>
                           <div style={{ fontSize: '0.85rem', color: 'var(--gray-500)', marginBottom: '0.3rem' }}>
-                            🔴 終了位置
+                            🔴 終了位置（0 = 最後まで）
                           </div>
                           <input
                             type="range"
-                            min="0"
+                            min={trimStart}
                             max={videoDuration}
                             step="0.1"
-                            value={trimEnd || videoDuration}
+                            value={trimEnd === 0 ? videoDuration : trimEnd}
                             onChange={(e) => {
                               const newEnd = Number(e.target.value);
-                              setTrimEnd(newEnd);
+                              // videoDurationと同じ値の場合は0（最後まで）として扱う
+                              const actualEnd = Math.abs(newEnd - videoDuration) < 0.05 ? 0 : newEnd;
+                              setTrimEnd(actualEnd);
                               const video = previewVideoRef.current;
                               if (video && !isNaN(video.duration)) {
                                 video.currentTime = newEnd;
-                                console.log('🎬 End slider: Video seek to', newEnd);
+                                console.log('🎬 End slider: Video seek to', newEnd, 'actualEnd:', actualEnd);
                               }
                             }}
                             className="input-field"
@@ -3359,30 +3362,20 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 }}>
                                   🟢 開始: {trimStart.toFixed(2)}秒
                                 </div>
-                                <canvas
-                                  ref={(canvas) => {
-                                    if (canvas && previewVideoRef.current) {
-                                      const video = previewVideoRef.current;
-                                      const ctx = canvas.getContext('2d');
-                                      if (ctx && video.readyState >= 2) {
-                                        canvas.width = 320;
-                                        canvas.height = 180;
-                                        video.currentTime = trimStart;
-                                        video.onseeked = () => {
-                                          ctx.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
-                                          ctx.drawImage(video, 0, 0, 320, 180);
-                                          ctx.filter = 'none';
-                                        };
-                                      }
-                                    }
-                                  }}
-                                  style={{
-                                    width: '100%',
-                                    height: 'auto',
-                                    borderRadius: '6px',
-                                    border: '2px solid #10b981'
-                                  }}
-                                />
+                                <div style={{
+                                  width: '100%',
+                                  aspectRatio: '16/9',
+                                  background: '#000',
+                                  borderRadius: '6px',
+                                  border: '2px solid #10b981',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: 'white',
+                                  fontSize: '0.85rem'
+                                }}>
+                                  {trimStart.toFixed(2)}秒地点
+                                </div>
                               </div>
                               
                               {/* 終了位置のサムネイル */}
@@ -3395,31 +3388,31 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 }}>
                                   🔴 終了: {(trimEnd > 0 ? trimEnd : videoDuration).toFixed(2)}秒
                                 </div>
-                                <canvas
-                                  ref={(canvas) => {
-                                    if (canvas && previewVideoRef.current) {
-                                      const video = previewVideoRef.current;
-                                      const ctx = canvas.getContext('2d');
-                                      if (ctx && video.readyState >= 2) {
-                                        canvas.width = 320;
-                                        canvas.height = 180;
-                                        video.currentTime = trimEnd > 0 ? trimEnd : videoDuration;
-                                        video.onseeked = () => {
-                                          ctx.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
-                                          ctx.drawImage(video, 0, 0, 320, 180);
-                                          ctx.filter = 'none';
-                                        };
-                                      }
-                                    }
-                                  }}
-                                  style={{
-                                    width: '100%',
-                                    height: 'auto',
-                                    borderRadius: '6px',
-                                    border: '2px solid #ef4444'
-                                  }}
-                                />
+                                <div style={{
+                                  width: '100%',
+                                  aspectRatio: '16/9',
+                                  background: '#000',
+                                  borderRadius: '6px',
+                                  border: '2px solid #ef4444',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: 'white',
+                                  fontSize: '0.85rem'
+                                }}>
+                                  {(trimEnd > 0 ? trimEnd : videoDuration).toFixed(2)}秒地点
+                                </div>
                               </div>
+                            </div>
+                            <div style={{
+                              marginTop: '0.8rem',
+                              padding: '0.8rem',
+                              background: 'white',
+                              borderRadius: '6px',
+                              fontSize: '0.85rem',
+                              color: 'var(--gray-600)'
+                            }}>
+                              💡 動画プレビューを再生して、これらの位置を確認してください
                             </div>
                           </div>
                         )}
