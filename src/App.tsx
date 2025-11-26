@@ -3614,13 +3614,13 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
                     >
                       <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '4px', color: '#047857' }}>
-                        ⚡ 方式1: 最速・完全自動
+                        ⚡ 1. 自動マーカー
                       </div>
                       <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '4px' }}>
-                        最初の1歩（接地→離地）のみ手動マーク → 残りは「すべて自動検出」ボタンで完全自動
+                        最初の接地・離地のみ手動 → 以後はつま先の高さ判定で全自動
                       </div>
                       <div style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 'bold' }}>
-                        ⚠️ 姿勢検出（ステップ3）が必須
+                        ⚠️ 姿勢推定（Step 4）が必須
                       </div>
                     </button>
                     
@@ -3639,13 +3639,13 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
                     >
                       <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '4px', color: '#1e40af' }}>
-                        🎯 方式2: バランス型（推奨）
+                        🎯 2. 半自動マーカー（推奨）
                       </div>
                       <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '4px' }}>
-                        最初の1歩（接地→離地）のみ手動マーク → 残りは接地のみ手動、離地は自動検出
+                        最初の接地・離地のみ手動 → 以後は接地のみ手動、離地は接地時のつま先高さで自動判定
                       </div>
                       <div style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 'bold' }}>
-                        ⚠️ 姿勢検出（ステップ3）が必須
+                        ⚠️ 姿勢推定（Step 4）が必須
                       </div>
                     </button>
                     
@@ -3664,13 +3664,13 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
                     >
                       <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '4px', color: '#92400e' }}>
-                        ✋ 方式3: 完全手動
+                        ✋ 3. 手動マーカー
                       </div>
                       <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '4px' }}>
-                        すべての接地と離地を手動でマーク（最も正確だが時間がかかる）
+                        接地・離地をすべて手動で行う（最も正確だが時間がかかる）
                       </div>
                       <div style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 'bold' }}>
-                        ✅ 姿勢検出なしでも使用可能
+                        ✅ 姿勢推定なしでも使用可能
                       </div>
                     </button>
                   </div>
@@ -3853,6 +3853,47 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     <div style={{ fontSize: '0.75rem', textAlign: 'center', marginTop: '4px', opacity: 0.9 }}>
                       ※ 離地が<strong>遅すぎる</strong>場合は<strong>低く</strong>、<strong>早すぎる</strong>場合は<strong>高く</strong>調整
                     </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* キャリブレーション完了後の操作ガイド */}
+              {calibrationType && calibrationMode >= 2 && (
+                <div style={{
+                  background: '#f0fdf4',
+                  border: '2px solid #10b981',
+                  padding: '16px',
+                  borderRadius: '8px',
+                  margin: '12px 0'
+                }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#047857' }}>
+                    📝 操作方法
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: '#374151', lineHeight: '1.6' }}>
+                    {calibrationType === 1 && (
+                      <>
+                        <strong>方式1（自動マーカー）:</strong><br/>
+                        「🤖 すべて自動検出」ボタンを押すと、つま先の高さ判定により区間内のすべての接地・離地が自動検出されます。
+                      </>
+                    )}
+                    {calibrationType === 2 && (
+                      <>
+                        <strong>方式2（半自動マーカー）:</strong><br/>
+                        ① <kbd>Space</kbd>キーで接地をマーク<br/>
+                        ② 離地は接地時のつま先の高さにより自動判定されます<br/>
+                        ③ 次の接地を<kbd>Space</kbd>キーでマーク<br/>
+                        ※ または「🤖 すべて自動検出」ボタンで残りを一括検出
+                      </>
+                    )}
+                    {calibrationType === 3 && (
+                      <>
+                        <strong>方式3（手動マーカー）:</strong><br/>
+                        ① <kbd>Space</kbd>キーで接地をマーク<br/>
+                        ② <kbd>Space</kbd>キーで離地をマーク<br/>
+                        ③ 次の接地を<kbd>Space</kbd>キーでマーク<br/>
+                        ④ 繰り返し...
+                      </>
+                    )}
                   </div>
                 </div>
               )}
