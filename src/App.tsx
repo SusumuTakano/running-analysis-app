@@ -570,40 +570,54 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     setAutoToeOffFrames([autoToeOffFrames[0], ...detectedToeOffs]);
   };
 
-  // 次の接地フレームを検出（つま先が停止している状態を検出）
+  // 次の接地フレームを検出（キャリブレーションで記録した接地高さに戻ったら接地）
   const detectNextContactFrame = (startFrame: number, endFrame: number): number | null => {
     if (!poseResults.length) return null;
+    if (baseThreshold === null) return null;
+    
+    // キャリブレーション時の最初の接地フレームの高さを基準とする
+    const firstContactFrame = manualContactFrames[0];
+    if (firstContactFrame === undefined) return null;
+    
+    const referenceContactToeY = getToeY(poseResults[firstContactFrame]);
+    if (referenceContactToeY === null) return null;
+    
+    // 許容誤差：基準接地高さの±1%以内なら接地と判定（極限の高精度）
+    const tolerance = Math.abs(referenceContactToeY) * 0.01;
     
     // 開始フレームから前方を検索
-    for (let i = startFrame; i < endFrame - 10; i++) {
-      const toeY = getToeY(poseResults[i]);
-      if (toeY === null) continue;
+    for (let i = startFrame; i < endFrame; i++) {
+      const currentToeY = getToeY(poseResults[i]);
+      if (currentToeY === null) continue;
       
-      // 次の数フレームでつま先のY座標がほぼ変化しないか確認（接地判定）
-      let isStable = true;
-      let totalVariation = 0;
+      // 基準接地高さに戻ったかチェック
+      const heightDiff = Math.abs(currentToeY - referenceContactToeY);
       
-      for (let j = 1; j <= 5; j++) {
-        if (i + j >= poseResults.length) break;
-        const nextToeY = getToeY(poseResults[i + j]);
-        if (nextToeY === null) {
-          isStable = false;
-          break;
+      if (heightDiff <= tolerance) {
+        // さらに次の2-3フレームも同じ高さを維持しているか確認（安定性チェック）
+        let isStable = true;
+        for (let j = 1; j <= 2; j++) {
+          if (i + j >= poseResults.length) break;
+          const nextToeY = getToeY(poseResults[i + j]);
+          if (nextToeY === null) {
+            isStable = false;
+            break;
+          }
+          const nextDiff = Math.abs(nextToeY - referenceContactToeY);
+          if (nextDiff > tolerance * 1.5) {
+            isStable = false;
+            break;
+          }
         }
         
-        // Y座標の変化量を計算（ピクセル単位）
-        const variation = Math.abs(nextToeY - toeY);
-        totalVariation += variation;
-      }
-      
-      // 平均変化量が基準閾値の30%以下なら接地と判定
-      const avgVariation = totalVariation / 5;
-      if (isStable && baseThreshold !== null && avgVariation < baseThreshold * 0.3) {
-        console.log(`🟢 接地検出: フレーム ${i} (平均変化: ${avgVariation.toFixed(4)})`);
-        return i;
+        if (isStable) {
+          console.log(`🟢 接地検出（高精度）: フレーム ${i} (高さ差: ${heightDiff.toFixed(6)}, 許容誤差: ${tolerance.toFixed(6)})`);
+          return i;
+        }
       }
     }
     
+    console.warn(`⚠️ 接地が検出できませんでした（開始: ${startFrame}）`);
     return null;
   };
 
@@ -612,63 +626,32 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     if (!poseResults.length) return null;
     
     const contactToeY = getToeY(poseResults[contactFrame]);
-    const contactAnkleY = getAnkleY(poseResults[contactFrame]);
     if (contactToeY === null) return null;
     
-    // 接地フレームから最大60フレーム先まで検索（2秒程度）
+    // 接地フレームから最大60フレーム先まで検索
     const maxSearchFrames = 60;
     const endFrame = Math.min(contactFrame + maxSearchFrames, poseResults.length - 1);
     
-    let maxRise = 0;
-    let candidateFrame = null;
+    // 感度を極限まで高める：接地高さの0.1%でも上昇したら離地と判定
+    const minRiseThreshold = Math.abs(contactToeY) * 0.001; // 0.1%の微小変化を検出
     
-    // まず、つま先が上昇しているフレームを全て検出
-    for (let i = contactFrame + 3; i <= endFrame; i++) {  // 最初の数フレームはスキップ（ノイズ除去）
+    // 接地後、最初につま先が上昇し始めたフレームを離地とする
+    for (let i = contactFrame + 1; i <= endFrame; i++) {
       const currentToeY = getToeY(poseResults[i]);
       if (currentToeY === null) continue;
       
-      // Y座標が小さくなる=上昇
+      // Y座標が小さくなる=上昇（画像座標系では上が小さい）
       const rise = contactToeY - currentToeY;
       
-      // 閾値の80%を超えたら候補として記録
-      if (rise >= toeOffThreshold * 0.8) {
-        // 足首も考慮（足首が上昇していることを確認）
-        if (contactAnkleY !== null) {
-          const currentAnkleY = getAnkleY(poseResults[i]);
-          if (currentAnkleY !== null) {
-            const ankleRise = contactAnkleY - currentAnkleY;
-            // 足首も上昇している場合のみ有効
-            if (ankleRise > 0) {
-              if (rise > maxRise) {
-                maxRise = rise;
-                candidateFrame = i;
-              }
-            }
-          }
-        } else {
-          // 足首データがない場合はつま先のみで判定
-          if (rise > maxRise) {
-            maxRise = rise;
-            candidateFrame = i;
-          }
-        }
-      }
-      
-      // 閾値を大きく超えたら、そこで確定（早期離脱）
-      if (rise >= toeOffThreshold * 1.5) {
-        console.log(`✅ 離地検出（早期確定）: フレーム ${i} (上昇量: ${rise.toFixed(4)})`);
+      // 少しでも上昇したら離地と判定（極限の高感度）
+      if (rise > minRiseThreshold) {
+        console.log(`✅ 離地検出（高精度）: フレーム ${i} (上昇量: ${rise.toFixed(6)}, 閾値: ${minRiseThreshold.toFixed(6)})`);
         return i;
       }
     }
     
-    // 候補が見つかった場合
-    if (candidateFrame !== null) {
-      console.log(`✅ 離地検出: フレーム ${candidateFrame} (最大上昇量: ${maxRise.toFixed(4)})`);
-      return candidateFrame;
-    }
-    
     console.warn(`⚠️ 離地が検出できませんでした（接地: ${contactFrame}）`);
-    return null; // 離地が見つからない
+    return null;
   };
 
 

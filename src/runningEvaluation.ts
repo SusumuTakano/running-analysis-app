@@ -60,7 +60,7 @@ export function generateRunningEvaluation(
         score: 'excellent',
         icon: '✅',
         message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 理想的な加速姿勢',
-        advice: '素晴らしい加速姿勢です！45°前後の前傾により、大臀筋とハムストリングスを効率的に使って強力な推進力を生み出しています。この姿勢で股関節伸展による加速が最大化されています。'
+        advice: '理想的な45°前傾です。この姿勢により重心が前方に位置し、身体が自然に前方へ倒れ込むことで水平方向への強力な推進力が生まれています。最初の2-3歩で膝角度を固定したまま股関節伸展主導で加速できています。'
       });
     } else if (avgTrunkAngle >= 38 && avgTrunkAngle < 42) {
       evaluations.push({
@@ -68,7 +68,7 @@ export function generateRunningEvaluation(
         score: 'good',
         icon: '✅',
         message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 良好な加速姿勢',
-        advice: '良好な加速姿勢です。42-48°の範囲を目指すと、さらに効率的に股関節伸展筋群（大臀筋・ハムストリングス）を活用できます。'
+        advice: '良好な前傾姿勢です。42-45°の範囲を目指すと、重心移動と地面反力がさらに最適化されます。ブロッククリアランス後、体幹を一直線に保ったまま前方へ倒れ込む意識を持ちましょう。'
       });
     } else if (avgTrunkAngle > 48 && avgTrunkAngle <= 60) {
       evaluations.push({
@@ -76,7 +76,7 @@ export function generateRunningEvaluation(
         score: 'good',
         icon: '⚠️',
         message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - やや前傾不足',
-        advice: 'もう少し前傾を強めると加速力が向上します。42-48°の前傾で、股関節伸展による強力な推進力を得られます。膝を固定し、臀部を使った伸展動作を意識しましょう。'
+        advice: 'やや前傾が浅いです。スタート直後の加速局面では42-45°の強い前傾が必要です。ブロックを押し切った後、体幹を一直線に保ち、重心を前方に位置させることで水平推進力を最大化できます。'
       });
     } else if (avgTrunkAngle > 60 && avgTrunkAngle <= 80) {
       evaluations.push({
@@ -84,7 +84,7 @@ export function generateRunningEvaluation(
         score: 'fair',
         icon: '⚠️',
         message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 前傾不足（早期起き上がり）',
-        advice: 'スタート直後から起き上がってしまっています。42-48°の前傾姿勢を維持し、膝を固定したまま股関節伸展で加速することが重要です。足を回して膝の屈曲伸展で走るのではなく、臀部とハムストリングスを使って地面を押しましょう。'
+        advice: 'スタート直後に早期起き上がりが発生しています。最初の2-3歩は膝角度を固定したまま、股関節伸展（大臀筋・ハムストリングス主導）で地面を後方へ押し続けることが重要です。体幹を起こさず、頭部から足首まで一直線を保ち、身体全体で前方に倒れ込むイメージを持ちましょう。'
       });
     } else if (avgTrunkAngle > 80) {
       evaluations.push({
@@ -92,7 +92,7 @@ export function generateRunningEvaluation(
         score: 'poor',
         icon: '❌',
         message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 完全な直立（加速失敗）',
-        advice: '加速局面で完全に起き上がっています。スタート直後の2-3歩は42-48°の強い前傾を維持し、膝を固定して股関節伸展（大臀筋・ハムストリングス）で加速することが必須です。一歩ごとにストライドを大きく伸ばしていく意識が必要です。'
+        advice: '加速局面で完全に体幹が起きています。これではスタート動作が機能していません。ブロッククリアランス後、最初の2-3歩は膝関節を固定（150-160°程度）し、股関節の伸展動作のみでストライドを伸ばす意識が必要です。膝を引き上げて走るのではなく、足が身体の後方にある状態で股関節を伸ばし、地面を後ろに押し続けることで水平加速が生まれます。'
       });
     } else {
       // avgTrunkAngle < 38の場合
@@ -164,7 +164,7 @@ export function generateRunningEvaluation(
           score: 'excellent',
           icon: '✅',
           message: 'ストライド: ' + avgStride.toFixed(2) + 'm - 優秀な伸長',
-          advice: '素晴らしいストライド伸長です！一歩ごとに大きく伸ばし、股関節伸展（大臀筋・ハムストリングス）を効果的に使えています。膝を固定したまま臀部で地面を押す動作が実現できています。'
+          advice: '優れたストライド伸長です。スタート直後から一歩ごとに段階的にストライドを伸ばせています。膝関節を固定したまま股関節伸展で地面を後方へ押す動作が実現できています。この技術により接地時間を最小限に抑えながら大きな推進力を得られています。'
         });
       } else if (avgStride >= 1.2) {
         evaluations.push({
@@ -172,7 +172,7 @@ export function generateRunningEvaluation(
           score: 'good',
           icon: '✅',
           message: 'ストライド: ' + avgStride.toFixed(2) + 'm - 良好',
-          advice: '良好なストライド伸長です。さらに1.4m以上を目指すと、より強力な加速が可能になります。膝関節の屈曲伸展ではなく、股関節伸展による推進を意識しましょう。'
+          advice: '良好なストライド伸長です。さらに伸ばすためには、最初の2-3歩で膝関節角度を150-160°程度に固定し、股関節伸展動作のみでストライドを獲得することを意識してください。膝を曲げて引き上げる動作は水平加速を妨げます。'
         });
       } else {
         evaluations.push({
@@ -180,7 +180,7 @@ export function generateRunningEvaluation(
           score: 'fair',
           icon: '⚠️',
           message: 'ストライド: ' + avgStride.toFixed(2) + 'm - 伸長不足',
-          advice: 'ストライドが不十分です。加速局面では一歩ごとに大きくストライドを伸ばすことが重要です。膝を固定し、股関節伸展（大臀筋・ハムストリングス）で地面を押しましょう。足を回して走るのではなく、臀部とハムで推進することを意識してください。'
+          advice: 'ストライド伸長が不十分です。スタート時のストライド伸長不足は、膝関節の早期屈曲（膝を引き上げる動作）が原因である可能性が高いです。最初の2-3歩は膝を伸ばしたまま保ち、股関節伸展のみでストライドを獲得してください。接地は身体の後方で行い、地面を後ろに押す意識を持ちましょう。'
         });
       }
     } else {
