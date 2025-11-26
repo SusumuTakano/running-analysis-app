@@ -1859,13 +1859,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     if (!offCtx) return;
     offCtx.putImageData(frame, 0, 0);
 
-    // Retina対応: デバイスピクセル比を考慮
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${h}px`;
-    ctx.scale(dpr, dpr);
+    // キャンバスサイズを動画サイズに設定（CSSでレスポンシブに表示）
+    canvas.width = w;
+    canvas.height = h;
+    // canvas.style.widthとcanvas.style.heightは削除（CSSに任せる）
 
     if (!footZoomEnabled) {
       ctx.drawImage(offscreen, 0, 0, w, h, 0, 0, w, h);
