@@ -493,6 +493,91 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   };
 
   // 自動離地判定：接地後、つま先が閾値以上上昇したフレームを検出
+  // 完全自動検出：全フレームから接地と離地を検出
+  const autoDetectAllContactsAndToeOffs = () => {
+    if (toeOffThreshold === null || baseThreshold === null) {
+      console.warn('⚠️ キャリブレーションが完了していません');
+      return;
+    }
+    if (!poseResults.length) return;
+    if (!sectionStartFrame || !sectionEndFrame) {
+      console.warn('⚠️ 区間が設定されていません');
+      return;
+    }
+
+    console.log('🤖 完全自動検出を開始...');
+    
+    const detectedContacts: number[] = [];
+    const detectedToeOffs: number[] = [];
+    
+    let currentFrame = sectionStartFrame;
+    let searchStartFrame = currentFrame;
+    
+    // 区間内を順次検索
+    while (searchStartFrame < sectionEndFrame) {
+      // 次の接地を検出
+      const contactFrame = detectNextContactFrame(searchStartFrame, sectionEndFrame);
+      if (contactFrame === null) break;
+      
+      // 接地フレームを記録
+      detectedContacts.push(contactFrame);
+      
+      // その接地に対応する離地を検出
+      const toeOffFrame = detectToeOffFrame(contactFrame);
+      if (toeOffFrame !== null) {
+        detectedToeOffs.push(toeOffFrame);
+        // 次の検索は離地フレームの少し後から
+        searchStartFrame = toeOffFrame + 5;
+      } else {
+        // 離地が見つからない場合は、接地の少し後から検索
+        searchStartFrame = contactFrame + 10;
+      }
+    }
+    
+    console.log(`✅ 自動検出完了: 接地 ${detectedContacts.length}回, 離地 ${detectedToeOffs.length}回`);
+    
+    // キャリブレーションの1歩目を含めて設定
+    setManualContactFrames([manualContactFrames[0], ...detectedContacts]);
+    setAutoToeOffFrames([autoToeOffFrames[0], ...detectedToeOffs]);
+  };
+
+  // 次の接地フレームを検出（つま先が停止している状態を検出）
+  const detectNextContactFrame = (startFrame: number, endFrame: number): number | null => {
+    if (!poseResults.length) return null;
+    
+    // 開始フレームから前方を検索
+    for (let i = startFrame; i < endFrame - 10; i++) {
+      const toeY = getToeY(poseResults[i]);
+      if (toeY === null) continue;
+      
+      // 次の数フレームでつま先のY座標がほぼ変化しないか確認（接地判定）
+      let isStable = true;
+      let totalVariation = 0;
+      
+      for (let j = 1; j <= 5; j++) {
+        if (i + j >= poseResults.length) break;
+        const nextToeY = getToeY(poseResults[i + j]);
+        if (nextToeY === null) {
+          isStable = false;
+          break;
+        }
+        
+        // Y座標の変化量を計算（ピクセル単位）
+        const variation = Math.abs(nextToeY - toeY);
+        totalVariation += variation;
+      }
+      
+      // 平均変化量が基準閾値の30%以下なら接地と判定
+      const avgVariation = totalVariation / 5;
+      if (isStable && baseThreshold !== null && avgVariation < baseThreshold * 0.3) {
+        console.log(`🟢 接地検出: フレーム ${i} (平均変化: ${avgVariation.toFixed(4)})`);
+        return i;
+      }
+    }
+    
+    return null;
+  };
+
   const detectToeOffFrame = (contactFrame: number): number | null => {
     if (toeOffThreshold === null) return null;
     if (!poseResults.length) return null;
@@ -3602,6 +3687,44 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 }}>
                   <div style={{ fontSize: '0.9rem', fontWeight: 'bold', textAlign: 'center', marginBottom: '12px' }}>
                     ✅ キャリブレーション完了（閾値: {(toeOffThreshold * 100).toFixed(1)}%）
+                  </div>
+                  
+                  {/* 完全自動検出ボタン */}
+                  <div style={{ marginBottom: '12px' }}>
+                    <button
+                      onClick={() => {
+                        if (window.confirm('区間内のすべての接地と離地を自動検出しますか？\n（現在のマーカーは保持されます）')) {
+                          autoDetectAllContactsAndToeOffs();
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        fontSize: '1rem',
+                        fontWeight: 'bold',
+                        background: 'rgba(255, 255, 255, 0.95)',
+                        color: '#059669',
+                        border: 'none',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      <span style={{ fontSize: '1.2rem' }}>🤖</span>
+                      <span>すべて自動検出</span>
+                    </button>
+                    <p style={{ 
+                      fontSize: '0.75rem', 
+                      marginTop: '8px', 
+                      opacity: 0.9,
+                      textAlign: 'center'
+                    }}>
+                      キャリブレーションの閾値を使って、区間内のすべての接地・離地を自動で検出します
+                    </p>
                   </div>
                   
                   {/* 閾値調整スライダー */}
