@@ -1427,6 +1427,17 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
   // ------------ フレーム抽出 ------------
   const handleExtractFrames = async () => {
+    console.log('🎬 === Frame Extraction Started ===');
+    console.log('Current optimization settings:', {
+      useOptimization,
+      brightness,
+      contrast,
+      trimStart,
+      trimEnd,
+      targetFpsInput,
+      videoDuration
+    });
+    
     if (!videoFile) {
       alert("動画ファイルを選択してください。");
       setWizardStep(1);
@@ -3330,14 +3341,23 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   <ul style={{ marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
                     <li>明るさ: {brightness}%</li>
                     <li>コントラスト: {contrast}%</li>
-                    <li>トリミング: {trimStart.toFixed(2)}秒 ～ {trimEnd > 0 ? `${trimEnd.toFixed(2)}秒` : '最後まで'} 
+                    <li>
+                      トリミング: {trimStart.toFixed(2)}秒 ～ {trimEnd > 0 ? `${trimEnd.toFixed(2)}秒` : `${videoDuration.toFixed(2)}秒（最後まで）`}
                       {trimStart === 0 && trimEnd === 0 && (
-                        <span style={{ color: 'orange', marginLeft: '0.5rem' }}>
-                          ⚠️ トリミングなし
+                        <span style={{ color: 'orange', fontWeight: 'bold', marginLeft: '0.5rem' }}>
+                          ⚠️ トリミングなし（全範囲抽出）
+                        </span>
+                      )}
+                      {(trimStart > 0 || trimEnd > 0) && (
+                        <span style={{ color: 'green', fontWeight: 'bold', marginLeft: '0.5rem' }}>
+                          ✓ トリミング設定あり
                         </span>
                       )}
                     </li>
-                    <li>抽出範囲: {((trimEnd > 0 ? trimEnd : videoDuration) - trimStart).toFixed(2)}秒</li>
+                    <li style={{ fontWeight: 'bold', color: 'var(--primary)' }}>
+                      📊 抽出範囲: {((trimEnd > 0 ? trimEnd : videoDuration) - trimStart).toFixed(2)}秒
+                      （動画長: {videoDuration.toFixed(2)}秒）
+                    </li>
                     <li>FPS: {targetFpsInput ? `${targetFpsInput} FPS` : '元のまま'}</li>
                   </ul>
                 </div>
