@@ -449,6 +449,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const [horizonPan, setHorizonPan] = useState<{x: number, y: number}>({x: 0, y: 0}); // パン位置
   const [isPanning, setIsPanning] = useState<boolean>(false); // パン中かどうか
   const [panStart, setPanStart] = useState<{x: number, y: number} | null>(null); // パン開始位置
+  const [hadPanned, setHadPanned] = useState<boolean>(false); // パン操作が行われたかどうか（クリック抑制用）
   
   // 互換性のため、contactFrames を計算で生成（接地・離地を交互に並べる）
   const contactFrames = useMemo(() => {
@@ -593,10 +594,18 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     const detectedContacts: number[] = [];
     const detectedToeOffs: number[] = [];
     
-    // スタートの50フレーム前から検索開始（スタート前の助走も解析）
-    const searchOffset = 50;
-    let searchStartFrame = Math.max(0, sectionStartFrame - searchOffset);
-    console.log(`📍 検索範囲: Frame ${searchStartFrame} ～ ${sectionEndFrame} (スタートの${searchOffset}フレーム前から)`);
+    // キャリブレーションの離地フレームの後から検索開始
+    // manualContactFrames[0] = キャリブレーション接地
+    // autoToeOffFrames[0] = キャリブレーション離地（または manualToeOffFrames[0]）
+    const calibrationToeOffFrame = calibrationType === 3 ? manualToeOffFrames[0] : autoToeOffFrames[0];
+    if (!calibrationToeOffFrame) {
+      console.error('❌ キャリブレーションの離地フレームが設定されていません');
+      return;
+    }
+    
+    // キャリブレーション離地の少し後から検索開始（5フレーム後）
+    let searchStartFrame = calibrationToeOffFrame + 5;
+    console.log(`📍 検索範囲: Frame ${searchStartFrame} ～ ${sectionEndFrame} (キャリブレーション離地 ${calibrationToeOffFrame} の後から)`);
     
     // 区間内を順次検索
     while (searchStartFrame < sectionEndFrame) {
@@ -620,10 +629,17 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     }
     
     console.log(`✅ 自動検出完了: 接地 ${detectedContacts.length}回, 離地 ${detectedToeOffs.length}回`);
+    console.log(`📊 検出された接地フレーム: [${detectedContacts.join(', ')}]`);
+    console.log(`📊 検出された離地フレーム: [${detectedToeOffs.join(', ')}]`);
     
-    // キャリブレーションの1歩目を含めて設定
+    // キャリブレーションの1歩目を保持し、その後に自動検出結果を追加
+    // manualContactFrames[0] = キャリブレーション接地
+    // detectedContacts = 自動検出された接地リスト
     setManualContactFrames([manualContactFrames[0], ...detectedContacts]);
-    setAutoToeOffFrames([autoToeOffFrames[0], ...detectedToeOffs]);
+    
+    // autoToeOffFrames は自動検出された離地のみを格納（キャリブレーション離地は含まない）
+    // インデックスi=0が2番目のステップの離地、i=1が3番目のステップの離地...
+    setAutoToeOffFrames(detectedToeOffs);
   };
 
   // ========== 水平キャリブレーション関数 ==========
@@ -3551,26 +3567,32 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 onMouseDown={(e) => {
                   if (horizonZoom > 1 && !isHorizonCalibrated) {
                     setIsPanning(true);
+                    setHadPanned(false); // パン開始時はリセット
                     setPanStart({ x: e.clientX - horizonPan.x, y: e.clientY - horizonPan.y });
                   }
                 }}
                 onMouseMove={(e) => {
                   if (isPanning && panStart) {
+                    setHadPanned(true); // マウスが動いたらパン操作フラグを立てる
                     const newPanX = e.clientX - panStart.x;
                     const newPanY = e.clientY - panStart.y;
                     setHorizonPan({ x: newPanX, y: newPanY });
                   }
                 }}
-                onMouseUp={() => {
+                onMouseUp={(e) => {
                   setIsPanning(false);
                   setPanStart(null);
+                  // hadPannedフラグは少し遅れてリセット（onClickより後に実行されるように）
+                  setTimeout(() => setHadPanned(false), 100);
                 }}
                 onMouseLeave={() => {
                   setIsPanning(false);
                   setPanStart(null);
+                  setTimeout(() => setHadPanned(false), 100);
                 }}
                 onClick={(e) => {
-                  if (isPanning || isHorizonCalibrated) return;
+                  // パン操作中またはパン直後のクリックを防ぐ
+                  if (hadPanned || isPanning || isHorizonCalibrated) return;
                   
                   const canvas = displayCanvasRef.current;
                   if (!canvas) return;
