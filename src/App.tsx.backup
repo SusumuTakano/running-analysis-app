@@ -3199,72 +3199,63 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             <div className="wizard-step-header">
               <h2 className="wizard-step-title">ステップ 5: 区間設定</h2>
               <p className="wizard-step-desc">
-                スライダーを動かして、スタート・フィニッシュ・中間地点を設定してください。
+                スライダーでフレームを見ながら、下のボタンで登録します。
               </p>
             </div>
 
-            {/* キャンバスプレビュー */}
-            <div className="canvas-area" style={{ marginBottom: '2rem' }}>
+            {/* キャンバス */}
+            <div className="canvas-area" style={{ position: 'relative', marginBottom: '1rem' }}>
               <canvas 
                 ref={displayCanvasRef} 
                 className="preview-canvas"
               />
             </div>
 
-            {/* 3つのスライダーでの区間設定 */}
-            <div style={{
+            {/* フレームコントロール */}
+            <div className="frame-control">
+              <div className="frame-info">
+                フレーム: {currentLabel} / {maxLabel}
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={Math.max(ready ? framesCount - 1 : 0, 0)}
+                step={1}
+                value={ready ? currentFrame : 0}
+                onChange={handleSliderChange}
+                disabled={!ready}
+                className="frame-range"
+              />
+              <div className="frame-buttons-compact">
+                <button onClick={() => changeFrame(-10)} disabled={!ready}>-10</button>
+                <button onClick={() => changeFrame(-1)} disabled={!ready}>-1</button>
+                <button onClick={() => changeFrame(1)} disabled={!ready}>+1</button>
+                <button onClick={() => changeFrame(10)} disabled={!ready}>+10</button>
+              </div>
+            </div>
+
+            {/* 登録ボタン */}
+            <div style={{ 
+              marginTop: '1.5rem',
+              padding: '1.5rem', 
               background: '#f9fafb',
-              padding: '2rem',
-              borderRadius: '12px',
+              borderRadius: '8px',
               border: '2px solid #e5e7eb'
             }}>
-              <h3 style={{
-                fontSize: '1.2rem',
+              <div style={{ 
+                fontSize: '1rem', 
                 fontWeight: 'bold',
-                marginBottom: '1.5rem',
+                marginBottom: '1rem',
                 color: '#374151',
                 textAlign: 'center'
               }}>
-                ✨ スライダーで区間を設定
-              </h3>
-              
-              {/* スタート地点スライダー */}
-              <div style={{ marginBottom: '2rem' }}>
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  marginBottom: '0.5rem',
-                  alignItems: 'center'
-                }}>
-                  <span style={{ 
-                    fontSize: '1rem', 
-                    fontWeight: 'bold',
-                    color: '#10b981'
-                  }}>
-                    🟢 スタート地点
-                  </span>
-                  <span style={{ 
-                    fontSize: '0.95rem',
-                    color: '#6b7280',
-                    background: '#e5e7eb',
-                    padding: '4px 12px',
-                    borderRadius: '6px',
-                    fontWeight: 'bold'
-                  }}>
-                    Frame: {sectionStartFrame ?? 0}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(framesCount - 1, 0)}
-                  step={1}
-                  value={sectionStartFrame ?? 0}
-                  onChange={(e) => {
-                    const newFrame = Number(e.target.value);
-                    setSectionStartFrame(newFrame);
-                    setCurrentFrame(newFrame);
-                    const pose = poseResults[newFrame];
+                現在のフレームを登録:
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                <button
+                  onClick={() => {
+                    setSectionStartFrame(currentFrame);
+                    const pose = poseResults[currentFrame];
                     if (pose?.landmarks) {
                       const leftHip = pose.landmarks[23];
                       const rightHip = pose.landmarks[24];
@@ -3274,61 +3265,24 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     }
                     setStartLineOffset(0);
                   }}
-                  className="input-field"
-                  style={{ 
-                    cursor: 'pointer', 
-                    width: '100%',
-                    height: '8px',
-                    borderRadius: '4px'
-                  }}
-                />
-                <div style={{
-                  fontSize: '0.85rem',
-                  color: '#6b7280',
-                  marginTop: '0.5rem',
-                  textAlign: 'center'
-                }}>
-                  💡 スライダーを動かすと、動画がその位置にジャンプします
-                </div>
-              </div>
-
-              {/* フィニッシュ地点スライダー */}
-              <div style={{ marginBottom: '2rem' }}>
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  marginBottom: '0.5rem',
-                  alignItems: 'center'
-                }}>
-                  <span style={{ 
-                    fontSize: '1rem', 
-                    fontWeight: 'bold',
-                    color: '#ef4444'
-                  }}>
-                    🔴 フィニッシュ地点
-                  </span>
-                  <span style={{ 
-                    fontSize: '0.95rem',
-                    color: '#6b7280',
-                    background: '#e5e7eb',
-                    padding: '4px 12px',
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    background: '#10b981',
+                    color: 'white',
+                    border: 'none',
                     borderRadius: '6px',
-                    fontWeight: 'bold'
-                  }}>
-                    Frame: {sectionEndFrame ?? framesCount - 1}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(framesCount - 1, 0)}
-                  step={1}
-                  value={sectionEndFrame ?? framesCount - 1}
-                  onChange={(e) => {
-                    const newFrame = Number(e.target.value);
-                    setSectionEndFrame(newFrame);
-                    setCurrentFrame(newFrame);
-                    const pose = poseResults[newFrame];
+                    fontSize: '1rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🟢 スタート
+                </button>
+                <button
+                  onClick={() => {
+                    setSectionEndFrame(currentFrame);
+                    const pose = poseResults[currentFrame];
                     if (pose?.landmarks) {
                       const leftHip = pose.landmarks[23];
                       const rightHip = pose.landmarks[24];
@@ -3338,53 +3292,24 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     }
                     setEndLineOffset(0);
                   }}
-                  className="input-field"
-                  style={{ 
-                    cursor: 'pointer', 
-                    width: '100%',
-                    height: '8px',
-                    borderRadius: '4px'
-                  }}
-                />
-              </div>
-
-              {/* 中間地点スライダー */}
-              <div style={{ marginBottom: '1.5rem' }}>
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  marginBottom: '0.5rem',
-                  alignItems: 'center'
-                }}>
-                  <span style={{ 
-                    fontSize: '1rem', 
-                    fontWeight: 'bold',
-                    color: '#f59e0b'
-                  }}>
-                    🟡 中間地点（任意）
-                  </span>
-                  <span style={{ 
-                    fontSize: '0.95rem',
-                    color: '#6b7280',
-                    background: '#e5e7eb',
-                    padding: '4px 12px',
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    background: '#ef4444',
+                    color: 'white',
+                    border: 'none',
                     borderRadius: '6px',
-                    fontWeight: 'bold'
-                  }}>
-                    Frame: {sectionMidFrame ?? Math.floor(framesCount / 2)}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(framesCount - 1, 0)}
-                  step={1}
-                  value={sectionMidFrame ?? Math.floor(framesCount / 2)}
-                  onChange={(e) => {
-                    const newFrame = Number(e.target.value);
-                    setSectionMidFrame(newFrame);
-                    setCurrentFrame(newFrame);
-                    const pose = poseResults[newFrame];
+                    fontSize: '1rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🔴 フィニッシュ
+                </button>
+                <button
+                  onClick={() => {
+                    setSectionMidFrame(currentFrame);
+                    const pose = poseResults[currentFrame];
                     if (pose?.landmarks) {
                       const leftHip = pose.landmarks[23];
                       const rightHip = pose.landmarks[24];
@@ -3394,149 +3319,595 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     }
                     setMidLineOffset(0);
                   }}
-                  className="input-field"
-                  style={{ 
-                    cursor: 'pointer', 
-                    width: '100%',
-                    height: '8px',
-                    borderRadius: '4px'
-                  }}
-                />
-              </div>
-
-              {/* 選択範囲の視覚表示 */}
-              <div style={{
-                marginTop: '1.5rem',
-                height: '40px',
-                background: 'linear-gradient(90deg, #e5e7eb 0%, #e5e7eb 100%)',
-                borderRadius: '8px',
-                position: 'relative',
-                overflow: 'hidden'
-              }}>
-                <div style={{
-                  position: 'absolute',
-                  left: `${((sectionStartFrame ?? 0) / Math.max(framesCount - 1, 1)) * 100}%`,
-                  right: `${100 - ((sectionEndFrame ?? framesCount - 1) / Math.max(framesCount - 1, 1)) * 100}%`,
-                  height: '100%',
-                  background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'white',
-                  fontSize: '0.85rem',
-                  fontWeight: 'bold'
-                }}>
-                  選択範囲: {(sectionEndFrame ?? framesCount - 1) - (sectionStartFrame ?? 0)} フレーム
-                </div>
-              </div>
-
-              {/* 区間情報の表示 */}
-              <div style={{
-                marginTop: '1.5rem',
-                padding: '1rem',
-                background: 'white',
-                borderRadius: '8px',
-                border: '1px solid #d1d5db'
-              }}>
-                <div style={{ 
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(3, 1fr)',
-                  gap: '1rem',
-                  textAlign: 'center'
-                }}>
-                  <div>
-                    <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '4px' }}>区間フレーム数</div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#374151' }}>
-                      {sectionRange.count}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '4px' }}>区間時間</div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#374151' }}>
-                      {sectionTime != null ? sectionTime.toFixed(3) : "ー"} 秒
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '4px' }}>平均速度</div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#374151' }}>
-                      {avgSpeed != null ? avgSpeed.toFixed(3) : "ー"} m/s
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 解析シチュエーション選択 */}
-            <div style={{
-              marginTop: '2rem',
-              padding: '1.5rem',
-              background: '#f0f9ff',
-              borderRadius: '12px',
-              border: '2px solid #3b82f6'
-            }}>
-              <h3 style={{
-                fontSize: '1.1rem',
-                fontWeight: 'bold',
-                marginBottom: '1rem',
-                color: '#1e40af'
-              }}>
-                📊 解析シチュエーション
-              </h3>
-              <div style={{
-                display: 'flex',
-                gap: '12px',
-                flexWrap: 'wrap'
-              }}>
-                <button
-                  onClick={() => setAnalysisType('acceleration')}
                   style={{
                     flex: 1,
-                    minWidth: '180px',
-                    padding: '16px',
-                    borderRadius: '8px',
-                    border: analysisType === 'acceleration' ? '3px solid #3b82f6' : '2px solid #d1d5db',
-                    background: analysisType === 'acceleration' ? '#dbeafe' : 'white',
-                    cursor: 'pointer',
-                    fontWeight: analysisType === 'acceleration' ? 'bold' : 'normal',
-                    transition: 'all 0.2s'
+                    padding: '12px',
+                    background: '#f59e0b',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '1rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
                   }}
                 >
-                  <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>🏃</div>
-                  <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '4px' }}>スタートからの加速分析</div>
-                  <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>0-30m加速局面</div>
-                </button>
-                <button
-                  onClick={() => setAnalysisType('topSpeed')}
-                  style={{
-                    flex: 1,
-                    minWidth: '180px',
-                    padding: '16px',
-                    borderRadius: '8px',
-                    border: analysisType === 'topSpeed' ? '3px solid #3b82f6' : '2px solid #d1d5db',
-                    background: analysisType === 'topSpeed' ? '#dbeafe' : 'white',
-                    cursor: 'pointer',
-                    fontWeight: analysisType === 'topSpeed' ? 'bold' : 'normal',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>⚡</div>
-                  <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '4px' }}>トップスピード分析</div>
-                  <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>最高速度維持局面</div>
+                  🟡 中間
                 </button>
               </div>
-              <div style={{
-                marginTop: '12px',
-                padding: '12px',
-                background: '#fef3c7',
-                borderRadius: '8px',
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-around',
                 fontSize: '0.9rem',
-                color: '#92400e'
+                color: '#6b7280'
               }}>
-                <strong>💡 Tip:</strong> {analysisType === 'acceleration' 
-                  ? 'スタート加速時は前傾姿勢（体幹角度86-88°）が理想的です。'
-                  : 'トップスピード時は垂直に近い姿勢（体幹角度80-90°）が理想的です。'}
+                <div>
+                  🟢 {sectionStartFrame !== null ? `Frame ${sectionStartFrame}` : '未設定'}
+                </div>
+                <div>
+                  🔴 {sectionEndFrame !== null ? `Frame ${sectionEndFrame}` : '未設定'}
+                </div>
+                <div>
+                  🟡 {sectionMidFrame !== null ? `Frame ${sectionMidFrame}` : '未設定'}
+                </div>
               </div>
             </div>
+
+
+
+
+            <div className="section-settings">
+              <div className="section-markers-info">
+                <p className="info-text" style={{
+                  fontSize: '1.1rem',
+                  fontWeight: 'bold',
+                  color: '#059669',
+                  textAlign: 'center',
+                  padding: '16px',
+                  background: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)',
+                  borderRadius: '8px',
+                  marginBottom: '16px'
+                }}>
+                  ✨ 自動ガイドモード<br/>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 'normal', color: '#047857' }}>
+                    画面の指示に従ってクリックするだけで、簡単に設定できます
+                  </span>
+                </p>
+              </div>
+
+              <div className="section-item">
+                <div className="section-label">
+                  <div className="marker-badge start">スタート</div>
+                  <strong>フレーム:</strong>{" "}
+                  {sectionStartFrame ?? "未設定"}
+                </div>
+              </div>
+              {sectionStartFrame != null && (
+                <>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '12px',
+                    background: '#f9fafb',
+                    borderRadius: '8px',
+                    marginTop: '8px'
+                  }}>
+                    <span style={{ fontSize: '0.9rem', color: '#6b7280', minWidth: '100px' }}>フレーム微調整:</span>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.max(0, sectionStartFrame - 5);
+                        setSectionStartFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedStartHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      -5
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.max(0, sectionStartFrame - 1);
+                        setSectionStartFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedStartHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      -1
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.min(framesCount - 1, sectionStartFrame + 1);
+                        setSectionStartFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedStartHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      +1
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.min(framesCount - 1, sectionStartFrame + 5);
+                        setSectionStartFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedStartHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      +5
+                    </button>
+                    <button
+                      onClick={() => setCurrentFrame(sectionStartFrame)}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #3b82f6',
+                        background: '#3b82f6',
+                        color: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold',
+                        marginLeft: '8px'
+                      }}
+                    >
+                      ジャンプ
+                    </button>
+                  </div>
+                  <div className="line-adjust-control">
+                    <label className="adjust-label">
+                      <span>線の位置調整:</span>
+                      <div className="adjust-slider-container">
+                        <button
+                          className="adjust-btn"
+                          onClick={() => setStartLineOffset((prev) => prev - 10)}
+                        >
+                          ◀
+                        </button>
+                        <input
+                          type="range"
+                          min={-200}
+                          max={200}
+                          step={1}
+                          value={startLineOffset}
+                          onChange={(e) => setStartLineOffset(Number(e.target.value))}
+                          className="adjust-slider"
+                        />
+                        <button
+                          className="adjust-btn"
+                          onClick={() => setStartLineOffset((prev) => prev + 10)}
+                        >
+                          ▶
+                        </button>
+                        <span className="adjust-value">{startLineOffset}px</span>
+                        <button
+                          className="adjust-reset"
+                          onClick={() => setStartLineOffset(0)}
+                        >
+                          リセット
+                        </button>
+                      </div>
+                    </label>
+                  </div>
+                </>
+              )}
+
+              <div className="section-item">
+                <div className="section-label">
+                  <div className="marker-badge mid">中間（任意）</div>
+                  <strong>フレーム:</strong>{" "}
+                  {sectionMidFrame ?? "未設定"}
+                </div>
+              </div>
+              {sectionMidFrame != null && (
+                <>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '12px',
+                    background: '#f9fafb',
+                    borderRadius: '8px',
+                    marginTop: '8px'
+                  }}>
+                    <span style={{ fontSize: '0.9rem', color: '#6b7280', minWidth: '100px' }}>フレーム微調整:</span>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.max(0, sectionMidFrame - 5);
+                        setSectionMidFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedMidHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      -5
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.max(0, sectionMidFrame - 1);
+                        setSectionMidFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedMidHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      -1
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.min(framesCount - 1, sectionMidFrame + 1);
+                        setSectionMidFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedMidHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      +1
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.min(framesCount - 1, sectionMidFrame + 5);
+                        setSectionMidFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedMidHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      +5
+                    </button>
+                    <button
+                      onClick={() => setCurrentFrame(sectionMidFrame)}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #3b82f6',
+                        background: '#3b82f6',
+                        color: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold',
+                        marginLeft: '8px'
+                      }}
+                    >
+                      ジャンプ
+                    </button>
+                  </div>
+                  <div className="line-adjust-control">
+                    <label className="adjust-label">
+                      <span>線の位置調整:</span>
+                      <div className="adjust-slider-container">
+                        <button
+                          className="adjust-btn"
+                          onClick={() => setMidLineOffset((prev) => prev - 10)}
+                        >
+                          ◀
+                        </button>
+                        <input
+                          type="range"
+                          min={-200}
+                          max={200}
+                          step={1}
+                          value={midLineOffset}
+                          onChange={(e) => setMidLineOffset(Number(e.target.value))}
+                        className="adjust-slider"
+                        />
+                        <button
+                          className="adjust-btn"
+                          onClick={() => setMidLineOffset((prev) => prev + 10)}
+                        >
+                          ▶
+                        </button>
+                        <span className="adjust-value">{midLineOffset}px</span>
+                        <button
+                          className="adjust-reset"
+                          onClick={() => setMidLineOffset(0)}
+                        >
+                          リセット
+                        </button>
+                      </div>
+                    </label>
+                  </div>
+                </>
+              )}
+
+              <div className="section-item">
+                <div className="section-label">
+                  <div className="marker-badge end">フィニッシュ</div>
+                  <strong>フレーム:</strong>{" "}
+                  {sectionEndFrame ?? "未設定"}
+                </div>
+              </div>
+              {sectionEndFrame != null && (
+                <>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '12px',
+                    background: '#f9fafb',
+                    borderRadius: '8px',
+                    marginTop: '8px'
+                  }}>
+                    <span style={{ fontSize: '0.9rem', color: '#6b7280', minWidth: '100px' }}>フレーム微調整:</span>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.max(0, sectionEndFrame - 5);
+                        setSectionEndFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedEndHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      -5
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.max(0, sectionEndFrame - 1);
+                        setSectionEndFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedEndHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      -1
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.min(framesCount - 1, sectionEndFrame + 1);
+                        setSectionEndFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedEndHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      +1
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newFrame = Math.min(framesCount - 1, sectionEndFrame + 5);
+                        setSectionEndFrame(newFrame);
+                        const hipX = calculateHipPosition(newFrame);
+                        setSavedEndHipX(hipX);
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db',
+                        background: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      +5
+                    </button>
+                    <button
+                      onClick={() => setCurrentFrame(sectionEndFrame)}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        borderRadius: '4px',
+                        border: '1px solid #3b82f6',
+                        background: '#3b82f6',
+                        color: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 'bold',
+                        marginLeft: '8px'
+                      }}
+                    >
+                      ジャンプ
+                    </button>
+                  </div>
+                  <div className="line-adjust-control">
+                    <label className="adjust-label">
+                      <span>線の位置調整:</span>
+                      <div className="adjust-slider-container">
+                        <button
+                          className="adjust-btn"
+                          onClick={() => setEndLineOffset((prev) => prev - 10)}
+                        >
+                          ◀
+                        </button>
+                        <input
+                          type="range"
+                          min={-200}
+                          max={200}
+                          step={1}
+                          value={endLineOffset}
+                          onChange={(e) => setEndLineOffset(Number(e.target.value))}
+                          className="adjust-slider"
+                        />
+                        <button
+                          className="adjust-btn"
+                          onClick={() => setEndLineOffset((prev) => prev + 10)}
+                        >
+                          ▶
+                        </button>
+                        <span className="adjust-value">{endLineOffset}px</span>
+                        <button
+                          className="adjust-reset"
+                          onClick={() => setEndLineOffset(0)}
+                        >
+                          リセット
+                        </button>
+                      </div>
+                    </label>
+                  </div>
+                </>
+              )}
+
+              {/* 解析シチュエーション選択 */}
+              <div style={{
+                marginTop: '24px',
+                padding: '16px',
+                background: '#f0f9ff',
+                borderRadius: '12px',
+                border: '2px solid #3b82f6'
+              }}>
+                <h3 style={{
+                  fontSize: '1.1rem',
+                  fontWeight: 'bold',
+                  marginBottom: '12px',
+                  color: '#1e40af'
+                }}>
+                  📊 解析シチュエーション
+                </h3>
+                <div style={{
+                  display: 'flex',
+                  gap: '12px',
+                  flexWrap: 'wrap'
+                }}>
+                  <button
+                    onClick={() => setAnalysisType('acceleration')}
+                    style={{
+                      flex: 1,
+                      minWidth: '180px',
+                      padding: '16px',
+                      borderRadius: '8px',
+                      border: analysisType === 'acceleration' ? '3px solid #3b82f6' : '2px solid #d1d5db',
+                      background: analysisType === 'acceleration' ? '#dbeafe' : 'white',
+                      cursor: 'pointer',
+                      fontWeight: analysisType === 'acceleration' ? 'bold' : 'normal',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>🏃</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '4px' }}>スタートからの加速分析</div>
+                    <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>0-30m加速局面</div>
+                  </button>
+                  <button
+                    onClick={() => setAnalysisType('topSpeed')}
+                    style={{
+                      flex: 1,
+                      minWidth: '180px',
+                      padding: '16px',
+                      borderRadius: '8px',
+                      border: analysisType === 'topSpeed' ? '3px solid #3b82f6' : '2px solid #d1d5db',
+                      background: analysisType === 'topSpeed' ? '#dbeafe' : 'white',
+                      cursor: 'pointer',
+                      fontWeight: analysisType === 'topSpeed' ? 'bold' : 'normal',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>⚡</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '4px' }}>トップスピード分析</div>
+                    <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>最高速度維持局面</div>
+                  </button>
+                </div>
+                <div style={{
+                  marginTop: '12px',
+                  padding: '12px',
+                  background: '#fef3c7',
+                  borderRadius: '8px',
+                  fontSize: '0.9rem',
+                  color: '#92400e'
+                }}>
+                  <strong>💡 Tip:</strong> {analysisType === 'acceleration' 
+                    ? 'スタート加速時は前傾姿勢（体幹角度86-88°）が理想的です。'
+                    : 'トップスピード時は垂直に近い姿勢（体幹角度80-90°）が理想的です。'}
+                </div>
+              </div>
+
+              <div className="section-summary">
+                <div>区間フレーム数: {sectionRange.count}</div>
+                <div>
+                  区間時間: {sectionTime != null ? sectionTime.toFixed(3) : "ー"} 秒
+                </div>
+                <div>
+                  平均速度: {avgSpeed != null ? avgSpeed.toFixed(3) : "ー"} m/s
+                </div>
+              </div>
+            </div>
+
+            {/* 中間地点確認ダイアログ */}
 
             <div className="wizard-actions">
               <button className="btn-ghost" onClick={() => setWizardStep(1)}>

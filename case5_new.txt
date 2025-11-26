@@ -1,0 +1,334 @@
+            {/* キャンバスプレビュー */}
+            <div className="canvas-area" style={{ marginBottom: '2rem' }}>
+              <canvas 
+                ref={displayCanvasRef} 
+                className="preview-canvas"
+              />
+            </div>
+
+            {/* 3つのスライダーでの区間設定 */}
+            <div style={{
+              background: '#f9fafb',
+              padding: '2rem',
+              borderRadius: '12px',
+              border: '2px solid #e5e7eb'
+            }}>
+              <h3 style={{
+                fontSize: '1.2rem',
+                fontWeight: 'bold',
+                marginBottom: '1.5rem',
+                color: '#374151',
+                textAlign: 'center'
+              }}>
+                ✨ スライダーで区間を設定
+              </h3>
+              
+              {/* スタート地点スライダー */}
+              <div style={{ marginBottom: '2rem' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  marginBottom: '0.5rem',
+                  alignItems: 'center'
+                }}>
+                  <span style={{ 
+                    fontSize: '1rem', 
+                    fontWeight: 'bold',
+                    color: '#10b981'
+                  }}>
+                    🟢 スタート地点
+                  </span>
+                  <span style={{ 
+                    fontSize: '0.95rem',
+                    color: '#6b7280',
+                    background: '#e5e7eb',
+                    padding: '4px 12px',
+                    borderRadius: '6px',
+                    fontWeight: 'bold'
+                  }}>
+                    Frame: {sectionStartFrame ?? 0}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(framesCount - 1, 0)}
+                  step={1}
+                  value={sectionStartFrame ?? 0}
+                  onChange={(e) => {
+                    const newFrame = Number(e.target.value);
+                    setSectionStartFrame(newFrame);
+                    setCurrentFrame(newFrame);
+                    const pose = poseResults[newFrame];
+                    if (pose?.landmarks) {
+                      const leftHip = pose.landmarks[23];
+                      const rightHip = pose.landmarks[24];
+                      if (leftHip && rightHip) {
+                        setSavedStartHipX((leftHip.x + rightHip.x) / 2);
+                      }
+                    }
+                    setStartLineOffset(0);
+                  }}
+                  className="input-field"
+                  style={{ 
+                    cursor: 'pointer', 
+                    width: '100%',
+                    height: '8px',
+                    borderRadius: '4px'
+                  }}
+                />
+                <div style={{
+                  fontSize: '0.85rem',
+                  color: '#6b7280',
+                  marginTop: '0.5rem',
+                  textAlign: 'center'
+                }}>
+                  💡 スライダーを動かすと、動画がその位置にジャンプします
+                </div>
+              </div>
+
+              {/* フィニッシュ地点スライダー */}
+              <div style={{ marginBottom: '2rem' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  marginBottom: '0.5rem',
+                  alignItems: 'center'
+                }}>
+                  <span style={{ 
+                    fontSize: '1rem', 
+                    fontWeight: 'bold',
+                    color: '#ef4444'
+                  }}>
+                    🔴 フィニッシュ地点
+                  </span>
+                  <span style={{ 
+                    fontSize: '0.95rem',
+                    color: '#6b7280',
+                    background: '#e5e7eb',
+                    padding: '4px 12px',
+                    borderRadius: '6px',
+                    fontWeight: 'bold'
+                  }}>
+                    Frame: {sectionEndFrame ?? framesCount - 1}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(framesCount - 1, 0)}
+                  step={1}
+                  value={sectionEndFrame ?? framesCount - 1}
+                  onChange={(e) => {
+                    const newFrame = Number(e.target.value);
+                    setSectionEndFrame(newFrame);
+                    setCurrentFrame(newFrame);
+                    const pose = poseResults[newFrame];
+                    if (pose?.landmarks) {
+                      const leftHip = pose.landmarks[23];
+                      const rightHip = pose.landmarks[24];
+                      if (leftHip && rightHip) {
+                        setSavedEndHipX((leftHip.x + rightHip.x) / 2);
+                      }
+                    }
+                    setEndLineOffset(0);
+                  }}
+                  className="input-field"
+                  style={{ 
+                    cursor: 'pointer', 
+                    width: '100%',
+                    height: '8px',
+                    borderRadius: '4px'
+                  }}
+                />
+              </div>
+
+              {/* 中間地点スライダー */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  marginBottom: '0.5rem',
+                  alignItems: 'center'
+                }}>
+                  <span style={{ 
+                    fontSize: '1rem', 
+                    fontWeight: 'bold',
+                    color: '#f59e0b'
+                  }}>
+                    🟡 中間地点（任意）
+                  </span>
+                  <span style={{ 
+                    fontSize: '0.95rem',
+                    color: '#6b7280',
+                    background: '#e5e7eb',
+                    padding: '4px 12px',
+                    borderRadius: '6px',
+                    fontWeight: 'bold'
+                  }}>
+                    Frame: {sectionMidFrame ?? Math.floor(framesCount / 2)}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(framesCount - 1, 0)}
+                  step={1}
+                  value={sectionMidFrame ?? Math.floor(framesCount / 2)}
+                  onChange={(e) => {
+                    const newFrame = Number(e.target.value);
+                    setSectionMidFrame(newFrame);
+                    setCurrentFrame(newFrame);
+                    const pose = poseResults[newFrame];
+                    if (pose?.landmarks) {
+                      const leftHip = pose.landmarks[23];
+                      const rightHip = pose.landmarks[24];
+                      if (leftHip && rightHip) {
+                        setSavedMidHipX((leftHip.x + rightHip.x) / 2);
+                      }
+                    }
+                    setMidLineOffset(0);
+                  }}
+                  className="input-field"
+                  style={{ 
+                    cursor: 'pointer', 
+                    width: '100%',
+                    height: '8px',
+                    borderRadius: '4px'
+                  }}
+                />
+              </div>
+
+              {/* 選択範囲の視覚表示 */}
+              <div style={{
+                marginTop: '1.5rem',
+                height: '40px',
+                background: 'linear-gradient(90deg, #e5e7eb 0%, #e5e7eb 100%)',
+                borderRadius: '8px',
+                position: 'relative',
+                overflow: 'hidden'
+              }}>
+                <div style={{
+                  position: 'absolute',
+                  left: `${((sectionStartFrame ?? 0) / Math.max(framesCount - 1, 1)) * 100}%`,
+                  right: `${100 - ((sectionEndFrame ?? framesCount - 1) / Math.max(framesCount - 1, 1)) * 100}%`,
+                  height: '100%',
+                  background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'white',
+                  fontSize: '0.85rem',
+                  fontWeight: 'bold'
+                }}>
+                  選択範囲: {(sectionEndFrame ?? framesCount - 1) - (sectionStartFrame ?? 0)} フレーム
+                </div>
+              </div>
+
+              {/* 区間情報の表示 */}
+              <div style={{
+                marginTop: '1.5rem',
+                padding: '1rem',
+                background: 'white',
+                borderRadius: '8px',
+                border: '1px solid #d1d5db'
+              }}>
+                <div style={{ 
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '1rem',
+                  textAlign: 'center'
+                }}>
+                  <div>
+                    <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '4px' }}>区間フレーム数</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#374151' }}>
+                      {sectionRange.count}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '4px' }}>区間時間</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#374151' }}>
+                      {sectionTime != null ? sectionTime.toFixed(3) : "ー"} 秒
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '4px' }}>平均速度</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#374151' }}>
+                      {avgSpeed != null ? avgSpeed.toFixed(3) : "ー"} m/s
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 解析シチュエーション選択 */}
+            <div style={{
+              marginTop: '2rem',
+              padding: '1.5rem',
+              background: '#f0f9ff',
+              borderRadius: '12px',
+              border: '2px solid #3b82f6'
+            }}>
+              <h3 style={{
+                fontSize: '1.1rem',
+                fontWeight: 'bold',
+                marginBottom: '1rem',
+                color: '#1e40af'
+              }}>
+                📊 解析シチュエーション
+              </h3>
+              <div style={{
+                display: 'flex',
+                gap: '12px',
+                flexWrap: 'wrap'
+              }}>
+                <button
+                  onClick={() => setAnalysisType('acceleration')}
+                  style={{
+                    flex: 1,
+                    minWidth: '180px',
+                    padding: '16px',
+                    borderRadius: '8px',
+                    border: analysisType === 'acceleration' ? '3px solid #3b82f6' : '2px solid #d1d5db',
+                    background: analysisType === 'acceleration' ? '#dbeafe' : 'white',
+                    cursor: 'pointer',
+                    fontWeight: analysisType === 'acceleration' ? 'bold' : 'normal',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>🏃</div>
+                  <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '4px' }}>スタートからの加速分析</div>
+                  <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>0-30m加速局面</div>
+                </button>
+                <button
+                  onClick={() => setAnalysisType('topSpeed')}
+                  style={{
+                    flex: 1,
+                    minWidth: '180px',
+                    padding: '16px',
+                    borderRadius: '8px',
+                    border: analysisType === 'topSpeed' ? '3px solid #3b82f6' : '2px solid #d1d5db',
+                    background: analysisType === 'topSpeed' ? '#dbeafe' : 'white',
+                    cursor: 'pointer',
+                    fontWeight: analysisType === 'topSpeed' ? 'bold' : 'normal',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>⚡</div>
+                  <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '4px' }}>トップスピード分析</div>
+                  <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>最高速度維持局面</div>
+                </button>
+              </div>
+              <div style={{
+                marginTop: '12px',
+                padding: '12px',
+                background: '#fef3c7',
+                borderRadius: '8px',
+                fontSize: '0.9rem',
+                color: '#92400e'
+              }}>
+                <strong>💡 Tip:</strong> {analysisType === 'acceleration' 
+                  ? 'スタート加速時は前傾姿勢（体幹角度86-88°）が理想的です。'
+                  : 'トップスピード時は垂直に近い姿勢（体幹角度80-90°）が理想的です。'}
+              </div>
+            </div>
