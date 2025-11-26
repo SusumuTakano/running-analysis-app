@@ -673,6 +673,69 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
 
 
+  // ステップ5に入ったら初期値を設定
+  useEffect(() => {
+    if (wizardStep === 5 && framesCount > 0 && poseResults.length > 0) {
+      // 初期値が未設定の場合のみ設定
+      if (sectionStartFrame === null) {
+        const initialStart = Math.floor(framesCount * 0.1);
+        setSectionStartFrame(initialStart);
+        
+        // 腰の位置を計算
+        const pose = poseResults[initialStart];
+        let hipX = null;
+        if (pose && pose.landmarks) {
+          const leftHip = pose.landmarks[23];
+          const rightHip = pose.landmarks[24];
+          if (leftHip && rightHip) {
+            hipX = (leftHip.x + rightHip.x) / 2;
+          }
+        }
+        setSavedStartHipX(hipX);
+        setStartLineOffset(0);
+        console.log(`🟢 スタート地点初期値設定: Frame ${initialStart}, HipX=${hipX}`);
+      }
+      
+      if (sectionEndFrame === null) {
+        const initialEnd = Math.floor(framesCount * 0.9);
+        setSectionEndFrame(initialEnd);
+        
+        // 腰の位置を計算
+        const pose = poseResults[initialEnd];
+        let hipX = null;
+        if (pose && pose.landmarks) {
+          const leftHip = pose.landmarks[23];
+          const rightHip = pose.landmarks[24];
+          if (leftHip && rightHip) {
+            hipX = (leftHip.x + rightHip.x) / 2;
+          }
+        }
+        setSavedEndHipX(hipX);
+        setEndLineOffset(0);
+        console.log(`🔴 フィニッシュ地点初期値設定: Frame ${initialEnd}, HipX=${hipX}`);
+      }
+      
+      if (sectionMidFrame === null) {
+        const initialMid = Math.floor(framesCount / 2);
+        setSectionMidFrame(initialMid);
+        
+        // 腰の位置を計算
+        const pose = poseResults[initialMid];
+        let hipX = null;
+        if (pose && pose.landmarks) {
+          const leftHip = pose.landmarks[23];
+          const rightHip = pose.landmarks[24];
+          if (leftHip && rightHip) {
+            hipX = (leftHip.x + rightHip.x) / 2;
+          }
+        }
+        setSavedMidHipX(hipX);
+        setMidLineOffset(0);
+        console.log(`🟡 中間地点初期値設定: Frame ${initialMid}, HipX=${hipX}`);
+      }
+    }
+  }, [wizardStep, framesCount, poseResults, sectionStartFrame, sectionEndFrame, sectionMidFrame]);
+
   // キーボード操作
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -3216,7 +3279,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     padding: '4px 12px',
                     borderRadius: '6px'
                   }}>
-                    フレーム: {sectionStartFrame || 0}
+                    フレーム: {sectionStartFrame ?? Math.floor(framesCount * 0.1)}
                   </div>
                 </div>
                 <input
@@ -3224,14 +3287,25 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   min={0}
                   max={Math.max(framesCount - 1, 0)}
                   step={1}
-                  value={sectionStartFrame || 0}
+                  value={sectionStartFrame ?? Math.floor(framesCount * 0.1)}
                   onChange={(e) => {
                     const frame = Number(e.target.value);
                     setSectionStartFrame(frame);
                     setCurrentFrame(frame);
-                    const hipX = calculateHipPosition(frame);
+                    
+                    // 腰の位置を計算
+                    const pose = poseResults[frame];
+                    let hipX = null;
+                    if (pose && pose.landmarks) {
+                      const leftHip = pose.landmarks[23];
+                      const rightHip = pose.landmarks[24];
+                      if (leftHip && rightHip) {
+                        hipX = (leftHip.x + rightHip.x) / 2;
+                      }
+                    }
                     setSavedStartHipX(hipX);
                     setStartLineOffset(0);
+                    console.log(`🟢 スタート地点変更: Frame ${frame}, HipX=${hipX}`);
                   }}
                   className="input-field"
                   style={{ cursor: 'pointer', width: '100%' }}
@@ -3257,7 +3331,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     padding: '4px 12px',
                     borderRadius: '6px'
                   }}>
-                    フレーム: {sectionEndFrame || framesCount - 1}
+                    フレーム: {sectionEndFrame ?? Math.floor(framesCount * 0.9)}
                   </div>
                 </div>
                 <input
@@ -3265,14 +3339,25 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   min={0}
                   max={Math.max(framesCount - 1, 0)}
                   step={1}
-                  value={sectionEndFrame || framesCount - 1}
+                  value={sectionEndFrame ?? Math.floor(framesCount * 0.9)}
                   onChange={(e) => {
                     const frame = Number(e.target.value);
                     setSectionEndFrame(frame);
                     setCurrentFrame(frame);
-                    const hipX = calculateHipPosition(frame);
+                    
+                    // 腰の位置を計算
+                    const pose = poseResults[frame];
+                    let hipX = null;
+                    if (pose && pose.landmarks) {
+                      const leftHip = pose.landmarks[23];
+                      const rightHip = pose.landmarks[24];
+                      if (leftHip && rightHip) {
+                        hipX = (leftHip.x + rightHip.x) / 2;
+                      }
+                    }
                     setSavedEndHipX(hipX);
                     setEndLineOffset(0);
+                    console.log(`🔴 フィニッシュ地点変更: Frame ${frame}, HipX=${hipX}`);
                   }}
                   className="input-field"
                   style={{ cursor: 'pointer', width: '100%' }}
@@ -3298,7 +3383,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     padding: '4px 12px',
                     borderRadius: '6px'
                   }}>
-                    フレーム: {sectionMidFrame || Math.floor(framesCount / 2)}
+                    フレーム: {sectionMidFrame ?? Math.floor(framesCount / 2)}
                   </div>
                 </div>
                 <input
@@ -3306,14 +3391,25 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   min={0}
                   max={Math.max(framesCount - 1, 0)}
                   step={1}
-                  value={sectionMidFrame || Math.floor(framesCount / 2)}
+                  value={sectionMidFrame ?? Math.floor(framesCount / 2)}
                   onChange={(e) => {
                     const frame = Number(e.target.value);
                     setSectionMidFrame(frame);
                     setCurrentFrame(frame);
-                    const hipX = calculateHipPosition(frame);
+                    
+                    // 腰の位置を計算
+                    const pose = poseResults[frame];
+                    let hipX = null;
+                    if (pose && pose.landmarks) {
+                      const leftHip = pose.landmarks[23];
+                      const rightHip = pose.landmarks[24];
+                      if (leftHip && rightHip) {
+                        hipX = (leftHip.x + rightHip.x) / 2;
+                      }
+                    }
                     setSavedMidHipX(hipX);
                     setMidLineOffset(0);
+                    console.log(`🟡 中間地点変更: Frame ${frame}, HipX=${hipX}`);
                   }}
                   className="input-field"
                   style={{ cursor: 'pointer', width: '100%' }}
@@ -3911,8 +4007,19 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               </button>
               <button
                 className="btn-primary-large"
-                onClick={() => setWizardStep(6)}
-                disabled={!sectionStartFrame || !sectionEndFrame}
+                onClick={() => {
+                  // スライダー値がnullの場合はデフォルト値を設定してから進む
+                  if (sectionStartFrame === null) {
+                    setSectionStartFrame(Math.floor(framesCount * 0.1));
+                  }
+                  if (sectionEndFrame === null) {
+                    setSectionEndFrame(Math.floor(framesCount * 0.9));
+                  }
+                  if (sectionMidFrame === null) {
+                    setSectionMidFrame(Math.floor(framesCount / 2));
+                  }
+                  setWizardStep(6);
+                }}
               >
                 次へ：マーカー打ち
               </button>
