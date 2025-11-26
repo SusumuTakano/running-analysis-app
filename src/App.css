@@ -385,13 +385,20 @@ body {
 /* PC版: キャンバスを固定表示 */
 @media (min-width: 769px) {
   .canvas-area {
-    position: fixed;
-    top: 80px; /* ヘッダー分の余白 */
-    left: 20px;
-    right: 20px;
+    position: fixed !important;
+    top: 80px !important; /* ヘッダー分の余白 */
+    left: 50%;
+    transform: translateX(-50%);
+    width: auto;
     max-width: calc(100vw - 40px);
-    z-index: 1000;
+    z-index: 9999 !important; /* 最前面に表示 */
     margin-bottom: 20px;
+    pointer-events: auto; /* クリック可能に */
+  }
+
+  /* キャンバス固定時のコンテンツ余白調整 */
+  .wizard-content {
+    padding-top: calc(70vh + 40px); /* キャンバス高さ + 余白 */
   }
 }
 
