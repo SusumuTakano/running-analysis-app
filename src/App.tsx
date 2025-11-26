@@ -11,7 +11,7 @@ import Chart from "chart.js/auto";
 import { generateRunningEvaluation, type RunningEvaluation } from "./runningEvaluation";
 
 /** ウィザードのステップ */
-type WizardStep = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+type WizardStep = 0 | 1 | 3 | 4 | 5 | 6 | 7 | 8;
 
 /** 測定者情報 */
 type AthleteInfo = {
@@ -347,7 +347,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const [currentFrame, setCurrentFrame] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const previewVideoRef = useRef<HTMLVideoElement | null>(null); // Step 2専用のプレビュー動画
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const displayCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -362,11 +362,6 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const [zoomScale, setZoomScale] = useState(3);
 
   // ------------ 動画最適化関連 -----------------
-  const [useOptimization, setUseOptimization] = useState<boolean | null>(null); // null=未選択, true=使用, false=スキップ
-  const [brightness, setBrightness] = useState(100); // 100 = 元の明るさ
-  const [contrast, setContrast] = useState(100); // 100 = 元のコントラスト
-  const [targetFpsInput, setTargetFpsInput] = useState<number | null>(null); // FPS変換（null=元のまま）
-
   // ------------ 姿勢推定関連 -----------------
   const [poseResults, setPoseResults] = useState<(FramePoseData | null)[]>([]);
   const [isPoseProcessing, setIsPoseProcessing] = useState(false);
@@ -1424,30 +1419,6 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const handleExtractFrames = async () => {
     console.log('🎬 === Frame Extraction Started ===');
     
-    // localStorageから設定を読み込む
-    let savedSettings = null;
-    try {
-      const settingsStr = localStorage.getItem('videoOptimizationSettings');
-      if (settingsStr) {
-        savedSettings = JSON.parse(settingsStr);
-        console.log('✅ Loaded settings from localStorage:', savedSettings);
-      }
-    } catch (e) {
-      console.warn('⚠️ Failed to load settings from localStorage:', e);
-    }
-    
-    // 設定を上書き（localStorageの値を優先）
-    const actualBrightness = savedSettings?.brightness ?? brightness;
-    const actualContrast = savedSettings?.contrast ?? contrast;
-    const actualTargetFps = savedSettings?.targetFpsInput ?? targetFpsInput;
-    
-    console.log('📹 Video optimization settings:', {
-      useOptimization,
-      brightness: actualBrightness,
-      contrast: actualContrast,
-      targetFpsInput: actualTargetFps
-    });
-    
     if (!videoFile) {
       alert("動画ファイルを選択してください。");
       setWizardStep(1);
@@ -1578,21 +1549,6 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       }
     }
     
-    // 動画最適化設定の適用（FPS変換のみ）
-    if (useOptimization) {
-      // FPS変換設定を適用
-      if (actualTargetFps && actualTargetFps !== confirmedFps) {
-        confirmedFps = actualTargetFps;
-        console.log(`🎬 FPS conversion applied: ${actualTargetFps}fps`);
-      }
-      
-      // 明るさ・コントラスト設定をログ出力
-      if (actualBrightness !== 100 || actualContrast !== 100) {
-        console.log(`🎨 Brightness/Contrast applied: ${actualBrightness}%/${actualContrast}%`);
-      }
-    } else {
-      console.log('⚠️ Video optimization disabled (useOptimization=false)');
-    }
     
     const maxFpsForLength = Math.floor(MAX_FRAMES / Math.max(duration, 0.001));
     const targetFps = Math.max(30, Math.min(confirmedFps, maxFpsForLength));
@@ -1687,12 +1643,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
         requestAnimationFrame(() => {
           try {
-            // 動画最適化設定を適用（localStorageの値を使用）
-            if (useOptimization && (actualBrightness !== 100 || actualContrast !== 100)) {
-              ctx.filter = `brightness(${actualBrightness}%) contrast(${actualContrast}%)`;
-            }
             ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
-            ctx.filter = 'none'; // フィルターをリセット
             
             const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
             framesRef.current.push(imageData);
@@ -3038,237 +2989,17 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     return;
                   }
                   
-                  // ステップ2（動画最適化）に移動
-                  setWizardStep(2);
+                  // ステップ3（フレーム抽出）に移動
+                  setWizardStep(3);
+                  setTimeout(() => {
+                    handleExtractFrames();
+                  }, 300);
                 }}
                 disabled={!videoFile || !distanceValue || distanceValue <= 0}
               >
-                次へ：動画の最適化
+                次へ：フレーム抽出
               </button>
             </div>
-          </div>
-        );
-
-      case 2:
-        return (
-          <div className="wizard-content">
-            <div className="wizard-step-header">
-              <h2 className="wizard-step-title">ステップ 2: 動画の最適化（任意）</h2>
-              <p className="wizard-step-desc">
-                姿勢検出の精度を上げるため、動画を最適化できます。スキップも可能です。
-              </p>
-            </div>
-
-            {useOptimization === null && (
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '1.5rem',
-                maxWidth: '600px',
-                margin: '0 auto'
-              }}>
-                <div style={{
-                  padding: '1.5rem',
-                  background: 'var(--gray-50)',
-                  borderRadius: '12px',
-                  border: '1px solid var(--gray-200)'
-                }}>
-                  <h3 style={{ fontSize: '1.1rem', marginBottom: '0.8rem', color: 'var(--gray-800)' }}>
-                    ✨ 最適化機能について
-                  </h3>
-                  <ul style={{ fontSize: '0.95rem', color: 'var(--gray-600)', lineHeight: '1.8', paddingLeft: '1.5rem' }}>
-                    <li>明るさ・コントラスト調整で検出精度向上</li>
-                    <li>動画のトリミングで処理時間短縮</li>
-                    <li>FPS変換で最適なフレームレート設定</li>
-                    <li>処理に1-3分程度かかります</li>
-                  </ul>
-                </div>
-
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button
-                    className="btn-primary-large"
-                    onClick={() => setUseOptimization(true)}
-                    style={{ flex: 1 }}
-                  >
-                    ✓ 最適化を使用する
-                  </button>
-                  <button
-                    className="btn-ghost"
-                    onClick={() => {
-                      setUseOptimization(false);
-                      setWizardStep(3);
-                      setTimeout(() => {
-                        handleExtractFrames();
-                      }, 300);
-                    }}
-                    style={{ flex: 1 }}
-                  >
-                    スキップ
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {useOptimization === true && (
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '1.5rem',
-                maxWidth: '900px',
-                margin: '0 auto'
-              }}>
-                {/* 動画プレビュー */}
-                <div style={{
-                  background: 'var(--gray-100)',
-                  borderRadius: '12px',
-                  padding: '1rem',
-                  border: '2px solid var(--gray-300)'
-                }}>
-                  <h3 style={{ fontSize: '1rem', marginBottom: '0.8rem', color: 'var(--gray-700)' }}>
-                    📹 プレビュー（リアルタイム）
-                  </h3>
-                  <div style={{ position: 'relative', maxWidth: '640px', margin: '0 auto' }}>
-                    <video
-                      ref={previewVideoRef}
-                      style={{
-                        width: '100%',
-                        height: 'auto',
-                        borderRadius: '8px',
-                        filter: `brightness(${brightness}%) contrast(${contrast}%)`,
-                        border: '2px solid var(--gray-400)'
-                      }}
-                      controls
-                      src={videoFile ? URL.createObjectURL(videoFile) : undefined}
-                      onLoadedMetadata={(e) => {
-                        const video = e.currentTarget;
-                        console.log('✅ Video loaded, duration:', video.duration);
-                      }}
-                    />
-                    <div style={{
-                      marginTop: '0.5rem',
-                      fontSize: '0.85rem',
-                      color: 'var(--gray-600)',
-                      textAlign: 'center'
-                    }}>
-                      スライダーを調整すると、リアルタイムでプレビューに反映されます
-                    </div>
-                  </div>
-                </div>
-
-                {/* 明るさ調整 */}
-                <div className="input-group">
-                  <label className="input-label">
-                    <span className="label-text">💡 明るさ: {brightness}%</span>
-                    <input
-                      type="range"
-                      min="50"
-                      max="150"
-                      step="5"
-                      value={brightness}
-                      onChange={(e) => setBrightness(Number(e.target.value))}
-                      className="input-field"
-                      style={{ cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: '0.85rem', color: 'var(--gray-500)' }}>
-                      暗い動画は明るく、明るい動画は暗く調整
-                    </span>
-                  </label>
-                </div>
-
-                {/* コントラスト調整 */}
-                <div className="input-group">
-                  <label className="input-label">
-                    <span className="label-text">🎨 コントラスト: {contrast}%</span>
-                    <input
-                      type="range"
-                      min="50"
-                      max="150"
-                      step="5"
-                      value={contrast}
-                      onChange={(e) => setContrast(Number(e.target.value))}
-                      className="input-field"
-                      style={{ cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: '0.85rem', color: 'var(--gray-500)' }}>
-                      輪郭をはっきりさせる場合は高めに設定
-                    </span>
-                  </label>
-                </div>
-
-                {/* FPS変換 */}
-                <div className="input-group">
-                  <label className="input-label">
-                    <span className="label-text">🎬 FPS変換（null=元のまま）</span>
-                    <select
-                      value={targetFpsInput || ''}
-                      onChange={(e) => setTargetFpsInput(e.target.value ? Number(e.target.value) : null)}
-                      className="input-field"
-                    >
-                      <option value="">元のFPSを維持</option>
-                      <option value="30">30 FPS（標準）</option>
-                      <option value="60">60 FPS（高品質）</option>
-                      <option value="120">120 FPS（ハイスピード）</option>
-                      <option value="240">240 FPS（超ハイスピード）</option>
-                    </select>
-                    <span style={{ fontSize: '0.85rem', color: 'var(--gray-500)' }}>
-                      解析精度に影響します
-                    </span>
-                  </label>
-                </div>
-
-                {/* プレビューとボタン */}
-                <div style={{
-                  padding: '1rem',
-                  background: 'var(--gray-50)',
-                  borderRadius: '8px',
-                  fontSize: '0.9rem',
-                  color: 'var(--gray-600)'
-                }}>
-                  <strong>設定プレビュー:</strong>
-                  <ul style={{ marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
-                    <li>明るさ: {brightness}%</li>
-                    <li>コントラスト: {contrast}%</li>
-                    <li>FPS: {targetFpsInput ? `${targetFpsInput} FPS` : '元のまま'}</li>
-                  </ul>
-                </div>
-
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button
-                    className="btn-ghost"
-                    onClick={() => setUseOptimization(null)}
-                  >
-                    戻る
-                  </button>
-                  <button
-                    className="btn-primary-large"
-                    onClick={() => {
-                      // 設定を確定してフレーム抽出へ
-                      const settings = {
-                        brightness,
-                        contrast,
-                        targetFpsInput
-                      };
-                      
-                      console.log('📹 Video optimization settings applied:', settings);
-                      
-                      // localStorageに保存して確実に渡す
-                      localStorage.setItem('videoOptimizationSettings', JSON.stringify(settings));
-                      
-                      // 確認
-                      if (confirm(`動画最適化設定を適用してフレーム抽出を開始しますか？\n\n明るさ: ${brightness}%\nコントラスト: ${contrast}%\nFPS: ${targetFpsInput ? targetFpsInput + ' fps' : '元のまま'}`)) {
-                        setWizardStep(3);
-                        setTimeout(() => {
-                          handleExtractFrames();
-                        }, 300);
-                      }
-                    }}
-                    style={{ flex: 1 }}
-                  >
-                    ✓ 設定を適用してフレーム抽出へ
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         );
 
