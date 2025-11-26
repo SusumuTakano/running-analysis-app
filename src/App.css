@@ -385,9 +385,12 @@ body {
 /* PC版: キャンバスを固定表示 */
 @media (min-width: 769px) {
   .canvas-area {
-    position: sticky;
-    top: 20px;
-    z-index: 100;
+    position: fixed;
+    top: 80px; /* ヘッダー分の余白 */
+    left: 20px;
+    right: 20px;
+    max-width: calc(100vw - 40px);
+    z-index: 1000;
     margin-bottom: 20px;
   }
 }
