@@ -427,7 +427,6 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
   // ------------ 区間設定クリックモード ------------
   const [sectionClickMode, setSectionClickMode] = useState<'start' | 'mid' | 'end' | null>(null);
-  const [showMidPointDialog, setShowMidPointDialog] = useState(false);
 
   // ------------ 接地／離地マーカー（キャリブレーション対応） ------------
   // キャリブレーション方式: 
@@ -672,21 +671,36 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     return null; // 離地が見つからない
   };
 
-  // ステップ4に入ったら自動的にスタート設定モードを開始
+  // ステップ5（区間設定）に入ったら自動的にスタート設定モードを開始
   useEffect(() => {
-    if (wizardStep === 4 && !sectionStartFrame && !sectionClickMode) {
+    if (wizardStep === 5 && !sectionStartFrame && !sectionClickMode) {
       // スタート地点が未設定の場合、自動的にスタート設定モードに入る
       setSectionClickMode('start');
       console.log('🎯 自動ガイド: スタート地点の設定を開始');
     }
   }, [wizardStep, sectionStartFrame, sectionClickMode]);
 
-  // スタート設定完了後、中間地点の確認ダイアログを表示
+  // スタート設定完了後、フィニッシュ地点の設定に進む
   useEffect(() => {
-    if (wizardStep === 4 && sectionStartFrame && !sectionMidFrame && !sectionEndFrame && !showMidPointDialog && !sectionClickMode) {
-      setShowMidPointDialog(true);
+    if (wizardStep === 5 && sectionStartFrame && !sectionEndFrame && !sectionClickMode) {
+      // スタート設定完了後、自動的にフィニッシュ設定モードに入る
+      setTimeout(() => {
+        setSectionClickMode('end');
+        console.log('🎯 自動ガイド: フィニッシュ地点の設定を開始');
+      }, 500);
     }
-  }, [wizardStep, sectionStartFrame, sectionMidFrame, sectionEndFrame, showMidPointDialog, sectionClickMode]);
+  }, [wizardStep, sectionStartFrame, sectionEndFrame, sectionClickMode]);
+
+  // フィニッシュ設定完了後、中間地点の設定に進む
+  useEffect(() => {
+    if (wizardStep === 5 && sectionStartFrame && sectionEndFrame && !sectionMidFrame && !sectionClickMode) {
+      // フィニッシュ設定完了後、自動的に中間地点設定モードに入る
+      setTimeout(() => {
+        setSectionClickMode('mid');
+        console.log('🎯 自動ガイド: 中間地点の設定を開始');
+      }, 500);
+    }
+  }, [wizardStep, sectionStartFrame, sectionEndFrame, sectionMidFrame, sectionClickMode]);
 
   // キーボード操作
   useEffect(() => {
@@ -3249,16 +3263,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     setCurrentFrame(bestFrame);
                     console.log(`🟢 スタート設定: Frame ${bestFrame} (クリック位置から自動検出)`);
                     setSectionClickMode(null);
-                    // スタート設定完了後、中間地点の確認ダイアログを表示（useEffectで処理）
-                  } else if (sectionClickMode === 'mid') {
-                    setSectionMidFrame(bestFrame);
-                    setMidLineOffset(0);
-                    setSavedMidHipX(hipX);
-                    setCurrentFrame(bestFrame);
-                    console.log(`🟡 中間設定: Frame ${bestFrame} (クリック位置から自動検出)`);
-                    setSectionClickMode(null);
-                    // 中間地点設定完了後、自動的にフィニッシュ設定に進む
-                    setTimeout(() => setSectionClickMode('end'), 500);
+                    // スタート設定完了後、useEffectでフィニッシュ設定に自動遷移
                   } else if (sectionClickMode === 'end') {
                     setSectionEndFrame(bestFrame);
                     setEndLineOffset(0);
@@ -3266,7 +3271,15 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     setCurrentFrame(bestFrame);
                     console.log(`🔴 フィニッシュ設定: Frame ${bestFrame} (クリック位置から自動検出)`);
                     setSectionClickMode(null);
-                    // フィニッシュ設定完了（自動ガイド終了）
+                    // フィニッシュ設定完了後、useEffectで中間地点設定に自動遷移
+                  } else if (sectionClickMode === 'mid') {
+                    setSectionMidFrame(bestFrame);
+                    setMidLineOffset(0);
+                    setSavedMidHipX(hipX);
+                    setCurrentFrame(bestFrame);
+                    console.log(`🟡 中間設定: Frame ${bestFrame} (クリック位置から自動検出)`);
+                    setSectionClickMode(null);
+                    // 中間地点設定完了（全ての設定完了）
                   }
                 }}
                 style={{
@@ -3859,91 +3872,6 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             </div>
 
             {/* 中間地点確認ダイアログ */}
-            {showMidPointDialog && (
-              <div style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: 'rgba(0, 0, 0, 0.7)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 10000
-              }}>
-                <div style={{
-                  background: 'white',
-                  padding: '32px',
-                  borderRadius: '16px',
-                  maxWidth: '500px',
-                  boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
-                }}>
-                  <h3 style={{ 
-                    fontSize: '1.5rem', 
-                    fontWeight: 'bold', 
-                    marginBottom: '16px',
-                    color: '#374151'
-                  }}>
-                    🟡 中間地点を登録しますか？
-                  </h3>
-                  <p style={{ 
-                    fontSize: '1rem', 
-                    lineHeight: '1.6', 
-                    marginBottom: '24px',
-                    color: '#6b7280'
-                  }}>
-                    中間地点を設定すると、前半・後半の比較分析ができます。<br/>
-                    不要な場合は「登録しない」を選択してください。
-                  </p>
-                  <div style={{ 
-                    display: 'flex', 
-                    gap: '12px', 
-                    justifyContent: 'flex-end' 
-                  }}>
-                    <button
-                      onClick={() => {
-                        setShowMidPointDialog(false);
-                        setSectionClickMode('end');
-                        console.log('⏭️ 中間地点をスキップ、フィニッシュ設定へ');
-                      }}
-                      style={{
-                        padding: '12px 24px',
-                        fontSize: '1rem',
-                        fontWeight: 'bold',
-                        border: '2px solid #d1d5db',
-                        background: 'white',
-                        color: '#6b7280',
-                        borderRadius: '8px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      登録しない
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowMidPointDialog(false);
-                        setSectionClickMode('mid');
-                        console.log('✅ 中間地点の設定を開始');
-                      }}
-                      style={{
-                        padding: '12px 24px',
-                        fontSize: '1rem',
-                        fontWeight: 'bold',
-                        border: 'none',
-                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                        color: 'white',
-                        borderRadius: '8px',
-                        cursor: 'pointer',
-                        boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
-                      }}
-                    >
-                      登録する
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
 
             <div className="wizard-actions">
               <button className="btn-ghost" onClick={() => setWizardStep(1)}>
