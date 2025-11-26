@@ -3095,9 +3095,43 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '1.5rem',
-                maxWidth: '700px',
+                maxWidth: '900px',
                 margin: '0 auto'
               }}>
+                {/* 動画プレビュー */}
+                <div style={{
+                  background: 'var(--gray-100)',
+                  borderRadius: '12px',
+                  padding: '1rem',
+                  border: '2px solid var(--gray-300)'
+                }}>
+                  <h3 style={{ fontSize: '1rem', marginBottom: '0.8rem', color: 'var(--gray-700)' }}>
+                    📹 プレビュー（リアルタイム）
+                  </h3>
+                  <div style={{ position: 'relative', maxWidth: '640px', margin: '0 auto' }}>
+                    <video
+                      ref={videoRef}
+                      style={{
+                        width: '100%',
+                        height: 'auto',
+                        borderRadius: '8px',
+                        filter: `brightness(${brightness}%) contrast(${contrast}%)`,
+                        border: '2px solid var(--gray-400)'
+                      }}
+                      controls
+                      src={videoFile ? URL.createObjectURL(videoFile) : undefined}
+                    />
+                    <div style={{
+                      marginTop: '0.5rem',
+                      fontSize: '0.85rem',
+                      color: 'var(--gray-600)',
+                      textAlign: 'center'
+                    }}>
+                      スライダーを調整すると、リアルタイムでプレビューに反映されます
+                    </div>
+                  </div>
+                </div>
+
                 {/* 明るさ調整 */}
                 <div className="input-group">
                   <label className="input-label">
