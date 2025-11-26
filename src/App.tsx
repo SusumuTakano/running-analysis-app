@@ -3174,33 +3174,103 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
                 {/* 動画トリミング */}
                 <div className="input-group">
-                  <label className="input-label">
-                    <span className="label-text">✂️ トリミング開始位置（秒）</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={trimStart}
-                      onChange={(e) => setTrimStart(Number(e.target.value))}
-                      className="input-field"
-                      placeholder="0"
-                    />
-                  </label>
-                  <label className="input-label">
-                    <span className="label-text">✂️ トリミング終了位置（秒、0=最後まで）</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      value={trimEnd}
-                      onChange={(e) => setTrimEnd(Number(e.target.value))}
-                      className="input-field"
-                      placeholder="0"
-                    />
-                  </label>
-                  <span style={{ fontSize: '0.85rem', color: 'var(--gray-500)' }}>
-                    解析に必要な部分のみを切り出し
-                  </span>
+                  <div style={{
+                    background: 'var(--gray-50)',
+                    padding: '1.5rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--gray-200)'
+                  }}>
+                    <label className="input-label">
+                      <span className="label-text">✂️ トリミング範囲（スライダーで視覚的に選択）</span>
+                      <div style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+                        <div style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          fontSize: '0.9rem', 
+                          color: 'var(--gray-600)',
+                          marginBottom: '0.5rem'
+                        }}>
+                          <span>開始: {trimStart.toFixed(2)}秒</span>
+                          <span>終了: {trimEnd > 0 ? `${trimEnd.toFixed(2)}秒` : '最後まで'}</span>
+                        </div>
+                        
+                        {/* 開始位置スライダー */}
+                        <div style={{ marginBottom: '1rem' }}>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--gray-500)', marginBottom: '0.3rem' }}>
+                            🟢 開始位置
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max={videoRef.current?.duration || 10}
+                            step="0.1"
+                            value={trimStart}
+                            onChange={(e) => {
+                              const newStart = Number(e.target.value);
+                              setTrimStart(newStart);
+                              if (videoRef.current) {
+                                videoRef.current.currentTime = newStart;
+                              }
+                            }}
+                            className="input-field"
+                            style={{ cursor: 'pointer', width: '100%' }}
+                          />
+                        </div>
+                        
+                        {/* 終了位置スライダー */}
+                        <div>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--gray-500)', marginBottom: '0.3rem' }}>
+                            🔴 終了位置
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max={videoRef.current?.duration || 10}
+                            step="0.1"
+                            value={trimEnd || (videoRef.current?.duration || 10)}
+                            onChange={(e) => {
+                              const newEnd = Number(e.target.value);
+                              setTrimEnd(newEnd);
+                              if (videoRef.current) {
+                                videoRef.current.currentTime = newEnd;
+                              }
+                            }}
+                            className="input-field"
+                            style={{ cursor: 'pointer', width: '100%' }}
+                          />
+                        </div>
+                        
+                        {/* トリミング範囲の視覚表示 */}
+                        <div style={{
+                          marginTop: '1rem',
+                          height: '30px',
+                          background: 'linear-gradient(90deg, #e5e7eb 0%, #e5e7eb 100%)',
+                          borderRadius: '4px',
+                          position: 'relative',
+                          overflow: 'hidden'
+                        }}>
+                          <div style={{
+                            position: 'absolute',
+                            left: `${(trimStart / (videoRef.current?.duration || 10)) * 100}%`,
+                            right: trimEnd > 0 ? `${100 - (trimEnd / (videoRef.current?.duration || 10)) * 100}%` : '0%',
+                            height: '100%',
+                            background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold'
+                          }}>
+                            選択範囲: {((trimEnd > 0 ? trimEnd : (videoRef.current?.duration || 10)) - trimStart).toFixed(2)}秒
+                          </div>
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--gray-500)' }}>
+                        💡 スライダーを動かすと動画がその位置にジャンプします
+                      </span>
+                    </label>
+                  </div>
                 </div>
 
                 {/* FPS変換 */}
