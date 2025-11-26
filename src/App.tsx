@@ -1561,6 +1561,14 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     let actualDuration = duration;
     let actualStartTime = 0;
     
+    console.log('📹 Video optimization check:', {
+      useOptimization,
+      trimStart,
+      trimEnd,
+      targetFpsInput,
+      videoDuration: duration
+    });
+    
     if (useOptimization) {
       // トリミング設定を適用
       if (trimStart > 0 || trimEnd > 0) {
@@ -1568,6 +1576,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         const endTime = trimEnd > 0 ? Math.min(trimEnd, duration) : duration;
         actualDuration = Math.max(0.1, endTime - actualStartTime);
         console.log(`✂️ Trimming applied: ${actualStartTime}s ~ ${endTime}s (duration: ${actualDuration}s)`);
+      } else {
+        console.log('⚠️ No trimming settings detected (trimStart=0, trimEnd=0)');
       }
       
       // FPS変換設定を適用
@@ -1575,6 +1585,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         confirmedFps = targetFpsInput;
         console.log(`🎬 FPS conversion applied: ${targetFpsInput}fps`);
       }
+    } else {
+      console.log('⚠️ Video optimization disabled (useOptimization=false)');
     }
     
     const maxFpsForLength = Math.floor(MAX_FRAMES / Math.max(actualDuration, 0.001));
@@ -3318,7 +3330,14 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   <ul style={{ marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
                     <li>明るさ: {brightness}%</li>
                     <li>コントラスト: {contrast}%</li>
-                    <li>トリミング: {trimStart}秒 ～ {trimEnd > 0 ? `${trimEnd}秒` : '最後まで'}</li>
+                    <li>トリミング: {trimStart.toFixed(2)}秒 ～ {trimEnd > 0 ? `${trimEnd.toFixed(2)}秒` : '最後まで'} 
+                      {trimStart === 0 && trimEnd === 0 && (
+                        <span style={{ color: 'orange', marginLeft: '0.5rem' }}>
+                          ⚠️ トリミングなし
+                        </span>
+                      )}
+                    </li>
+                    <li>抽出範囲: {((trimEnd > 0 ? trimEnd : videoDuration) - trimStart).toFixed(2)}秒</li>
                     <li>FPS: {targetFpsInput ? `${targetFpsInput} FPS` : '元のまま'}</li>
                   </ul>
                 </div>
