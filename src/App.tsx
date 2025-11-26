@@ -1108,12 +1108,12 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
       
       pose.setOptions({
-        modelComplexity: isMobile ? 0 : 1, // モバイルは軽量、デスクトップは標準
+        modelComplexity: 1, // 標準モデル（より高精度）
         smoothLandmarks: true,
         enableSegmentation: false,
         smoothSegmentation: false,
-        minDetectionConfidence: isMobile ? 0.3 : 0.5, // モバイルは0.3、デスクトップは0.5
-        minTrackingConfidence: isMobile ? 0.3 : 0.5,
+        minDetectionConfidence: 0.2, // 検出閾値を大幅に下げて検出しやすく（0.2 = 非常に寛容）
+        minTrackingConfidence: 0.2, // トラッキング閾値を大幅に下げて継続しやすく
       });
       
       console.log(`🎯 Pose estimation config: mobile=${isMobile}, iOS=${isIOS}, modelComplexity=${isMobile ? 0 : 1}`);
@@ -1160,8 +1160,16 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   visibility: lm.visibility ?? 0,
                 })),
               });
+              // 最初の10フレームだけ詳細ログ
+              if (i < 10) {
+                console.log(`✅ Frame ${i}: Pose detected (${result.poseLandmarks.length} landmarks)`);
+              }
             } else {
               results.push(null);
+              // 失敗したフレームをログ
+              if (i < 10) {
+                console.warn(`❌ Frame ${i}: No pose landmarks detected`);
+              }
             }
           } catch (e: any) {
             if (e.message === "Timeout") {
@@ -1197,11 +1205,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       
       if (successCount === 0) {
         setStatus("❌ 姿勢推定が完全に失敗しました。動画を変更してください。");
-        alert("姿勢推定が失敗しました。\n\nより短い動画や、人物が大きく映っている動画をお試しください。");
+        alert("姿勢推定が失敗しました。\n\n【推奨事項】\n・人物が画面の中央に大きく映っている動画を使用\n・照明が明るく、人物がはっきり見える動画を使用\n・背景がシンプルな動画を使用\n・カメラが固定されている（手ブレが少ない）動画を使用\n・動画の長さを5-10秒程度に制限\n\nこれらの条件を満たす動画で再度お試しください。");
         return;
       } else if (successRateNum < 50) {
         setStatus(`⚠️ 姿勢推定完了（成功率: ${successRateStr}%）- 精度が低い可能性があります`);
-        if (!confirm(`姿勢推定の成功率が低いです（${successRateStr}%）。\n\n続行しますか？\n\n※ より短い動画や、人物が大きく映っている動画をお勧めします。`)) {
+        if (!confirm(`姿勢推定の成功率が低いです（${successRateStr}%）。\n\n続行しますか？\n\n※ 成功率が低いと、スライダー登録時にフレームが見つからない場合があります。\n\n【改善方法】\n・人物が大きく映っている動画を使用\n・照明が明るい動画を使用\n・背景がシンプルな動画を使用\n・カメラが固定されている動画を使用`)) {
           return;
         }
       } else {
@@ -1557,17 +1565,17 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     let preferredFps: number;
     
     if (isIOS) {
-      // iOS（iPhone/iPad）: 最も厳しい制限
+      // iOS（iPhone/iPad）: 姿勢推定精度を優先して解像度を上げる
       MAX_FRAMES = 400; // 通常の1000から大幅削減
-      MAX_WIDTH = 480;  // 通常の960から半分に削減
+      MAX_WIDTH = 720;  // 姿勢推定のために720pxに引き上げ（旧: 480px）
       preferredFps = 60; // 通常の120から半分に削減
-      console.log('⚠️ iOS detected: Using conservative memory limits');
+      console.log('⚠️ iOS detected: Using conservative memory limits with higher resolution for pose detection');
     } else if (isMobile) {
       // その他のモバイル（Android等）
       MAX_FRAMES = 600;
-      MAX_WIDTH = 640;
+      MAX_WIDTH = 720;  // 姿勢推定のために720pxに引き上げ（旧: 640px）
       preferredFps = 90;
-      console.log('⚠️ Mobile detected: Using reduced memory limits');
+      console.log('⚠️ Mobile detected: Using reduced memory limits with higher resolution for pose detection');
     } else {
       // デスクトップ: 高性能対応
       MAX_FRAMES = 3000;  // 240fps × 12秒程度対応
