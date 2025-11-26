@@ -795,6 +795,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     if (!usedTargetFps) return [];
     if (contactFrames.length < 3) return [];
 
+    // 総正規化距離を計算（腰のX座標を使用してより正確に）
     let totalNormalizedDistance = 0;
     if (poseResults.length > 0) {
       for (let j = 0; j + 2 < contactFrames.length; j += 2) {
@@ -803,9 +804,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         if (poseResults[c1]?.landmarks && poseResults[c2]?.landmarks) {
           const p1 = poseResults[c1]!.landmarks;
           const p2 = poseResults[c2]!.landmarks;
-          const a1 = (p1[27].x + p1[28].x) / 2;
-          const a2 = (p2[27].x + p2[28].x) / 2;
-          totalNormalizedDistance += Math.abs(a2 - a1);
+          // 腰の中心を使用（より安定）
+          const hip1X = (p1[23].x + p1[24].x) / 2;
+          const hip2X = (p2[23].x + p2[24].x) / 2;
+          totalNormalizedDistance += Math.abs(hip2X - hip1X);
         }
       }
     }
@@ -823,6 +825,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         nextContact > toeOff ? (nextContact - toeOff) / usedTargetFps : null;
       const stepTime =
         nextContact > contact ? (nextContact - contact) / usedTargetFps : null;
+      // ピッチは「歩/秒」なので stepTime の逆数
       const stepPitch = stepTime && stepTime > 0 ? 1 / stepTime : null;
 
       let stride: number | null = null;
@@ -836,15 +839,18 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         const pose1 = poseResults[contact]!.landmarks;
         const pose2 = poseResults[nextContact]!.landmarks;
 
-        const ankle1X = (pose1[27].x + pose1[28].x) / 2;
-        const ankle2X = (pose2[27].x + pose2[28].x) / 2;
-        const normalizedStride = Math.abs(ankle2X - ankle1X);
+        // 腰の中心X座標を使用（足首より安定）
+        const hip1X = (pose1[23].x + pose1[24].x) / 2;
+        const hip2X = (pose2[23].x + pose2[24].x) / 2;
+        const normalizedStride = Math.abs(hip2X - hip1X);
 
         if (distanceValue != null && totalNormalizedDistance > 0) {
+          // 正規化されたストライドを実距離に変換
           stride =
             (normalizedStride / totalNormalizedDistance) * distanceValue;
         }
       } else if (distanceValue != null) {
+        // 姿勢データがない場合は均等分割
         const totalSteps = Math.floor(contactFrames.length / 2);
         const denom = totalSteps > 0 ? totalSteps : 1;
         stride = distanceValue / denom;
@@ -4031,8 +4037,33 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   margin: '8px 0',
                   boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
                 }}>
-                  <div style={{ fontSize: '0.9rem', fontWeight: 'bold', textAlign: 'center', marginBottom: '12px' }}>
-                    ✅ キャリブレーション完了（閾値: {(toeOffThreshold * 100).toFixed(1)}%）
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 'bold', flex: 1, textAlign: 'center' }}>
+                      ✅ キャリブレーション完了（閾値: {(toeOffThreshold * 100).toFixed(1)}%）
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (window.confirm('キャリブレーションをやり直しますか？\n（すべてのマーカーがクリアされます）')) {
+                          handleClearMarkers();
+                          setCalibrationType(null);
+                          setCalibrationMode(0);
+                          setCalibrationData({});
+                        }
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.85rem',
+                        background: 'rgba(239, 68, 68, 0.9)',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                      }}
+                    >
+                      🔄 やり直し
+                    </button>
                   </div>
                   
                   {/* 完全自動検出ボタン */}
@@ -4122,6 +4153,28 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 </div>
               )}
               
+              {/* キャリブレーション方式別のガイダンス */}
+              {calibrationType && calibrationMode < 2 && (
+                <div style={{
+                  background: '#f0f9ff',
+                  border: '2px solid #3b82f6',
+                  padding: '16px',
+                  borderRadius: '8px',
+                  margin: '12px 0'
+                }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#1e40af' }}>
+                    {calibrationType === 1 && '⚡ 方式1: 最初の1歩のみマーク'}
+                    {calibrationType === 2 && '🎯 方式2: バランス型'}
+                    {calibrationType === 3 && '✋ 方式3: 完全手動'}
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: '#374151' }}>
+                    {calibrationType === 1 && '最初の1歩（接地→離地）をマークすると、残りは「すべて自動検出」ボタンで完全自動検出されます。'}
+                    {calibrationType === 2 && '最初の1歩（接地→離地）をマークした後、残りの接地のみマークすると離地は自動検出されます。'}
+                    {calibrationType === 3 && 'すべての接地と離地を手動でマークします。最も正確ですが時間がかかります。'}
+                  </div>
+                </div>
+              )}
+              
               {calibrationMode && manualContactFrames.length === 0 && (
                 <div style={{
                   background: '#fbbf24',
@@ -4133,7 +4186,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   textAlign: 'center',
                   fontWeight: 'bold'
                 }}>
-                  📍 ステップ1: 接地フレームをマークしてください
+                  📍 ステップ1: 最初の接地フレームをマークしてください
                 </div>
               )}
               
@@ -4148,7 +4201,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   textAlign: 'center',
                   fontWeight: 'bold'
                 }}>
-                  📍 ステップ2: 離地フレームをマークしてください
+                  📍 ステップ2: 最初の離地フレームをマークしてください
                 </div>
               )}
             </div>
