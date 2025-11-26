@@ -3071,6 +3071,51 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         );
 
       case 4:
+        // 姿勢推定データがない場合は強制的にステップ3に戻す
+        if (poseResults.length === 0) {
+          return (
+            <div className="wizard-content">
+              <div className="wizard-step-header">
+                <h2 className="wizard-step-title">⚠️ 姿勢推定が必要です</h2>
+              </div>
+              <div style={{
+                background: '#fef2f2',
+                border: '3px solid #dc2626',
+                padding: '32px',
+                borderRadius: '12px',
+                margin: '32px 0',
+                textAlign: 'center'
+              }}>
+                <div style={{ fontSize: '4rem', marginBottom: '16px' }}>🚫</div>
+                <div style={{ fontWeight: 'bold', marginBottom: '16px', color: '#dc2626', fontSize: '1.3rem' }}>
+                  姿勢推定データがありません
+                </div>
+                <div style={{ fontSize: '1rem', color: '#7f1d1d', marginBottom: '16px' }}>
+                  区間設定を行うには、先にステップ3で姿勢推定を実行する必要があります。
+                </div>
+                <div style={{ fontSize: '0.9rem', color: '#7f1d1d', marginBottom: '24px', padding: '16px', background: 'rgba(255,255,255,0.5)', borderRadius: '8px' }}>
+                  <strong>手順:</strong><br/>
+                  1. ステップ3に戻る<br/>
+                  2. 「姿勢推定を開始」ボタンをクリック<br/>
+                  3. 完了まで待つ（数分かかります）<br/>
+                  4. 自動的にステップ4に進みます
+                </div>
+                <button 
+                  className="btn-primary-large"
+                  onClick={() => {
+                    setWizardStep(3);
+                    // 姿勢推定を自動開始
+                    setTimeout(() => runPoseEstimation(), 500);
+                  }}
+                  style={{ fontSize: '1.1rem', padding: '16px 32px' }}
+                >
+                  ステップ3に戻って姿勢推定を実行
+                </button>
+              </div>
+            </div>
+          );
+        }
+        
         return (
           <div className="wizard-content">
             <div className="wizard-step-header">
@@ -3079,27 +3124,6 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 解析する区間の開始フレームと終了フレームを設定してください。
               </p>
             </div>
-
-            {/* 姿勢推定データがない場合の警告 */}
-            {poseResults.length === 0 && (
-              <div style={{
-                background: '#fef2f2',
-                border: '2px solid #dc2626',
-                padding: '16px',
-                borderRadius: '8px',
-                margin: '16px 0'
-              }}>
-                <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#dc2626', fontSize: '1.1rem' }}>
-                  ⚠️ 姿勢推定データがありません
-                </div>
-                <div style={{ fontSize: '0.9rem', color: '#7f1d1d', marginBottom: '8px' }}>
-                  区間設定をするためには、先にステップ3で姿勢推定を実行する必要があります。
-                </div>
-                <div style={{ fontSize: '0.9rem', color: '#7f1d1d' }}>
-                  <strong>対処法:</strong> ステップ3に戻って「姿勢推定を開始」ボタンをクリックしてください。
-                </div>
-              </div>
-            )}
 
             {/* クリックモードバナー（画面全体に固定） */}
             {sectionClickMode && (
