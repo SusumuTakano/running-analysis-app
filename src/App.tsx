@@ -1428,14 +1428,34 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   // ------------ フレーム抽出 ------------
   const handleExtractFrames = async () => {
     console.log('🎬 === Frame Extraction Started ===');
-    console.log('Current optimization settings:', {
+    
+    // localStorageから設定を読み込む
+    let savedSettings = null;
+    try {
+      const settingsStr = localStorage.getItem('videoOptimizationSettings');
+      if (settingsStr) {
+        savedSettings = JSON.parse(settingsStr);
+        console.log('✅ Loaded settings from localStorage:', savedSettings);
+      }
+    } catch (e) {
+      console.warn('⚠️ Failed to load settings from localStorage:', e);
+    }
+    
+    // 設定を上書き（localStorageの値を優先）
+    const actualTrimStart = savedSettings?.trimStart ?? trimStart;
+    const actualTrimEnd = savedSettings?.trimEnd ?? trimEnd;
+    const actualBrightness = savedSettings?.brightness ?? brightness;
+    const actualContrast = savedSettings?.contrast ?? contrast;
+    const actualTargetFps = savedSettings?.targetFpsInput ?? targetFpsInput;
+    
+    console.log('Current optimization settings (with localStorage):', {
       useOptimization,
-      brightness,
-      contrast,
-      trimStart,
-      trimEnd,
-      targetFpsInput,
-      videoDuration
+      brightness: actualBrightness,
+      contrast: actualContrast,
+      trimStart: actualTrimStart,
+      trimEnd: actualTrimEnd,
+      targetFpsInput: actualTargetFps,
+      videoDuration: savedSettings?.videoDuration ?? videoDuration
     });
     
     if (!videoFile) {
@@ -1574,27 +1594,33 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     
     console.log('📹 Video optimization check:', {
       useOptimization,
-      trimStart,
-      trimEnd,
-      targetFpsInput,
+      trimStart: actualTrimStart,
+      trimEnd: actualTrimEnd,
+      targetFpsInput: actualTargetFps,
       videoDuration: duration
     });
     
     if (useOptimization) {
-      // トリミング設定を適用
-      if (trimStart > 0 || trimEnd > 0) {
-        actualStartTime = Math.max(0, Math.min(trimStart, duration));
-        const endTime = trimEnd > 0 ? Math.min(trimEnd, duration) : duration;
+      // トリミング設定を適用（localStorageの値を使用）
+      if (actualTrimStart > 0 || actualTrimEnd > 0) {
+        actualStartTime = Math.max(0, Math.min(actualTrimStart, duration));
+        const endTime = actualTrimEnd > 0 ? Math.min(actualTrimEnd, duration) : duration;
         actualDuration = Math.max(0.1, endTime - actualStartTime);
         console.log(`✂️ Trimming applied: ${actualStartTime}s ~ ${endTime}s (duration: ${actualDuration}s)`);
+        console.log(`📊 Original duration: ${duration}s → Trimmed duration: ${actualDuration}s (${((actualDuration / duration) * 100).toFixed(1)}%)`);
       } else {
         console.log('⚠️ No trimming settings detected (trimStart=0, trimEnd=0)');
       }
       
       // FPS変換設定を適用
-      if (targetFpsInput && targetFpsInput !== confirmedFps) {
-        confirmedFps = targetFpsInput;
-        console.log(`🎬 FPS conversion applied: ${targetFpsInput}fps`);
+      if (actualTargetFps && actualTargetFps !== confirmedFps) {
+        confirmedFps = actualTargetFps;
+        console.log(`🎬 FPS conversion applied: ${actualTargetFps}fps`);
+      }
+      
+      // 明るさ・コントラスト設定をログ出力
+      if (actualBrightness !== 100 || actualContrast !== 100) {
+        console.log(`🎨 Brightness/Contrast applied: ${actualBrightness}%/${actualContrast}%`);
       }
     } else {
       console.log('⚠️ Video optimization disabled (useOptimization=false)');
@@ -1693,9 +1719,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
         requestAnimationFrame(() => {
           try {
-            // 動画最適化設定を適用
-            if (useOptimization && (brightness !== 100 || contrast !== 100)) {
-              ctx.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
+            // 動画最適化設定を適用（localStorageの値を使用）
+            if (useOptimization && (actualBrightness !== 100 || actualContrast !== 100)) {
+              ctx.filter = `brightness(${actualBrightness}%) contrast(${actualContrast}%)`;
             }
             ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
             ctx.filter = 'none'; // フィルターをリセット
@@ -3374,17 +3400,37 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     className="btn-primary-large"
                     onClick={() => {
                       // 設定を確定してフレーム抽出へ
-                      console.log('📹 Video optimization settings applied:', {
+                      const settings = {
                         brightness,
                         contrast,
                         trimStart,
                         trimEnd,
-                        targetFpsInput
-                      });
-                      setWizardStep(3);
-                      setTimeout(() => {
-                        handleExtractFrames();
-                      }, 300);
+                        targetFpsInput,
+                        videoDuration
+                      };
+                      
+                      console.log('📹 Video optimization settings applied:', settings);
+                      
+                      // localStorageに保存して確実に渡す
+                      localStorage.setItem('videoOptimizationSettings', JSON.stringify(settings));
+                      
+                      // アラートで確認
+                      if (trimStart > 0 || trimEnd > 0) {
+                        const duration = (trimEnd > 0 ? trimEnd : videoDuration) - trimStart;
+                        if (confirm(`トリミング設定を確認してください:\n\n開始: ${trimStart.toFixed(2)}秒\n終了: ${trimEnd > 0 ? trimEnd.toFixed(2) : videoDuration.toFixed(2)}秒\n抽出範囲: ${duration.toFixed(2)}秒\n\nこの設定でフレーム抽出を開始しますか？`)) {
+                          setWizardStep(3);
+                          setTimeout(() => {
+                            handleExtractFrames();
+                          }, 300);
+                        }
+                      } else {
+                        if (confirm('⚠️ トリミング設定がありません。\n動画全体を抽出します。\n\nこのまま続行しますか？')) {
+                          setWizardStep(3);
+                          setTimeout(() => {
+                            handleExtractFrames();
+                          }, 300);
+                        }
+                      }
                     }}
                     style={{ flex: 1 }}
                   >
