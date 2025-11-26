@@ -5628,7 +5628,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   ];
 
   return (
-    <div className="app-container">
+    <div className={`app-container wizard-step-${wizardStep}`}>
       {/* チュートリアルモーダル */}
       {showTutorial && (
         <div style={{
