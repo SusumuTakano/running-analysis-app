@@ -365,13 +365,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const [useOptimization, setUseOptimization] = useState<boolean | null>(null); // null=未選択, true=使用, false=スキップ
   const [brightness, setBrightness] = useState(100); // 100 = 元の明るさ
   const [contrast, setContrast] = useState(100); // 100 = 元のコントラスト
-  const [trimStart, setTrimStart] = useState(0); // トリム開始位置（秒）
-  const [trimEnd, setTrimEnd] = useState(0); // トリム終了位置（秒、0=最後まで）
   const [targetFpsInput, setTargetFpsInput] = useState<number | null>(null); // FPS変換（null=元のまま）
-  const [optimizedVideoUrl, setOptimizedVideoUrl] = useState<string | null>(null);
-  const [isOptimizing, setIsOptimizing] = useState(false);
-  const [videoDuration, setVideoDuration] = useState(10); // 動画の長さ（デフォルト10秒）
-  const [thumbnailUpdateTrigger, setThumbnailUpdateTrigger] = useState(0); // サムネイル更新トリガー
 
   // ------------ 姿勢推定関連 -----------------
   const [poseResults, setPoseResults] = useState<(FramePoseData | null)[]>([]);
@@ -1443,20 +1437,15 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     }
     
     // 設定を上書き（localStorageの値を優先）
-    const actualTrimStart = savedSettings?.trimStart ?? trimStart;
-    const actualTrimEnd = savedSettings?.trimEnd ?? trimEnd;
     const actualBrightness = savedSettings?.brightness ?? brightness;
     const actualContrast = savedSettings?.contrast ?? contrast;
     const actualTargetFps = savedSettings?.targetFpsInput ?? targetFpsInput;
     
-    console.log('Current optimization settings (with localStorage):', {
+    console.log('📹 Video optimization settings:', {
       useOptimization,
       brightness: actualBrightness,
       contrast: actualContrast,
-      trimStart: actualTrimStart,
-      trimEnd: actualTrimEnd,
-      targetFpsInput: actualTargetFps,
-      videoDuration: savedSettings?.videoDuration ?? videoDuration
+      targetFpsInput: actualTargetFps
     });
     
     if (!videoFile) {
@@ -1589,30 +1578,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       }
     }
     
-    // 動画最適化設定の適用（トリミングとFPS変換）
-    let actualDuration = duration;
-    let actualStartTime = 0;
-    
-    console.log('📹 Video optimization check:', {
-      useOptimization,
-      trimStart: actualTrimStart,
-      trimEnd: actualTrimEnd,
-      targetFpsInput: actualTargetFps,
-      videoDuration: duration
-    });
-    
+    // 動画最適化設定の適用（FPS変換のみ）
     if (useOptimization) {
-      // トリミング設定を適用（localStorageの値を使用）
-      if (actualTrimStart > 0 || actualTrimEnd > 0) {
-        actualStartTime = Math.max(0, Math.min(actualTrimStart, duration));
-        const endTime = actualTrimEnd > 0 ? Math.min(actualTrimEnd, duration) : duration;
-        actualDuration = Math.max(0.1, endTime - actualStartTime);
-        console.log(`✂️ Trimming applied: ${actualStartTime}s ~ ${endTime}s (duration: ${actualDuration}s)`);
-        console.log(`📊 Original duration: ${duration}s → Trimmed duration: ${actualDuration}s (${((actualDuration / duration) * 100).toFixed(1)}%)`);
-      } else {
-        console.log('⚠️ No trimming settings detected (trimStart=0, trimEnd=0)');
-      }
-      
       // FPS変換設定を適用
       if (actualTargetFps && actualTargetFps !== confirmedFps) {
         confirmedFps = actualTargetFps;
@@ -1627,10 +1594,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       console.log('⚠️ Video optimization disabled (useOptimization=false)');
     }
     
-    const maxFpsForLength = Math.floor(MAX_FRAMES / Math.max(actualDuration, 0.001));
+    const maxFpsForLength = Math.floor(MAX_FRAMES / Math.max(duration, 0.001));
     const targetFps = Math.max(30, Math.min(confirmedFps, maxFpsForLength));
     const dt = 1 / targetFps;
-    const totalFrames = Math.max(1, Math.floor(actualDuration * targetFps));
+    const totalFrames = Math.max(1, Math.floor(duration * targetFps));
 
     setUsedTargetFps(targetFps);
 
@@ -1713,7 +1680,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         return;
       }
 
-      const currentTime = actualStartTime + (index * dt);
+      const currentTime = index * dt;
 
       const onSeeked = () => {
         video.removeEventListener("seeked", onSeeked);
@@ -3174,8 +3141,6 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       src={videoFile ? URL.createObjectURL(videoFile) : undefined}
                       onLoadedMetadata={(e) => {
                         const video = e.currentTarget;
-                        setVideoDuration(video.duration);
-                        setTrimEnd(0); // 終了位置をリセット（0=最後まで）
                         console.log('✅ Video loaded, duration:', video.duration);
                       }}
                     />
@@ -3230,200 +3195,6 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   </label>
                 </div>
 
-                {/* 動画トリミング */}
-                <div className="input-group">
-                  <div style={{
-                    background: 'var(--gray-50)',
-                    padding: '1.5rem',
-                    borderRadius: '8px',
-                    border: '1px solid var(--gray-200)'
-                  }}>
-                    <label className="input-label">
-                      <span className="label-text">✂️ トリミング範囲（スライダーで視覚的に選択）</span>
-                      <div style={{ marginTop: '1rem', marginBottom: '1rem' }}>
-                        <div style={{ 
-                          display: 'flex', 
-                          justifyContent: 'space-between', 
-                          fontSize: '0.9rem', 
-                          color: 'var(--gray-600)',
-                          marginBottom: '0.5rem'
-                        }}>
-                          <span>開始: {trimStart.toFixed(2)}秒</span>
-                          <span>終了: {trimEnd > 0 ? `${trimEnd.toFixed(2)}秒` : '最後まで'}</span>
-                        </div>
-                        
-                        {/* 開始位置スライダー */}
-                        <div style={{ marginBottom: '1rem' }}>
-                          <div style={{ fontSize: '0.85rem', color: 'var(--gray-500)', marginBottom: '0.3rem' }}>
-                            🟢 開始位置
-                          </div>
-                          <input
-                            type="range"
-                            min="0"
-                            max={videoDuration}
-                            step="0.1"
-                            value={trimStart}
-                            onChange={(e) => {
-                              const newStart = Number(e.target.value);
-                              setTrimStart(newStart);
-                              const video = previewVideoRef.current;
-                              if (video && !isNaN(video.duration)) {
-                                video.currentTime = newStart;
-                                console.log('🎬 Start slider: Video seek to', newStart);
-                              }
-                            }}
-                            className="input-field"
-                            style={{ cursor: 'pointer', width: '100%' }}
-                          />
-                        </div>
-                        
-                        {/* 終了位置スライダー */}
-                        <div>
-                          <div style={{ fontSize: '0.85rem', color: 'var(--gray-500)', marginBottom: '0.3rem' }}>
-                            🔴 終了位置（0 = 最後まで）
-                          </div>
-                          <input
-                            type="range"
-                            min={trimStart}
-                            max={videoDuration}
-                            step="0.1"
-                            value={trimEnd === 0 ? videoDuration : trimEnd}
-                            onChange={(e) => {
-                              const newEnd = Number(e.target.value);
-                              // videoDurationと同じ値の場合は0（最後まで）として扱う
-                              const actualEnd = Math.abs(newEnd - videoDuration) < 0.05 ? 0 : newEnd;
-                              setTrimEnd(actualEnd);
-                              const video = previewVideoRef.current;
-                              if (video && !isNaN(video.duration)) {
-                                video.currentTime = newEnd;
-                                console.log('🎬 End slider: Video seek to', newEnd, 'actualEnd:', actualEnd);
-                              }
-                            }}
-                            className="input-field"
-                            style={{ cursor: 'pointer', width: '100%' }}
-                          />
-                        </div>
-                        
-                        {/* トリミング範囲の視覚表示 */}
-                        <div style={{
-                          marginTop: '1rem',
-                          height: '30px',
-                          background: 'linear-gradient(90deg, #e5e7eb 0%, #e5e7eb 100%)',
-                          borderRadius: '4px',
-                          position: 'relative',
-                          overflow: 'hidden'
-                        }}>
-                          <div style={{
-                            position: 'absolute',
-                            left: `${(trimStart / videoDuration) * 100}%`,
-                            right: trimEnd > 0 ? `${100 - (trimEnd / videoDuration) * 100}%` : '0%',
-                            height: '100%',
-                            background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'white',
-                            fontSize: '0.75rem',
-                            fontWeight: 'bold'
-                          }}>
-                            選択範囲: {((trimEnd > 0 ? trimEnd : videoDuration) - trimStart).toFixed(2)}秒
-                          </div>
-                        </div>
-                        
-                        {/* トリミング範囲のサムネイルプレビュー */}
-                        {(trimStart > 0 || trimEnd > 0) && (
-                          <div style={{
-                            marginTop: '1rem',
-                            padding: '1rem',
-                            background: 'var(--gray-50)',
-                            borderRadius: '8px',
-                            border: '2px solid var(--success)'
-                          }}>
-                            <div style={{ 
-                              fontSize: '0.9rem', 
-                              fontWeight: 'bold', 
-                              marginBottom: '0.8rem',
-                              color: 'var(--gray-700)'
-                            }}>
-                              📸 トリミング範囲プレビュー
-                            </div>
-                            <div style={{ 
-                              display: 'grid', 
-                              gridTemplateColumns: '1fr 1fr', 
-                              gap: '1rem' 
-                            }}>
-                              {/* 開始位置のサムネイル */}
-                              <div>
-                                <div style={{ 
-                                  fontSize: '0.85rem', 
-                                  color: 'var(--gray-600)', 
-                                  marginBottom: '0.5rem',
-                                  fontWeight: 'bold'
-                                }}>
-                                  🟢 開始: {trimStart.toFixed(2)}秒
-                                </div>
-                                <div style={{
-                                  width: '100%',
-                                  aspectRatio: '16/9',
-                                  background: '#000',
-                                  borderRadius: '6px',
-                                  border: '2px solid #10b981',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  color: 'white',
-                                  fontSize: '0.85rem'
-                                }}>
-                                  {trimStart.toFixed(2)}秒地点
-                                </div>
-                              </div>
-                              
-                              {/* 終了位置のサムネイル */}
-                              <div>
-                                <div style={{ 
-                                  fontSize: '0.85rem', 
-                                  color: 'var(--gray-600)', 
-                                  marginBottom: '0.5rem',
-                                  fontWeight: 'bold'
-                                }}>
-                                  🔴 終了: {(trimEnd > 0 ? trimEnd : videoDuration).toFixed(2)}秒
-                                </div>
-                                <div style={{
-                                  width: '100%',
-                                  aspectRatio: '16/9',
-                                  background: '#000',
-                                  borderRadius: '6px',
-                                  border: '2px solid #ef4444',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  color: 'white',
-                                  fontSize: '0.85rem'
-                                }}>
-                                  {(trimEnd > 0 ? trimEnd : videoDuration).toFixed(2)}秒地点
-                                </div>
-                              </div>
-                            </div>
-                            <div style={{
-                              marginTop: '0.8rem',
-                              padding: '0.8rem',
-                              background: 'white',
-                              borderRadius: '6px',
-                              fontSize: '0.85rem',
-                              color: 'var(--gray-600)'
-                            }}>
-                              💡 動画プレビューを再生して、これらの位置を確認してください
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      <span style={{ fontSize: '0.85rem', color: 'var(--gray-500)' }}>
-                        💡 スライダーを動かすと動画がその位置にジャンプします
-                      </span>
-                    </label>
-                  </div>
-                </div>
-
                 {/* FPS変換 */}
                 <div className="input-group">
                   <label className="input-label">
@@ -3457,23 +3228,6 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   <ul style={{ marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
                     <li>明るさ: {brightness}%</li>
                     <li>コントラスト: {contrast}%</li>
-                    <li>
-                      トリミング: {trimStart.toFixed(2)}秒 ～ {trimEnd > 0 ? `${trimEnd.toFixed(2)}秒` : `${videoDuration.toFixed(2)}秒（最後まで）`}
-                      {trimStart === 0 && trimEnd === 0 && (
-                        <span style={{ color: 'orange', fontWeight: 'bold', marginLeft: '0.5rem' }}>
-                          ⚠️ トリミングなし（全範囲抽出）
-                        </span>
-                      )}
-                      {(trimStart > 0 || trimEnd > 0) && (
-                        <span style={{ color: 'green', fontWeight: 'bold', marginLeft: '0.5rem' }}>
-                          ✓ トリミング設定あり
-                        </span>
-                      )}
-                    </li>
-                    <li style={{ fontWeight: 'bold', color: 'var(--primary)' }}>
-                      📊 抽出範囲: {((trimEnd > 0 ? trimEnd : videoDuration) - trimStart).toFixed(2)}秒
-                      （動画長: {videoDuration.toFixed(2)}秒）
-                    </li>
                     <li>FPS: {targetFpsInput ? `${targetFpsInput} FPS` : '元のまま'}</li>
                   </ul>
                 </div>
@@ -3482,7 +3236,6 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   <button
                     className="btn-ghost"
                     onClick={() => setUseOptimization(null)}
-                    disabled={isOptimizing}
                   >
                     戻る
                   </button>
@@ -3493,10 +3246,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       const settings = {
                         brightness,
                         contrast,
-                        trimStart,
-                        trimEnd,
-                        targetFpsInput,
-                        videoDuration
+                        targetFpsInput
                       };
                       
                       console.log('📹 Video optimization settings applied:', settings);
@@ -3504,22 +3254,12 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       // localStorageに保存して確実に渡す
                       localStorage.setItem('videoOptimizationSettings', JSON.stringify(settings));
                       
-                      // アラートで確認
-                      if (trimStart > 0 || trimEnd > 0) {
-                        const duration = (trimEnd > 0 ? trimEnd : videoDuration) - trimStart;
-                        if (confirm(`トリミング設定を確認してください:\n\n開始: ${trimStart.toFixed(2)}秒\n終了: ${trimEnd > 0 ? trimEnd.toFixed(2) : videoDuration.toFixed(2)}秒\n抽出範囲: ${duration.toFixed(2)}秒\n\nこの設定でフレーム抽出を開始しますか？`)) {
-                          setWizardStep(3);
-                          setTimeout(() => {
-                            handleExtractFrames();
-                          }, 300);
-                        }
-                      } else {
-                        if (confirm('⚠️ トリミング設定がありません。\n動画全体を抽出します。\n\nこのまま続行しますか？')) {
-                          setWizardStep(3);
-                          setTimeout(() => {
-                            handleExtractFrames();
-                          }, 300);
-                        }
+                      // 確認
+                      if (confirm(`動画最適化設定を適用してフレーム抽出を開始しますか？\n\n明るさ: ${brightness}%\nコントラスト: ${contrast}%\nFPS: ${targetFpsInput ? targetFpsInput + ' fps' : '元のまま'}`)) {
+                        setWizardStep(3);
+                        setTimeout(() => {
+                          handleExtractFrames();
+                        }, 300);
                       }
                     }}
                     style={{ flex: 1 }}
