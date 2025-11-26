@@ -421,6 +421,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
   // ------------ 区間設定クリックモード ------------
   const [sectionClickMode, setSectionClickMode] = useState<'start' | 'mid' | 'end' | null>(null);
+  const [showMidPointDialog, setShowMidPointDialog] = useState(false);
 
   // ------------ 接地／離地マーカー（キャリブレーション対応） ------------
   const [calibrationMode, setCalibrationMode] = useState<boolean>(true); // キャリブレーションモード
@@ -641,6 +642,22 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     console.warn(`⚠️ 離地が検出できませんでした（接地: ${contactFrame}）`);
     return null; // 離地が見つからない
   };
+
+  // ステップ4に入ったら自動的にスタート設定モードを開始
+  useEffect(() => {
+    if (wizardStep === 4 && !sectionStartFrame && !sectionClickMode) {
+      // スタート地点が未設定の場合、自動的にスタート設定モードに入る
+      setSectionClickMode('start');
+      console.log('🎯 自動ガイド: スタート地点の設定を開始');
+    }
+  }, [wizardStep, sectionStartFrame, sectionClickMode]);
+
+  // スタート設定完了後、中間地点の確認ダイアログを表示
+  useEffect(() => {
+    if (wizardStep === 4 && sectionStartFrame && !sectionMidFrame && !sectionEndFrame && !showMidPointDialog && !sectionClickMode) {
+      setShowMidPointDialog(true);
+    }
+  }, [wizardStep, sectionStartFrame, sectionMidFrame, sectionEndFrame, showMidPointDialog, sectionClickMode]);
 
   // キーボード操作
   useEffect(() => {
@@ -3049,6 +3066,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     setCurrentFrame(bestFrame);
                     console.log(`🟢 スタート設定: Frame ${bestFrame} (クリック位置から自動検出)`);
                     setSectionClickMode(null);
+                    // スタート設定完了後、中間地点の確認ダイアログを表示（useEffectで処理）
                   } else if (sectionClickMode === 'mid') {
                     setSectionMidFrame(bestFrame);
                     setMidLineOffset(0);
@@ -3056,6 +3074,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     setCurrentFrame(bestFrame);
                     console.log(`🟡 中間設定: Frame ${bestFrame} (クリック位置から自動検出)`);
                     setSectionClickMode(null);
+                    // 中間地点設定完了後、自動的にフィニッシュ設定に進む
+                    setTimeout(() => setSectionClickMode('end'), 500);
                   } else if (sectionClickMode === 'end') {
                     setSectionEndFrame(bestFrame);
                     setEndLineOffset(0);
@@ -3063,6 +3083,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     setCurrentFrame(bestFrame);
                     console.log(`🔴 フィニッシュ設定: Frame ${bestFrame} (クリック位置から自動検出)`);
                     setSectionClickMode(null);
+                    // フィニッシュ設定完了（自動ガイド終了）
                   }
                 }}
                 style={{
@@ -3124,10 +3145,20 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
             <div className="section-settings">
               <div className="section-markers-info">
-                <p className="info-text">
-                  🖱️ 「クリックで設定」ボタンを押してから、キャンバス上の目的の位置を直接クリックしてください。<br/>
-                  ⚡ クリック位置から自動的に最適なフレームが検出・設定されます。<br/>
-                  📍 設定後、±ボタンでフレーム単位の微調整ができます。
+                <p className="info-text" style={{
+                  fontSize: '1.1rem',
+                  fontWeight: 'bold',
+                  color: '#059669',
+                  textAlign: 'center',
+                  padding: '16px',
+                  background: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)',
+                  borderRadius: '8px',
+                  marginBottom: '16px'
+                }}>
+                  ✨ 自動ガイドモード<br/>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 'normal', color: '#047857' }}>
+                    画面の指示に従ってクリックするだけで、簡単に設定できます
+                  </span>
                 </p>
               </div>
 
@@ -3137,16 +3168,6 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   <strong>フレーム:</strong>{" "}
                   {sectionStartFrame ?? "未設定"}
                 </div>
-                <button
-                  className={sectionClickMode === 'start' ? "btn-primary" : "btn-secondary"}
-                  onClick={() => {
-                    setSectionClickMode(sectionClickMode === 'start' ? null : 'start');
-                  }}
-                  disabled={!ready}
-                  style={{ width: '100%' }}
-                >
-                  {sectionClickMode === 'start' ? '✖️ キャンセル' : '🖱️ クリックで設定'}
-                </button>
               </div>
               {sectionStartFrame != null && (
                 <>
@@ -3296,30 +3317,6 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   <div className="marker-badge mid">中間（任意）</div>
                   <strong>フレーム:</strong>{" "}
                   {sectionMidFrame ?? "未設定"}
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    className={sectionClickMode === 'mid' ? "btn-primary" : "btn-secondary"}
-                    onClick={() => {
-                      setSectionClickMode(sectionClickMode === 'mid' ? null : 'mid');
-                    }}
-                    disabled={!ready}
-                    style={{ flex: 1 }}
-                  >
-                    {sectionClickMode === 'mid' ? '✖️ キャンセル' : '🖱️ クリックで設定'}
-                  </button>
-                  {sectionMidFrame != null && (
-                    <button
-                      className="btn-ghost-small"
-                      onClick={() => {
-                        setSectionMidFrame(null);
-                        setMidLineOffset(0);
-                        setSavedMidHipX(null);
-                      }}
-                    >
-                      クリア
-                    </button>
-                  )}
                 </div>
               </div>
               {sectionMidFrame != null && (
@@ -3471,16 +3468,6 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   <strong>フレーム:</strong>{" "}
                   {sectionEndFrame ?? "未設定"}
                 </div>
-                <button
-                  className={sectionClickMode === 'end' ? "btn-primary" : "btn-secondary"}
-                  onClick={() => {
-                    setSectionClickMode(sectionClickMode === 'end' ? null : 'end');
-                  }}
-                  disabled={!ready}
-                  style={{ width: '100%' }}
-                >
-                  {sectionClickMode === 'end' ? '✖️ キャンセル' : '🖱️ クリックで設定'}
-                </button>
               </div>
               {sectionEndFrame != null && (
                 <>
@@ -3636,6 +3623,93 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               </div>
             </div>
 
+            {/* 中間地点確認ダイアログ */}
+            {showMidPointDialog && (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(0, 0, 0, 0.7)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10000
+              }}>
+                <div style={{
+                  background: 'white',
+                  padding: '32px',
+                  borderRadius: '16px',
+                  maxWidth: '500px',
+                  boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
+                }}>
+                  <h3 style={{ 
+                    fontSize: '1.5rem', 
+                    fontWeight: 'bold', 
+                    marginBottom: '16px',
+                    color: '#374151'
+                  }}>
+                    🟡 中間地点を登録しますか？
+                  </h3>
+                  <p style={{ 
+                    fontSize: '1rem', 
+                    lineHeight: '1.6', 
+                    marginBottom: '24px',
+                    color: '#6b7280'
+                  }}>
+                    中間地点を設定すると、前半・後半の比較分析ができます。<br/>
+                    不要な場合は「登録しない」を選択してください。
+                  </p>
+                  <div style={{ 
+                    display: 'flex', 
+                    gap: '12px', 
+                    justifyContent: 'flex-end' 
+                  }}>
+                    <button
+                      onClick={() => {
+                        setShowMidPointDialog(false);
+                        setSectionClickMode('end');
+                        console.log('⏭️ 中間地点をスキップ、フィニッシュ設定へ');
+                      }}
+                      style={{
+                        padding: '12px 24px',
+                        fontSize: '1rem',
+                        fontWeight: 'bold',
+                        border: '2px solid #d1d5db',
+                        background: 'white',
+                        color: '#6b7280',
+                        borderRadius: '8px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      登録しない
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowMidPointDialog(false);
+                        setSectionClickMode('mid');
+                        console.log('✅ 中間地点の設定を開始');
+                      }}
+                      style={{
+                        padding: '12px 24px',
+                        fontSize: '1rem',
+                        fontWeight: 'bold',
+                        border: 'none',
+                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                        color: 'white',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+                      }}
+                    >
+                      登録する
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="wizard-actions">
               <button className="btn-ghost" onClick={() => setWizardStep(1)}>
                 最初に戻る
@@ -3643,6 +3717,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               <button
                 className="btn-primary-large"
                 onClick={() => setWizardStep(5)}
+                disabled={!sectionStartFrame || !sectionEndFrame}
               >
                 次へ：マーカー打ち
               </button>
