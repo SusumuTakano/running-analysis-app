@@ -380,6 +380,8 @@ body {
   overflow: hidden;
   background: #000;
   box-shadow: var(--shadow-md);
+  aspect-ratio: 16 / 9; /* 16:9アスペクト比を維持 */
+  max-width: 100%;
 }
 
 /* PC版: キャンバスを固定表示 */
