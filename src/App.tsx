@@ -364,7 +364,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const [poseResults, setPoseResults] = useState<(FramePoseData | null)[]>([]);
   const [isPoseProcessing, setIsPoseProcessing] = useState(false);
   const [poseProgress, setPoseProgress] = useState(0);
-  const [showSkeleton, setShowSkeleton] = useState(false);
+  const [showSkeleton, setShowSkeleton] = useState(true);  // デフォルトでON（姿勢データの確認用）
 
   // ------------ 区間指定 ------------
   const [sectionStartFrame, setSectionStartFrame] = useState<number | null>(
@@ -3079,6 +3079,27 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 解析する区間の開始フレームと終了フレームを設定してください。
               </p>
             </div>
+
+            {/* 姿勢推定データがない場合の警告 */}
+            {poseResults.length === 0 && (
+              <div style={{
+                background: '#fef2f2',
+                border: '2px solid #dc2626',
+                padding: '16px',
+                borderRadius: '8px',
+                margin: '16px 0'
+              }}>
+                <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#dc2626', fontSize: '1.1rem' }}>
+                  ⚠️ 姿勢推定データがありません
+                </div>
+                <div style={{ fontSize: '0.9rem', color: '#7f1d1d', marginBottom: '8px' }}>
+                  区間設定をするためには、先にステップ3で姿勢推定を実行する必要があります。
+                </div>
+                <div style={{ fontSize: '0.9rem', color: '#7f1d1d' }}>
+                  <strong>対処法:</strong> ステップ3に戻って「姿勢推定を開始」ボタンをクリックしてください。
+                </div>
+              </div>
+            )}
 
             {/* クリックモードバナー（画面全体に固定） */}
             {sectionClickMode && (
