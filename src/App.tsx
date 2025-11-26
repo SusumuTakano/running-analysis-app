@@ -426,8 +426,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const [sectionClickMode, setSectionClickMode] = useState<'start' | 'mid' | 'end' | null>(null);
   const [showMidPointDialog, setShowMidPointDialog] = useState(false);
 
-  // ------------ 接地／離地マーカー（キャリブレーション対応） ------------
-  const [calibrationMode, setCalibrationMode] = useState<boolean>(true); // キャリブレーションモード
+  // ------------ 接地／離地マーカー（2歩分キャリブレーション対応） ------------
+  const [calibrationMode, setCalibrationMode] = useState<number>(0); // キャリブレーション進捗 (0-4: 接地1→離地1→接地2→離地2→完了)
+  const [calibrationData, setCalibrationData] = useState<{contact1?: number, toeOff1?: number, contact2?: number, toeOff2?: number}>({});
   const [toeOffThreshold, setToeOffThreshold] = useState<number | null>(null); // つま先上昇閾値（ピクセル）
   const [baseThreshold, setBaseThreshold] = useState<number | null>(null); // 元の閾値（調整用）
   const [manualContactFrames, setManualContactFrames] = useState<number[]>([]); // 接地フレーム（手動）
@@ -448,7 +449,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const handleClearMarkers = () => {
     setManualContactFrames([]);
     setAutoToeOffFrames([]);
-    setCalibrationMode(true);
+    setCalibrationMode(0); // 2歩分キャリブレーションの最初に戻る
+    setCalibrationData({});
     setToeOffThreshold(null);
     setBaseThreshold(null);
   };
@@ -477,22 +479,37 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     return Math.max(leftAnkle.y, rightAnkle.y);
   };
 
-  // キャリブレーション：接地・離地の閾値を計算
-  const handleCalibration = (contactFrame: number, toeOffFrame: number) => {
-    const contactToeY = getToeY(poseResults[contactFrame]);
-    const toeOffToeY = getToeY(poseResults[toeOffFrame]);
+  // キャリブレーション：2歩分のデータから閾値を計算（精度向上）
+  const handleCalibration = (contact1: number, toeOff1: number, contact2: number, toeOff2: number) => {
+    // 1歩目のデータ
+    const contact1ToeY = getToeY(poseResults[contact1]);
+    const toeOff1ToeY = getToeY(poseResults[toeOff1]);
     
-    if (contactToeY === null || toeOffToeY === null) {
+    // 2歩目のデータ
+    const contact2ToeY = getToeY(poseResults[contact2]);
+    const toeOff2ToeY = getToeY(poseResults[toeOff2]);
+    
+    if (contact1ToeY === null || toeOff1ToeY === null || contact2ToeY === null || toeOff2ToeY === null) {
       alert('つま先の検出に失敗しました。姿勢推定が完了しているか確認してください。');
       return false;
     }
     
-    // Y座標の差分（離地時の方が小さい=上にある）
-    const threshold = Math.abs(contactToeY - toeOffToeY);
-    setToeOffThreshold(threshold);
-    setBaseThreshold(threshold); // 元の閾値を保存
-    setCalibrationMode(false);
-    console.log(`✅ キャリブレーション完了: 閾値 = ${threshold.toFixed(4)}`);
+    // 各歩のY座標の差分（離地時の方が小さい=上にある）
+    const threshold1 = Math.abs(contact1ToeY - toeOff1ToeY);
+    const threshold2 = Math.abs(contact2ToeY - toeOff2ToeY);
+    
+    // 2歩分の平均閾値を使用（精度向上）
+    const avgThreshold = (threshold1 + threshold2) / 2;
+    
+    setToeOffThreshold(avgThreshold);
+    setBaseThreshold(avgThreshold); // 元の閾値を保存
+    setCalibrationMode(4); // キャリブレーション完了
+    
+    console.log(`✅ 2歩分キャリブレーション完了:`);
+    console.log(`   1歩目の閾値: ${threshold1.toFixed(4)}`);
+    console.log(`   2歩目の閾値: ${threshold2.toFixed(4)}`);
+    console.log(`   平均閾値: ${avgThreshold.toFixed(4)}`);
+    
     return true;
   };
 
@@ -670,23 +687,47 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       if (e.code === "Space") {
         e.preventDefault();
         
-        if (calibrationMode) {
-          // キャリブレーションモード：接地と離地を手動マーク
-          if (manualContactFrames.length === 0) {
-            // 最初のマーク：接地
-            setManualContactFrames([currentFrame]);
-            console.log(`📍 キャリブレーション: 接地フレーム ${currentFrame}`);
-          } else if (autoToeOffFrames.length === 0) {
-            // 2番目のマーク：離地
-            const contactFrame = manualContactFrames[0];
-            if (currentFrame <= contactFrame) {
+        if (calibrationMode < 4) {
+          // キャリブレーションモード：2歩分(接地1→離地1→接地2→離地2)を手動マーク
+          if (calibrationMode === 0) {
+            // 1歩目の接地
+            setCalibrationData({ contact1: currentFrame });
+            setCalibrationMode(1);
+            console.log(`📍 キャリブレーション 1/4: 1歩目の接地フレーム ${currentFrame}`);
+          } else if (calibrationMode === 1) {
+            // 1歩目の離地
+            const { contact1 } = calibrationData;
+            if (!contact1 || currentFrame <= contact1) {
               alert('離地フレームは接地フレームより後にしてください。');
               return;
             }
-            const success = handleCalibration(contactFrame, currentFrame);
+            setCalibrationData({ ...calibrationData, toeOff1: currentFrame });
+            setCalibrationMode(2);
+            console.log(`📍 キャリブレーション 2/4: 1歩目の離地フレーム ${currentFrame}`);
+          } else if (calibrationMode === 2) {
+            // 2歩目の接地
+            const { toeOff1 } = calibrationData;
+            if (!toeOff1 || currentFrame <= toeOff1) {
+              alert('2歩目の接地フレームは1歩目の離地フレームより後にしてください。');
+              return;
+            }
+            setCalibrationData({ ...calibrationData, contact2: currentFrame });
+            setCalibrationMode(3);
+            console.log(`📍 キャリブレーション 3/4: 2歩目の接地フレーム ${currentFrame}`);
+          } else if (calibrationMode === 3) {
+            // 2歩目の離地（キャリブレーション完了）
+            const { contact1, toeOff1, contact2 } = calibrationData;
+            if (!contact1 || !toeOff1 || !contact2 || currentFrame <= contact2) {
+              alert('離地フレームは接地フレームより後にしてください。');
+              return;
+            }
+            const success = handleCalibration(contact1, toeOff1, contact2, currentFrame);
             if (success) {
-              setAutoToeOffFrames([currentFrame]);
-              console.log(`📍 キャリブレーション: 離地フレーム ${currentFrame}`);
+              // 初期マーカーとして2歩分を登録
+              setManualContactFrames([contact1, contact2]);
+              setAutoToeOffFrames([toeOff1, currentFrame]);
+              console.log(`✅ キャリブレーション 4/4: 2歩目の離地フレーム ${currentFrame}`);
+              console.log(`✅ 2歩分のキャリブレーション完了！自動検出が利用可能になりました。`);
             }
           }
         } else {
@@ -1320,7 +1361,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     setSavedEndHipX(null);
     setManualContactFrames([]);
     setAutoToeOffFrames([]);
-    setCalibrationMode(true);
+    setCalibrationMode(0);
     setToeOffThreshold(null);
     setBaseThreshold(null);
     setPoseResults([]);
@@ -3017,6 +3058,43 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               </p>
             </div>
 
+            {/* クリックモードバナー（画面全体に固定） */}
+            {sectionClickMode && (
+              <div style={{
+                position: 'fixed',
+                top: isMobile ? '60px' : '80px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                color: 'white',
+                padding: '16px 32px',
+                borderRadius: '12px',
+                fontWeight: 'bold',
+                fontSize: '1.1rem',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                zIndex: 10000,
+                pointerEvents: 'none',
+                textAlign: 'center',
+                minWidth: '300px',
+                border: '3px solid white',
+                animation: 'pulse 2s infinite'
+              }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>
+                  {sectionClickMode === 'start' && '🟢'}
+                  {sectionClickMode === 'mid' && '🟡'}
+                  {sectionClickMode === 'end' && '🔴'}
+                </div>
+                <div>
+                  {sectionClickMode === 'start' && 'スタート地点をクリック'}
+                  {sectionClickMode === 'mid' && '中間地点をクリック'}
+                  {sectionClickMode === 'end' && 'フィニッシュ地点をクリック'}
+                </div>
+                <div style={{ fontSize: '0.85rem', marginTop: '4px', opacity: 0.9 }}>
+                  ⬇️ 下のキャンバスをクリックしてください
+                </div>
+              </div>
+            )}
+
             <div className="canvas-area" style={{ position: 'relative' }}>
               <canvas 
                 ref={displayCanvasRef} 
@@ -3090,30 +3168,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   }
                 }}
                 style={{
-                  cursor: sectionClickMode ? 'crosshair' : 'default'
+                  cursor: sectionClickMode ? 'crosshair' : 'default',
+                  border: sectionClickMode ? '4px solid #3b82f6' : 'none'
                 }}
               />
-              {sectionClickMode && (
-                <div style={{
-                  position: 'absolute',
-                  top: '10px',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  background: 'rgba(59, 130, 246, 0.95)',
-                  color: 'white',
-                  padding: '12px 24px',
-                  borderRadius: '8px',
-                  fontWeight: 'bold',
-                  fontSize: '1rem',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                  zIndex: 10,
-                  pointerEvents: 'none'
-                }}>
-                  {sectionClickMode === 'start' && '🟢 スタート地点をクリック（位置から自動検出）'}
-                  {sectionClickMode === 'mid' && '🟡 中間地点をクリック（位置から自動検出）'}
-                  {sectionClickMode === 'end' && '🔴 フィニッシュ地点をクリック（位置から自動検出）'}
-                </div>
-              )}
             </div>
 
             <div className="frame-control">
@@ -3807,7 +3865,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               <h2 className="wizard-step-title">ステップ 5: 接地/離地マーカー</h2>
               
               {/* キャリブレーションモードの説明 */}
-              {calibrationMode ? (
+              {calibrationMode < 4 ? (
                 <div style={{
                   background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
                   color: 'white',
@@ -3818,11 +3876,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 }}>
                   <div style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span>📍</span>
-                    <span>キャリブレーション（最初の1歩のみ）</span>
+                    <span>2歩分キャリブレーション（精度向上）</span>
                   </div>
                   <div style={{ fontSize: '0.95rem', lineHeight: '1.8', marginBottom: '16px' }}>
-                    最初の1歩のみ、<strong>接地</strong>と<strong>離地</strong>の両方のフレームをマークしてください。<br />
-                    これにより、離地を自動検出するための閾値が計算されます。
+                    最初の<strong>2歩分</strong>、<strong>接地</strong>と<strong>離地</strong>の両方のフレームをマークしてください。<br />
+                    2歩分のデータを使用することで、より正確な離地自動検出が可能になります。
                   </div>
                   <div style={{
                     background: 'rgba(255,255,255,0.2)',
@@ -3831,11 +3889,12 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     fontSize: '0.9rem',
                     lineHeight: '1.6'
                   }}>
-                    <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>📝 手順：</div>
+                    <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>📝 手順（4ステップ）：</div>
                     <ol style={{ margin: 0, paddingLeft: '20px' }}>
-                      <li>足が<strong>地面に接地</strong>したフレームで「🟢 接地をマーク」</li>
-                      <li>足が<strong>地面から離れた</strong>フレームで「🔴 離地をマーク」</li>
-                      <li>キャリブレーション完了後、2歩目以降は接地のみマーク</li>
+                      <li><strong>1歩目の接地</strong>フレームをマーク</li>
+                      <li><strong>1歩目の離地</strong>フレームをマーク</li>
+                      <li><strong>2歩目の接地</strong>フレームをマーク</li>
+                      <li><strong>2歩目の離地</strong>フレームをマーク → 完了後、3歩目以降は接地のみ自動検出</li>
                     </ol>
                   </div>
                 </div>
@@ -3860,7 +3919,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               )}
               
               {/* キャリブレーション状態表示 */}
-              {!calibrationMode && toeOffThreshold !== null && (
+              {calibrationMode >= 4 && toeOffThreshold !== null && (
                 <div style={{
                   background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                   color: 'white',
@@ -4021,7 +4080,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               >
                 スケルトン {showSkeleton ? "ON" : "OFF"}
               </button>
-              {!calibrationMode && (
+              {calibrationMode >= 4 && (
                 <button 
                   className="btn-ghost-small" 
                   onClick={handleClearMarkers}
@@ -4083,7 +4142,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   const isContact = index % 2 === 0;
                   const color = isContact ? "#10b981" : "#ef4444";
                   const label = isContact ? "接地" : "離地";
-                  const isAuto = !isContact && !calibrationMode;
+                  const isAuto = !isContact && calibrationMode >= 4;
                   
                   return (
                     <div 
@@ -4113,21 +4172,41 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   onClick={() => {
                     if (!ready) return;
                     
-                    if (calibrationMode) {
-                      // キャリブレーションモード
-                      if (manualContactFrames.length === 0) {
-                        setManualContactFrames([currentFrame]);
-                        console.log(`📍 キャリブレーション: 接地フレーム ${currentFrame}`);
-                      } else if (autoToeOffFrames.length === 0) {
-                        const contactFrame = manualContactFrames[0];
-                        if (currentFrame <= contactFrame) {
+                    if (calibrationMode < 4) {
+                      // 2歩分キャリブレーションモード
+                      if (calibrationMode === 0) {
+                        setCalibrationData({ contact1: currentFrame });
+                        setCalibrationMode(1);
+                        console.log(`📍 キャリブレーション 1/4: 1歩目の接地フレーム ${currentFrame}`);
+                      } else if (calibrationMode === 1) {
+                        const { contact1 } = calibrationData;
+                        if (!contact1 || currentFrame <= contact1) {
                           alert('離地フレームは接地フレームより後にしてください。');
                           return;
                         }
-                        const success = handleCalibration(contactFrame, currentFrame);
+                        setCalibrationData({ ...calibrationData, toeOff1: currentFrame });
+                        setCalibrationMode(2);
+                        console.log(`📍 キャリブレーション 2/4: 1歩目の離地フレーム ${currentFrame}`);
+                      } else if (calibrationMode === 2) {
+                        const { toeOff1 } = calibrationData;
+                        if (!toeOff1 || currentFrame <= toeOff1) {
+                          alert('2歩目の接地フレームは1歩目の離地フレームより後にしてください。');
+                          return;
+                        }
+                        setCalibrationData({ ...calibrationData, contact2: currentFrame });
+                        setCalibrationMode(3);
+                        console.log(`📍 キャリブレーション 3/4: 2歩目の接地フレーム ${currentFrame}`);
+                      } else if (calibrationMode === 3) {
+                        const { contact1, toeOff1, contact2 } = calibrationData;
+                        if (!contact1 || !toeOff1 || !contact2 || currentFrame <= contact2) {
+                          alert('離地フレームは接地フレームより後にしてください。');
+                          return;
+                        }
+                        const success = handleCalibration(contact1, toeOff1, contact2, currentFrame);
                         if (success) {
-                          setAutoToeOffFrames([currentFrame]);
-                          console.log(`📍 キャリブレーション: 離地フレーム ${currentFrame}`);
+                          setManualContactFrames([contact1, contact2]);
+                          setAutoToeOffFrames([toeOff1, currentFrame]);
+                          console.log(`✅ キャリブレーション 4/4: 2歩目の離地フレーム ${currentFrame}`);
                         }
                       }
                     } else {
@@ -4148,10 +4227,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   style={{
                     width: "100%",
                     padding: "20px",
-                    fontSize: "20px",
+                    fontSize: "18px",
                     fontWeight: "bold",
-                    background: calibrationMode 
-                      ? (manualContactFrames.length === 0 
+                    background: calibrationMode < 4
+                      ? (calibrationMode % 2 === 0 
                           ? "linear-gradient(135deg, #10b981 0%, #059669 100%)" 
                           : "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)")
                       : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
@@ -4163,8 +4242,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     touchAction: "manipulation"
                   }}
                 >
-                  {calibrationMode 
-                    ? (manualContactFrames.length === 0 ? '📍 接地マーク' : '📍 離地マーク')
+                  {calibrationMode < 4 
+                    ? (calibrationMode === 0 ? '📍 1歩目 接地' 
+                        : calibrationMode === 1 ? '📍 1歩目 離地'
+                        : calibrationMode === 2 ? '📍 2歩目 接地'
+                        : '📍 2歩目 離地')
                     : '📍 接地マーク（離地自動）'}
                 </button>
               )}
@@ -4182,8 +4264,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               }}>
                 <h4 style={{ margin: '0 0 8px 0', fontWeight: 'bold' }}>⌨️ キーボード操作</h4>
                 <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                  <li><strong>Space</strong>: {calibrationMode 
-                    ? (manualContactFrames.length === 0 ? '接地マーク' : '離地マーク')
+                  <li><strong>Space</strong>: {calibrationMode < 4
+                    ? (calibrationMode === 0 ? '1歩目 接地マーク' 
+                        : calibrationMode === 1 ? '1歩目 離地マーク'
+                        : calibrationMode === 2 ? '2歩目 接地マーク'
+                        : '2歩目 離地マーク（完了後自動検出）')
                     : '接地マーク（離地自動）'}</li>
                   <li><strong>← / →</strong>: 1フレーム移動</li>
                   <li><strong>↑ / ↓</strong>: 10フレーム移動</li>
@@ -4273,7 +4358,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   {Array.from({ length: Math.floor(contactFrames.length / 2) }, (_, i) => {
                     const contactFrame = contactFrames[i * 2];
                     const toeOffFrame = contactFrames[i * 2 + 1];
-                    const isAuto = !calibrationMode && i > 0;
+                    const isAuto = calibrationMode >= 4 && i > 1; // 2歩分キャリブレーション後（i>1）は自動検出
                     
                     return (
                       <div key={i} style={{
@@ -5349,7 +5434,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     setSavedEndHipX(null);
                     setManualContactFrames([]);
                     setAutoToeOffFrames([]);
-                    setCalibrationMode(true);
+                    setCalibrationMode(0);
                     setToeOffThreshold(null);
                     setBaseThreshold(null);
                     setPoseResults([]);
@@ -5419,7 +5504,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     },
     {
       title: "ステップ5: マーカー設定",
-      content: "接地・離地のタイミングをマークします。\n\n• 最初の1歩：手動でマーク（キャリブレーション）\n• 2歩目以降：自動検出\n• PC: Spaceキー、モバイル: タップでマーク"
+      content: "接地・離地のタイミングをマークします。\n\n• 最初の2歩：手動でマーク（2歩分キャリブレーション）\n  - 1歩目: 接地→離地\n  - 2歩目: 接地→離地\n• 3歩目以降：接地のみマーク（離地は自動検出）\n• PC: Spaceキー、モバイル: タップでマーク"
     },
     {
       title: "ステップ6: 結果確認",
