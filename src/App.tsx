@@ -445,6 +445,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const [horizonPoint2, setHorizonPoint2] = useState<{x: number, y: number} | null>(null); // 基準点2（レーン上）
   const [horizonAngle, setHorizonAngle] = useState<number>(0); // 水平補正角度（ラジアン）
   const [isHorizonCalibrated, setIsHorizonCalibrated] = useState<boolean>(false); // キャリブレーション完了フラグ
+  const [horizonZoom, setHorizonZoom] = useState<number>(1); // ズーム倍率（1 = 100%）
+  const [horizonPan, setHorizonPan] = useState<{x: number, y: number}>({x: 0, y: 0}); // パン位置
+  const [isPanning, setIsPanning] = useState<boolean>(false); // パン中かどうか
+  const [panStart, setPanStart] = useState<{x: number, y: number} | null>(null); // パン開始位置
   
   // 互換性のため、contactFrames を計算で生成（接地・離地を交互に並べる）
   const contactFrames = useMemo(() => {
@@ -479,6 +483,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
   // つま先のY座標を取得（地面に近い方を基準）
   // 離地判定には、地面から離れる足（上昇する足）を検出する必要がある
+  // つま先のY座標取得（離地判定に使用）
   const getToeY = (poseData: FramePoseData | null): number | null => {
     if (!poseData || !poseData.landmarks) return null;
     let leftToe = poseData.landmarks[31]; // 左足つま先
@@ -493,9 +498,36 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       rightToe = rotatePoint(rightToe.x, rightToe.y, rightToe.z, rightToe.visibility, horizonAngle, centerX, centerY);
     }
     
-    // 接地している足（Y座標が大きい=下にある）を基準にする
-    // 離地するのは接地している足なので、より地面に近い方を追跡
+    // 離地判定用：つま先が地面から離れる瞬間を検出（より地面に近い方）
     return Math.max(leftToe.y, rightToe.y);
+  };
+  
+  // 足底部のY座標取得（接地判定に使用）
+  // つま先と足首の平均で、足底部全体が地面についた状態を判定
+  const getFootBaseY = (poseData: FramePoseData | null): number | null => {
+    if (!poseData || !poseData.landmarks) return null;
+    let leftToe = poseData.landmarks[31]; // 左足つま先
+    let rightToe = poseData.landmarks[32]; // 右足つま先
+    let leftAnkle = poseData.landmarks[27]; // 左足首
+    let rightAnkle = poseData.landmarks[28]; // 右足首
+    
+    if (!leftToe || !rightToe || !leftAnkle || !rightAnkle) return null;
+    
+    // 水平補正を適用
+    if (isHorizonCalibrated && horizonAngle !== 0) {
+      const centerX = displayCanvasRef.current?.width ? displayCanvasRef.current.width / 2 : 0;
+      const centerY = displayCanvasRef.current?.height ? displayCanvasRef.current.height / 2 : 0;
+      leftToe = rotatePoint(leftToe.x, leftToe.y, leftToe.z, leftToe.visibility, horizonAngle, centerX, centerY);
+      rightToe = rotatePoint(rightToe.x, rightToe.y, rightToe.z, rightToe.visibility, horizonAngle, centerX, centerY);
+      leftAnkle = rotatePoint(leftAnkle.x, leftAnkle.y, leftAnkle.z, leftAnkle.visibility, horizonAngle, centerX, centerY);
+      rightAnkle = rotatePoint(rightAnkle.x, rightAnkle.y, rightAnkle.z, rightAnkle.visibility, horizonAngle, centerX, centerY);
+    }
+    
+    // 接地判定用：足底部（つま先と足首の平均）が地面についた状態を検出
+    // 左右それぞれの足底部を計算し、より地面に近い（Y座標が大きい）方を返す
+    const leftFootBase = (leftToe.y + leftAnkle.y) / 2;
+    const rightFootBase = (rightToe.y + rightAnkle.y) / 2;
+    return Math.max(leftFootBase, rightFootBase);
   };
   
   // 足首のY座標も取得（補助的な判定）
@@ -518,23 +550,27 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   };
 
   // キャリブレーション：1歩分のデータから閾値を計算
+  // 改善：接地判定には足底部、離地判定にはつま先を使用
   const handleCalibration = (contactFrame: number, toeOffFrame: number) => {
+    // 接地判定用：足底部の高さ
+    const contactFootBaseY = getFootBaseY(poseResults[contactFrame]);
+    // 離地判定用：つま先の高さ
     const contactToeY = getToeY(poseResults[contactFrame]);
     const toeOffToeY = getToeY(poseResults[toeOffFrame]);
     
-    if (contactToeY === null || toeOffToeY === null) {
-      alert('つま先の検出に失敗しました。姿勢推定が完了しているか確認してください。');
+    if (contactFootBaseY === null || contactToeY === null || toeOffToeY === null) {
+      alert('足の検出に失敗しました。姿勢推定が完了しているか確認してください。');
       return false;
     }
     
-    // Y座標の差分（離地時の方が小さい=上にある）
+    // 離地閾値：接地時と離地時のつま先の高さの差（離地時の方が小さい=上にある）
     const threshold = Math.abs(contactToeY - toeOffToeY);
     
     setToeOffThreshold(threshold);
     setBaseThreshold(threshold); // 元の閾値を保存
     setCalibrationMode(2); // キャリブレーション完了
     
-    console.log(`✅ キャリブレーション完了: 閾値 = ${threshold.toFixed(4)}`);
+    console.log(`✅ キャリブレーション完了: 離地閾値 = ${threshold.toFixed(4)}, 接地基準高さ = ${contactFootBaseY.toFixed(4)}`);
     
     return true;
   };
@@ -624,6 +660,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   };
 
   // 次の接地フレームを検出（キャリブレーションで記録した接地高さに戻ったら接地）
+  // 改善：足底部（つま先+足首の平均）で判定することで、足底部全体が地面についた瞬間を検出
   const detectNextContactFrame = (startFrame: number, endFrame: number): number | null => {
     if (!poseResults.length) return null;
     if (baseThreshold === null) return null;
@@ -632,31 +669,31 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     const firstContactFrame = manualContactFrames[0];
     if (firstContactFrame === undefined) return null;
     
-    const referenceContactToeY = getToeY(poseResults[firstContactFrame]);
-    if (referenceContactToeY === null) return null;
+    const referenceContactFootBaseY = getFootBaseY(poseResults[firstContactFrame]);
+    if (referenceContactFootBaseY === null) return null;
     
-    // 許容誤差：基準接地高さの±1%以内なら接地と判定（極限の高精度）
-    const tolerance = Math.abs(referenceContactToeY) * 0.01;
+    // 許容誤差：基準接地高さの±2%以内なら接地と判定（足底部全体を考慮するため少し緩和）
+    const tolerance = Math.abs(referenceContactFootBaseY) * 0.02;
     
     // 開始フレームから前方を検索
     for (let i = startFrame; i < endFrame; i++) {
-      const currentToeY = getToeY(poseResults[i]);
-      if (currentToeY === null) continue;
+      const currentFootBaseY = getFootBaseY(poseResults[i]);
+      if (currentFootBaseY === null) continue;
       
       // 基準接地高さに戻ったかチェック
-      const heightDiff = Math.abs(currentToeY - referenceContactToeY);
+      const heightDiff = Math.abs(currentFootBaseY - referenceContactFootBaseY);
       
       if (heightDiff <= tolerance) {
         // さらに次の2-3フレームも同じ高さを維持しているか確認（安定性チェック）
         let isStable = true;
         for (let j = 1; j <= 2; j++) {
           if (i + j >= poseResults.length) break;
-          const nextToeY = getToeY(poseResults[i + j]);
-          if (nextToeY === null) {
+          const nextFootBaseY = getFootBaseY(poseResults[i + j]);
+          if (nextFootBaseY === null) {
             isStable = false;
             break;
           }
-          const nextDiff = Math.abs(nextToeY - referenceContactToeY);
+          const nextDiff = Math.abs(nextFootBaseY - referenceContactFootBaseY);
           if (nextDiff > tolerance * 1.5) {
             isStable = false;
             break;
@@ -664,7 +701,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         }
         
         if (isStable) {
-          console.log(`🟢 接地検出（高精度）: フレーム ${i} (高さ差: ${heightDiff.toFixed(6)}, 許容誤差: ${tolerance.toFixed(6)})`);
+          console.log(`🟢 接地検出（足底部判定）: フレーム ${i} (高さ差: ${heightDiff.toFixed(6)}, 許容誤差: ${tolerance.toFixed(6)})`);
           return i;
         }
       }
@@ -674,6 +711,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     return null;
   };
 
+  // 離地検出：つま先が地面から離れる瞬間を検出
+  // 改善：連続して上昇している状態を確認し、誤検出を防ぐ
   const detectToeOffFrame = (contactFrame: number): number | null => {
     if (toeOffThreshold === null) return null;
     if (!poseResults.length) return null;
@@ -685,10 +724,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     const maxSearchFrames = 60;
     const endFrame = Math.min(contactFrame + maxSearchFrames, poseResults.length - 1);
     
-    // 感度を極限まで高める：接地高さの0.1%でも上昇したら離地と判定
-    const minRiseThreshold = Math.abs(contactToeY) * 0.001; // 0.1%の微小変化を検出
+    // 離地判定閾値：接地高さの0.5%以上の上昇（適度な感度）
+    const minRiseThreshold = Math.abs(contactToeY) * 0.005;
     
-    // 接地後、最初につま先が上昇し始めたフレームを離地とする
+    // 接地後、つま先が明確に上昇し始めたフレームを離地とする
     for (let i = contactFrame + 1; i <= endFrame; i++) {
       const currentToeY = getToeY(poseResults[i]);
       if (currentToeY === null) continue;
@@ -696,10 +735,28 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       // Y座標が小さくなる=上昇（画像座標系では上が小さい）
       const rise = contactToeY - currentToeY;
       
-      // 少しでも上昇したら離地と判定（極限の高感度）
+      // 閾値以上上昇し、かつ次のフレームも上昇傾向なら離地と判定（誤検出防止）
       if (rise > minRiseThreshold) {
-        console.log(`✅ 離地検出（高精度）: フレーム ${i} (上昇量: ${rise.toFixed(6)}, 閾値: ${minRiseThreshold.toFixed(6)})`);
-        return i;
+        // 次の2フレームも上昇傾向か確認（安定性チェック）
+        let isRising = true;
+        for (let j = 1; j <= 2; j++) {
+          if (i + j >= poseResults.length) break;
+          const nextToeY = getToeY(poseResults[i + j]);
+          if (nextToeY === null) {
+            isRising = false;
+            break;
+          }
+          const nextRise = contactToeY - nextToeY;
+          if (nextRise < rise * 0.7) { // 少なくとも70%の上昇を維持
+            isRising = false;
+            break;
+          }
+        }
+        
+        if (isRising) {
+          console.log(`✅ 離地検出（つま先判定）: フレーム ${i} (上昇量: ${rise.toFixed(6)}, 閾値: ${minRiseThreshold.toFixed(6)})`);
+          return i;
+        }
       }
     }
     
@@ -3413,12 +3470,108 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               </div>
             </div>
 
+            {/* ズームコントロール */}
+            <div style={{
+              display: 'flex',
+              gap: '12px',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '12px',
+              padding: '12px',
+              background: '#f9fafb',
+              borderRadius: '8px'
+            }}>
+              <button
+                onClick={() => setHorizonZoom(Math.max(1, horizonZoom - 0.5))}
+                disabled={horizonZoom <= 1}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  borderRadius: '6px',
+                  border: '2px solid #3b82f6',
+                  background: horizonZoom <= 1 ? '#e5e7eb' : 'white',
+                  color: horizonZoom <= 1 ? '#9ca3af' : '#3b82f6',
+                  cursor: horizonZoom <= 1 ? 'not-allowed' : 'pointer'
+                }}
+              >
+                🔍 ズームアウト
+              </button>
+              <div style={{ fontWeight: 'bold', color: '#374151', minWidth: '80px', textAlign: 'center' }}>
+                {Math.round(horizonZoom * 100)}%
+              </div>
+              <button
+                onClick={() => setHorizonZoom(Math.min(5, horizonZoom + 0.5))}
+                disabled={horizonZoom >= 5}
+                style={{
+                  padding: '8px 16px',
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  borderRadius: '6px',
+                  border: '2px solid #3b82f6',
+                  background: horizonZoom >= 5 ? '#e5e7eb' : 'white',
+                  color: horizonZoom >= 5 ? '#9ca3af' : '#3b82f6',
+                  cursor: horizonZoom >= 5 ? 'not-allowed' : 'pointer'
+                }}
+              >
+                🔍 ズームイン
+              </button>
+              {horizonZoom > 1 && (
+                <button
+                  onClick={() => {
+                    setHorizonZoom(1);
+                    setHorizonPan({x: 0, y: 0});
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    fontSize: '0.9rem',
+                    fontWeight: 'bold',
+                    borderRadius: '6px',
+                    border: '1px solid #6b7280',
+                    background: 'white',
+                    color: '#374151',
+                    cursor: 'pointer'
+                  }}
+                >
+                  リセット
+                </button>
+              )}
+            </div>
+
             {/* キャンバスプレビュー */}
-            <div className="canvas-area" style={{ marginBottom: '2rem', position: 'relative' }}>
+            <div className="canvas-area" style={{ 
+              marginBottom: '2rem', 
+              position: 'relative',
+              overflow: horizonZoom > 1 ? 'hidden' : 'visible',
+              cursor: isPanning ? 'grabbing' : (isHorizonCalibrated ? 'default' : (horizonZoom > 1 ? 'grab' : 'crosshair'))
+            }}>
               <canvas 
                 ref={displayCanvasRef} 
                 className="preview-canvas"
+                onMouseDown={(e) => {
+                  if (horizonZoom > 1 && !isHorizonCalibrated) {
+                    setIsPanning(true);
+                    setPanStart({ x: e.clientX - horizonPan.x, y: e.clientY - horizonPan.y });
+                  }
+                }}
+                onMouseMove={(e) => {
+                  if (isPanning && panStart) {
+                    const newPanX = e.clientX - panStart.x;
+                    const newPanY = e.clientY - panStart.y;
+                    setHorizonPan({ x: newPanX, y: newPanY });
+                  }
+                }}
+                onMouseUp={() => {
+                  setIsPanning(false);
+                  setPanStart(null);
+                }}
+                onMouseLeave={() => {
+                  setIsPanning(false);
+                  setPanStart(null);
+                }}
                 onClick={(e) => {
+                  if (isPanning || isHorizonCalibrated) return;
+                  
                   const canvas = displayCanvasRef.current;
                   if (!canvas) return;
                   
@@ -3426,12 +3579,15 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   const x = e.clientX - rect.left;
                   const y = e.clientY - rect.top;
                   
-                  // キャンバスの表示サイズと実際のサイズの比率を計算
+                  // ズームとパンを考慮した座標変換
                   const scaleX = canvas.width / rect.width;
                   const scaleY = canvas.height / rect.height;
                   
-                  const actualX = x * scaleX;
-                  const actualY = y * scaleY;
+                  const adjustedX = (x - horizonPan.x / horizonZoom) * scaleX;
+                  const adjustedY = (y - horizonPan.y / horizonZoom) * scaleY;
+                  
+                  const actualX = adjustedX / horizonZoom;
+                  const actualY = adjustedY / horizonZoom;
                   
                   if (!horizonPoint1) {
                     setHorizonPoint1({ x: actualX, y: actualY });
@@ -3444,7 +3600,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     console.log(`✅ 基準点2を設定、水平角度: ${(angle * 180 / Math.PI).toFixed(2)}°`);
                   }
                 }}
-                style={{ cursor: isHorizonCalibrated ? 'default' : 'crosshair' }}
+                style={{ 
+                  transform: `scale(${horizonZoom}) translate(${horizonPan.x / horizonZoom}px, ${horizonPan.y / horizonZoom}px)`,
+                  transformOrigin: 'top left',
+                  transition: isPanning ? 'none' : 'transform 0.2s ease-out'
+                }}
               />
               
               {/* 選択した点を表示 */}
@@ -4778,6 +4938,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 const adjustedFrame = Math.max(prevToeOff + 1, contactFrame - 5);
                                 newManual[i] = adjustedFrame;
                                 setManualContactFrames(newManual);
+                                setCurrentFrame(adjustedFrame); // 修正：フレームを表示
                                 console.log(`✅ ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正`);
                               }}
                               style={{
@@ -4799,6 +4960,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 const adjustedFrame = Math.max(prevToeOff + 1, contactFrame - 1);
                                 newManual[i] = adjustedFrame;
                                 setManualContactFrames(newManual);
+                                setCurrentFrame(adjustedFrame); // 修正：フレームを表示
                                 console.log(`✅ ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正`);
                               }}
                               style={{
@@ -4819,6 +4981,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 const adjustedFrame = Math.min(toeOffFrame - 1, contactFrame + 1);
                                 newManual[i] = adjustedFrame;
                                 setManualContactFrames(newManual);
+                                setCurrentFrame(adjustedFrame); // 修正：フレームを表示
                                 console.log(`✅ ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正`);
                               }}
                               style={{
@@ -4839,6 +5002,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 const adjustedFrame = Math.min(toeOffFrame - 1, contactFrame + 5);
                                 newManual[i] = adjustedFrame;
                                 setManualContactFrames(newManual);
+                                setCurrentFrame(adjustedFrame); // 修正：フレームを表示
                                 console.log(`✅ ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正`);
                               }}
                               style={{
@@ -4911,6 +5075,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 const adjustedFrame = Math.max(contactFrame + 1, toeOffFrame - 1);
                                 newAuto[i - 1] = adjustedFrame;
                                 setAutoToeOffFrames(newAuto);
+                                setCurrentFrame(adjustedFrame); // 修正：フレームを表示
                                 console.log(`✅ ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正`);
                               }}
                               style={{
@@ -4931,6 +5096,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 const adjustedFrame = Math.min(framesCount - 1, toeOffFrame + 1);
                                 newAuto[i - 1] = adjustedFrame;
                                 setAutoToeOffFrames(newAuto);
+                                setCurrentFrame(adjustedFrame); // 修正：フレームを表示
                                 console.log(`✅ ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正`);
                               }}
                               style={{
@@ -4951,6 +5117,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 const adjustedFrame = Math.min(framesCount - 1, toeOffFrame + 5);
                                 newAuto[i - 1] = adjustedFrame;
                                 setAutoToeOffFrames(newAuto);
+                                setCurrentFrame(adjustedFrame); // 修正：フレームを表示
                                 console.log(`✅ ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正`);
                               }}
                               style={{
