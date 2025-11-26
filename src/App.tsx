@@ -1829,26 +1829,26 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       // 画面内に収まるように調整
       const clampedX = Math.max(20, Math.min(width - 20, finalX));
 
-      // 垂直線を描画
+      // 垂直線を描画（太く目立つように）
       ctx.strokeStyle = color;
-      ctx.lineWidth = 3;
-      ctx.setLineDash([10, 5]);
+      ctx.lineWidth = 8;  // 3 → 8に変更（より太く）
+      ctx.setLineDash([15, 8]);  // 破線も大きく
       ctx.beginPath();
       ctx.moveTo(clampedX, height);
       ctx.lineTo(clampedX, 0);
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // ラベルの背景
-      ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-      ctx.font = "bold 14px sans-serif";
+      // ラベルの背景（より大きく目立つように）
+      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.font = "bold 18px sans-serif";  // 14px → 18px
       const textWidth = ctx.measureText(label).width;
-      ctx.fillRect(clampedX - textWidth / 2 - 8, 12, textWidth + 16, 24);
+      ctx.fillRect(clampedX - textWidth / 2 - 10, 8, textWidth + 20, 32);  // より大きく
       
       // ラベルを描画
       ctx.fillStyle = color;
       ctx.textAlign = "center";
-      ctx.fillText(label, clampedX, 28);
+      ctx.fillText(label, clampedX, 30);
       
       // 姿勢推定からの位置かどうかのインジケーター
       if (!fromPose) {
@@ -3127,10 +3127,16 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   
                   const rect = canvas.getBoundingClientRect();
                   const clickX = e.clientX - rect.left;
-                  const canvasWidth = rect.width;
+                  
+                  // 実際のキャンバスサイズを使用（CSS表示サイズではなく）
+                  const canvasWidth = canvas.width;
+                  const displayWidth = rect.width;
+                  
+                  // 表示サイズから実際のキャンバス座標に変換
+                  const actualClickX = (clickX / displayWidth) * canvasWidth;
                   
                   // クリック位置の割合からフレーム番号を計算
-                  const clickRatio = clickX / canvasWidth;
+                  const clickRatio = actualClickX / canvasWidth;
                   let targetFrame = Math.round(clickRatio * (framesCount - 1));
                   targetFrame = Math.max(0, Math.min(framesCount - 1, targetFrame));
                   
