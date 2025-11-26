@@ -3003,6 +3003,54 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           </div>
         );
 
+      case 3:
+        return (
+          <div className="wizard-content">
+            <div className="wizard-step-header">
+              <h2 className="wizard-step-title">ステップ 3: フレーム抽出＆姿勢推定中</h2>
+              <p className="wizard-step-desc">
+                動画からフレームを抽出し、各フレームから姿勢を推定しています。しばらくお待ちください。
+              </p>
+            </div>
+
+            <div className="progress-area">
+              <div className="progress-circle">
+                <svg viewBox="0 0 100 100" className="progress-ring">
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="45"
+                    fill="none"
+                    stroke="#e5e7eb"
+                    strokeWidth="8"
+                  />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="45"
+                    fill="none"
+                    stroke="#10b981"
+                    strokeWidth="8"
+                    strokeDasharray={`${extractProgress * 2.827}, 282.7`}
+                    strokeLinecap="round"
+                    transform="rotate(-90 50 50)"
+                  />
+                </svg>
+                <div className="progress-text">{extractProgress}%</div>
+              </div>
+              <div className="progress-status">{status}</div>
+            </div>
+            
+            {status.includes('❌') && (
+              <div className="wizard-actions">
+                <button className="btn-ghost" onClick={() => setWizardStep(1)}>
+                  最初に戻る
+                </button>
+              </div>
+            )}
+          </div>
+        );
+
       case 4:
         return (
           <div className="wizard-content">
