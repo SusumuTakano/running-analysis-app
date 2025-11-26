@@ -53,46 +53,55 @@ export function generateRunningEvaluation(
   }, 0) / phaseAngles.length;
 
   if (analysisType === 'acceleration') {
-    // スタート加速時の基準（前傾重視）
-    if (avgTrunkAngle >= 86 && avgTrunkAngle < 88) {
+    // スタート加速時の基準（強い前傾が必要：42-48°前後）
+    if (avgTrunkAngle >= 42 && avgTrunkAngle <= 48) {
       evaluations.push({
         category: '姿勢',
         score: 'excellent',
         icon: '✅',
-        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 理想的な前傾（加速局面）',
-        advice: '素晴らしい前傾姿勢です。股関節の伸展筋群を効率的に使えています。この姿勢で水平方向への力発揮が最大化されています。'
+        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 理想的な加速姿勢',
+        advice: '素晴らしい加速姿勢です！45°前後の前傾により、大臀筋とハムストリングスを効率的に使って強力な推進力を生み出しています。この姿勢で股関節伸展による加速が最大化されています。'
       });
-    } else if (avgTrunkAngle >= 84 && avgTrunkAngle < 86) {
+    } else if (avgTrunkAngle >= 38 && avgTrunkAngle < 42) {
       evaluations.push({
         category: '姿勢',
         score: 'good',
         icon: '✅',
-        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 良好な前傾（加速局面）',
-        advice: '良好な前傾姿勢です。86-88°を目指すとさらに効率的な加速ができます。'
+        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 良好な加速姿勢',
+        advice: '良好な加速姿勢です。42-48°の範囲を目指すと、さらに効率的に股関節伸展筋群（大臀筋・ハムストリングス）を活用できます。'
       });
-    } else if (avgTrunkAngle >= 88 && avgTrunkAngle <= 90) {
+    } else if (avgTrunkAngle > 48 && avgTrunkAngle <= 60) {
+      evaluations.push({
+        category: '姿勢',
+        score: 'good',
+        icon: '⚠️',
+        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - やや前傾不足',
+        advice: 'もう少し前傾を強めると加速力が向上します。42-48°の前傾で、股関節伸展による強力な推進力を得られます。膝を固定し、臀部を使った伸展動作を意識しましょう。'
+      });
+    } else if (avgTrunkAngle > 60 && avgTrunkAngle <= 80) {
       evaluations.push({
         category: '姿勢',
         score: 'fair',
         icon: '⚠️',
-        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 前傾不足（加速局面）',
-        advice: 'スタート加速時は軽い前傾姿勢（86-88°）を意識すると、重心移動がスムーズになり推進力が向上します。'
+        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 前傾不足（早期起き上がり）',
+        advice: 'スタート直後から起き上がってしまっています。42-48°の前傾姿勢を維持し、膝を固定したまま股関節伸展で加速することが重要です。足を回して膝の屈曲伸展で走るのではなく、臀部とハムストリングスを使って地面を押しましょう。'
       });
-    } else if (avgTrunkAngle < 84) {
+    } else if (avgTrunkAngle > 80) {
       evaluations.push({
         category: '姿勢',
         score: 'poor',
         icon: '❌',
-        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 過度な前傾',
-        advice: '前傾しすぎです。腰への負担が大きく、膝への衝撃も増加します。84-88°の範囲を目指しましょう。'
+        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 完全な直立（加速失敗）',
+        advice: '加速局面で完全に起き上がっています。スタート直後の2-3歩は42-48°の強い前傾を維持し、膝を固定して股関節伸展（大臀筋・ハムストリングス）で加速することが必須です。一歩ごとにストライドを大きく伸ばしていく意識が必要です。'
       });
     } else {
+      // avgTrunkAngle < 38の場合
       evaluations.push({
         category: '姿勢',
-        score: 'poor',
-        icon: '❌',
-        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 後傾しすぎ（加速局面）',
-        advice: '加速局面で後傾しています。前方への推進力が失われています。みぞおちを前に出し、86-88°の前傾を意識しましょう。'
+        score: 'fair',
+        icon: '⚠️',
+        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - やや過度な前傾',
+        advice: '前傾が強すぎる可能性があります。38-48°の範囲で、バランスを保ちながら股関節伸展による推進力を最大化しましょう。'
       });
     }
   } else {
@@ -140,46 +149,76 @@ export function generateRunningEvaluation(
     }
   }
 
-  // 2. ピッチとストライドのバランス - より厳しい基準
+  // 2. ピッチとストライドのバランス - シチュエーション別評価
   const avgPitch = stepSummary.avgStepPitch ?? 0;
   const avgStride = stepSummary.avgStride ?? 0;
   
   if (avgPitch > 0 && avgStride > 0) {
     const pitchPerMin = avgPitch * 60;
     
-    if (pitchPerMin >= 185 && pitchPerMin <= 195) {
-      evaluations.push({
-        category: 'ピッチ・ストライド',
-        score: 'excellent',
-        icon: '✅',
-        message: 'ピッチ: ' + pitchPerMin.toFixed(0) + '歩/分 - 優秀',
-        advice: '理想的なピッチです。このリズムを維持しながら、ストライドを伸ばすことでさらにスピードアップできます。'
-      });
-    } else if (pitchPerMin >= 180 && pitchPerMin < 185) {
-      evaluations.push({
-        category: 'ピッチ・ストライド',
-        score: 'good',
-        icon: '✅',
-        message: 'ピッチ: ' + pitchPerMin.toFixed(0) + '歩/分 - 良好',
-        advice: '良いピッチですが、185歩/分以上を目指すとさらに効率的になります。'
-      });
-    } else if (pitchPerMin < 180) {
-      const strideAdvice = avgStride > 1.4 ? 'ストライドは十分ですが、' : 'ストライドも短めです。';
-      evaluations.push({
-        category: 'ピッチ・ストライド',
-        score: 'fair',
-        icon: '⚠️',
-        message: 'ピッチ: ' + pitchPerMin.toFixed(0) + '歩/分 - 改善が必要',
-        advice: strideAdvice + 'ピッチを180歩/分以上に上げると、接地時間が短くなり効率が大幅に向上します。'
-      });
+    if (analysisType === 'acceleration') {
+      // 加速局面：ストライド伸長が最重要
+      if (avgStride >= 1.4) {
+        evaluations.push({
+          category: 'ストライド伸長',
+          score: 'excellent',
+          icon: '✅',
+          message: 'ストライド: ' + avgStride.toFixed(2) + 'm - 優秀な伸長',
+          advice: '素晴らしいストライド伸長です！一歩ごとに大きく伸ばし、股関節伸展（大臀筋・ハムストリングス）を効果的に使えています。膝を固定したまま臀部で地面を押す動作が実現できています。'
+        });
+      } else if (avgStride >= 1.2) {
+        evaluations.push({
+          category: 'ストライド伸長',
+          score: 'good',
+          icon: '✅',
+          message: 'ストライド: ' + avgStride.toFixed(2) + 'm - 良好',
+          advice: '良好なストライド伸長です。さらに1.4m以上を目指すと、より強力な加速が可能になります。膝関節の屈曲伸展ではなく、股関節伸展による推進を意識しましょう。'
+        });
+      } else {
+        evaluations.push({
+          category: 'ストライド伸長',
+          score: 'fair',
+          icon: '⚠️',
+          message: 'ストライド: ' + avgStride.toFixed(2) + 'm - 伸長不足',
+          advice: 'ストライドが不十分です。加速局面では一歩ごとに大きくストライドを伸ばすことが重要です。膝を固定し、股関節伸展（大臀筋・ハムストリングス）で地面を押しましょう。足を回して走るのではなく、臀部とハムで推進することを意識してください。'
+        });
+      }
     } else {
-      evaluations.push({
-        category: 'ピッチ・ストライド',
-        score: 'fair',
-        icon: '⚠️',
-        message: 'ピッチ: ' + pitchPerMin.toFixed(0) + '歩/分 - 高すぎる',
-        advice: 'ピッチが高すぎます。ストライドを意識的に伸ばし、195歩/分以下を目指しましょう。'
-      });
+      // トップスピード：ピッチとストライドのバランス
+      if (pitchPerMin >= 185 && pitchPerMin <= 195) {
+        evaluations.push({
+          category: 'ピッチ・ストライド',
+          score: 'excellent',
+          icon: '✅',
+          message: 'ピッチ: ' + pitchPerMin.toFixed(0) + '歩/分 - 優秀',
+          advice: '理想的なピッチです。このリズムを維持しながら、ストライドを伸ばすことでさらにスピードアップできます。'
+        });
+      } else if (pitchPerMin >= 180 && pitchPerMin < 185) {
+        evaluations.push({
+          category: 'ピッチ・ストライド',
+          score: 'good',
+          icon: '✅',
+          message: 'ピッチ: ' + pitchPerMin.toFixed(0) + '歩/分 - 良好',
+          advice: '良いピッチですが、185歩/分以上を目指すとさらに効率的になります。'
+        });
+      } else if (pitchPerMin < 180) {
+        const strideAdvice = avgStride > 1.4 ? 'ストライドは十分ですが、' : 'ストライドも短めです。';
+        evaluations.push({
+          category: 'ピッチ・ストライド',
+          score: 'fair',
+          icon: '⚠️',
+          message: 'ピッチ: ' + pitchPerMin.toFixed(0) + '歩/分 - 改善が必要',
+          advice: strideAdvice + 'ピッチを180歩/分以上に上げると、接地時間が短くなり効率が大幅に向上します。'
+        });
+      } else {
+        evaluations.push({
+          category: 'ピッチ・ストライド',
+          score: 'fair',
+          icon: '⚠️',
+          message: 'ピッチ: ' + pitchPerMin.toFixed(0) + '歩/分 - 高すぎる',
+          advice: 'ピッチが高すぎます。ストライドを意識的に伸ばし、195歩/分以下を目指しましょう。'
+        });
+      }
     }
   }
 
