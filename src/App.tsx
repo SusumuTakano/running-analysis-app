@@ -11,7 +11,7 @@ import Chart from "chart.js/auto";
 import { generateRunningEvaluation, type RunningEvaluation } from "./runningEvaluation";
 
 /** ウィザードのステップ */
-type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
+type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 /** Supabase の running_analysis_sessions の型 */
 type RunningAnalysisSession = {
@@ -4230,7 +4230,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     },
     {
       title: "ステップ6: 結果確認",
-      content: "解析結果を確認しましょう！\n\n• AI評価：フォームの総合評価\n• ステップメトリクス：接地時間、ピッチ、ストライドなど\n• グラフ：各指標の推移を可視化\n• 100m目標記録：目標達成のためのアドバイス"
+      content: "解析結果を確認しましょう！\n\n• AI評価：フォームの総合評価\n• 100m目標記録：目標達成のためのアドバイス"
+    },
+    {
+      title: "ステップ7: データ詳細（プロ版）",
+      content: "詳細なデータ分析（プロ版機能）\n\n• ステップメトリクス：詳細な数値データ\n• グラフ：各指標の推移を可視化\n• 3局面の関節角度：詳細な姿勢データ\n\n※ プロ版会員のみ閲覧可能"
     }
   ];
 
