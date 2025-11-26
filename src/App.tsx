@@ -347,6 +347,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const [currentFrame, setCurrentFrame] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null); // Step 2専用のプレビュー動画
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const displayCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -3111,7 +3112,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   </h3>
                   <div style={{ position: 'relative', maxWidth: '640px', margin: '0 auto' }}>
                     <video
-                      ref={videoRef}
+                      ref={previewVideoRef}
                       style={{
                         width: '100%',
                         height: 'auto',
@@ -3124,6 +3125,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       onLoadedMetadata={(e) => {
                         const video = e.currentTarget;
                         setVideoDuration(video.duration);
+                        setTrimEnd(0); // 終了位置をリセット（0=最後まで）
                         console.log('✅ Video loaded, duration:', video.duration);
                       }}
                     />
@@ -3214,10 +3216,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                             onChange={(e) => {
                               const newStart = Number(e.target.value);
                               setTrimStart(newStart);
-                              const video = videoRef.current;
+                              const video = previewVideoRef.current;
                               if (video && !isNaN(video.duration)) {
                                 video.currentTime = newStart;
-                                console.log('🎬 Video seek to:', newStart);
+                                console.log('🎬 Start slider: Video seek to', newStart);
                               }
                             }}
                             className="input-field"
@@ -3239,10 +3241,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                             onChange={(e) => {
                               const newEnd = Number(e.target.value);
                               setTrimEnd(newEnd);
-                              const video = videoRef.current;
+                              const video = previewVideoRef.current;
                               if (video && !isNaN(video.duration)) {
                                 video.currentTime = newEnd;
-                                console.log('🎬 Video seek to:', newEnd);
+                                console.log('🎬 End slider: Video seek to', newEnd);
                               }
                             }}
                             className="input-field"
