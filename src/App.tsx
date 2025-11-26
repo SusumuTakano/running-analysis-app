@@ -3841,70 +3841,28 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 詳細なステップメトリクス、グラフ、関節角度データを確認できます。
               </p>
               
-              {/* プロ版以外のユーザーへの案内 */}
-              {userProfile?.membership !== 'pro' && (
-                <div style={{
-                  padding: '24px',
-                  background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
-                  borderRadius: '16px',
-                  marginTop: '20px',
-                  color: 'white',
-                  textAlign: 'center',
-                  boxShadow: '0 8px 24px rgba(251, 191, 36, 0.3)'
-                }}>
-                  <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🔒</div>
-                  <div style={{ fontSize: '1.4rem', fontWeight: 'bold', marginBottom: '12px' }}>
-                    プロ版限定機能
-                  </div>
-                  <div style={{ fontSize: '1rem', marginBottom: '20px', lineHeight: '1.6' }}>
-                    このページは有料会員（プロ版）のみご利用いただけます。<br />
-                    詳細なデータ分析で、さらに深いフォーム改善が可能になります。
-                  </div>
-                  <div style={{
-                    background: 'rgba(255,255,255,0.2)',
-                    borderRadius: '12px',
-                    padding: '16px',
-                    marginBottom: '20px',
-                    textAlign: 'left'
-                  }}>
-                    <div style={{ fontWeight: 'bold', marginBottom: '12px', fontSize: '1.1rem' }}>
-                      プロ版で利用できる機能：
-                    </div>
-                    <ul style={{ margin: 0, paddingLeft: '24px', lineHeight: '1.8' }}>
-                      <li>詳細なステップメトリクス（前半・後半比較）</li>
-                      <li>各指標の推移グラフ（ピッチ、ストライド、速度など）</li>
-                      <li>3局面の関節角度データ（接地期前半・中半・後半）</li>
-                      <li>データのエクスポート機能</li>
-                    </ul>
-                  </div>
-                  <button
-                    style={{
-                      padding: '14px 40px',
-                      borderRadius: '12px',
-                      border: 'none',
-                      background: 'white',
-                      color: '#f59e0b',
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                      fontSize: '1.1rem',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-                      transition: 'transform 0.2s'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                    onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                    onClick={() => {
-                      alert('プロ版へのアップグレードは準備中です。\n\n近日中にリリース予定です。\nしばらくお待ちください。');
-                    }}
-                  >
-                    プロ版にアップグレード
-                  </button>
+              {/* ベータ版案内 */}
+              <div style={{
+                padding: '16px',
+                background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+                borderRadius: '12px',
+                marginTop: '20px',
+                color: 'white',
+                textAlign: 'center',
+                boxShadow: '0 4px 12px rgba(6, 182, 212, 0.3)'
+              }}>
+                <div style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '8px' }}>
+                  🚀 ベータ版として公開中
                 </div>
-              )}
+                <div style={{ fontSize: '0.95rem', lineHeight: '1.6' }}>
+                  現在、このページの機能は全ユーザーに無料で公開されています。<br />
+                  正式版リリース後は、プロ版会員限定機能となります。
+                </div>
+              </div>
             </div>
 
-            {/* プロ版ユーザーのみ表示 */}
-            {userProfile?.membership === 'pro' && (
-              <>
+            {/* 全ユーザーに表示（ベータ版） */}
+            <>
                 {/* ステップメトリクス */}
                 <div className="result-card">
                 <h3 className="result-card-title">ステップメトリクス</h3>
@@ -4236,8 +4194,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   <div className="save-result-msg">{saveResult}</div>
                 )}
               </div>
-              </>
-            )}
+            </>
 
             {/* ナビゲーションボタン */}
             <div style={{ marginTop: '32px', display: 'flex', gap: '12px', justifyContent: 'space-between' }}>
