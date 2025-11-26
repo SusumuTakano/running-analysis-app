@@ -1989,6 +1989,20 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     };
   }, [stepMetrics, selectedGraphMetrics, graphType]);
 
+  // ステップ7に移動したときにグラフを強制再描画
+  useEffect(() => {
+    if (wizardStep === 7 && stepMetrics.length > 0) {
+      // グラフを再描画するために、少し遅延させる
+      const timer = setTimeout(() => {
+        const canvas = graphCanvasRef.current;
+        if (canvas && chartInstanceRef.current) {
+          chartInstanceRef.current.update();
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [wizardStep, stepMetrics.length]);
+
   // AI評価機能
   const runningEvaluation: RunningEvaluation | null = useMemo(() => {
     return generateRunningEvaluation(stepMetrics, threePhaseAngles, {
