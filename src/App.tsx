@@ -688,8 +688,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     const referenceContactFootBaseY = getFootBaseY(poseResults[firstContactFrame]);
     if (referenceContactFootBaseY === null) return null;
     
-    // 許容誤差：基準接地高さの±2%以内なら接地と判定（足底部全体を考慮するため少し緩和）
-    const tolerance = Math.abs(referenceContactFootBaseY) * 0.02;
+    // 許容誤差：基準接地高さの±3%以内なら接地と判定（足底部全体を考慮し、少し緩和）
+    const tolerance = Math.abs(referenceContactFootBaseY) * 0.03;
+    
+    console.log(`🔍 接地検出開始: 基準高さ=${referenceContactFootBaseY.toFixed(4)}, 許容誤差=${tolerance.toFixed(4)}, 検索範囲=${startFrame}～${endFrame}`);
     
     // 開始フレームから前方を検索
     for (let i = startFrame; i < endFrame; i++) {
@@ -740,8 +742,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     const maxSearchFrames = 60;
     const endFrame = Math.min(contactFrame + maxSearchFrames, poseResults.length - 1);
     
-    // 離地判定閾値：接地高さの0.5%以上の上昇（適度な感度）
-    const minRiseThreshold = Math.abs(contactToeY) * 0.005;
+    // 離地判定閾値：接地高さの1%以上の上昇（感度を少し緩和）
+    const minRiseThreshold = Math.abs(contactToeY) * 0.01;
+    
+    console.log(`🔍 離地検出開始: 接地フレーム=${contactFrame}, 接地つま先高さ=${contactToeY.toFixed(4)}, 最小上昇閾値=${minRiseThreshold.toFixed(4)}`);
     
     // 接地後、つま先が明確に上昇し始めたフレームを離地とする
     for (let i = contactFrame + 1; i <= endFrame; i++) {
@@ -3620,6 +3624,12 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     setHorizonAngle(angle);
                     setIsHorizonCalibrated(true);
                     console.log(`✅ 基準点2を設定、水平角度: ${(angle * 180 / Math.PI).toFixed(2)}°`);
+                    
+                    // 2点設定完了後、1秒後に自動的に次のステップへ進む
+                    setTimeout(() => {
+                      setWizardStep(6);
+                      console.log('➡️ 水平キャリブレーション完了、次のステップへ自動進行');
+                    }, 1000);
                   }
                 }}
                 style={{ 
@@ -4961,7 +4971,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 newManual[i] = adjustedFrame;
                                 setManualContactFrames(newManual);
                                 setCurrentFrame(adjustedFrame); // 修正：フレームを表示
-                                console.log(`✅ ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正`);
+                                console.log(`-5ボタン: ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正（currentFrameを${adjustedFrame}に設定）`);
                               }}
                               style={{
                                 padding: '4px 12px',
@@ -4983,7 +4993,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 newManual[i] = adjustedFrame;
                                 setManualContactFrames(newManual);
                                 setCurrentFrame(adjustedFrame); // 修正：フレームを表示
-                                console.log(`✅ ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正`);
+                                console.log(`-1ボタン: ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正（currentFrameを${adjustedFrame}に設定）`);
                               }}
                               style={{
                                 padding: '4px 12px',
@@ -5004,7 +5014,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 newManual[i] = adjustedFrame;
                                 setManualContactFrames(newManual);
                                 setCurrentFrame(adjustedFrame); // 修正：フレームを表示
-                                console.log(`✅ ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正`);
+                                console.log(`+1ボタン: ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正（currentFrameを${adjustedFrame}に設定）`);
                               }}
                               style={{
                                 padding: '4px 12px',
@@ -5025,7 +5035,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 newManual[i] = adjustedFrame;
                                 setManualContactFrames(newManual);
                                 setCurrentFrame(adjustedFrame); // 修正：フレームを表示
-                                console.log(`✅ ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正`);
+                                console.log(`+5ボタン: ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正（currentFrameを${adjustedFrame}に設定）`);
                               }}
                               style={{
                                 padding: '4px 12px',
@@ -5077,7 +5087,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 const adjustedFrame = Math.max(contactFrame + 1, toeOffFrame - 5);
                                 newAuto[i - 1] = adjustedFrame; // i-1: 最初はキャリブレーション
                                 setAutoToeOffFrames(newAuto);
-                                console.log(`✅ ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正`);
+                                console.log(`-5ボタン: ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正（currentFrameを${adjustedFrame}に設定）`);
                               }}
                               style={{
                                 padding: '4px 12px',
@@ -5098,7 +5108,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 newAuto[i - 1] = adjustedFrame;
                                 setAutoToeOffFrames(newAuto);
                                 setCurrentFrame(adjustedFrame); // 修正：フレームを表示
-                                console.log(`✅ ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正`);
+                                console.log(`-1ボタン: ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正（currentFrameを${adjustedFrame}に設定）`);
                               }}
                               style={{
                                 padding: '4px 12px',
@@ -5119,7 +5129,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 newAuto[i - 1] = adjustedFrame;
                                 setAutoToeOffFrames(newAuto);
                                 setCurrentFrame(adjustedFrame); // 修正：フレームを表示
-                                console.log(`✅ ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正`);
+                                console.log(`+1ボタン: ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正（currentFrameを${adjustedFrame}に設定）`);
                               }}
                               style={{
                                 padding: '4px 12px',
@@ -5140,7 +5150,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 newAuto[i - 1] = adjustedFrame;
                                 setAutoToeOffFrames(newAuto);
                                 setCurrentFrame(adjustedFrame); // 修正：フレームを表示
-                                console.log(`✅ ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正`);
+                                console.log(`+5ボタン: ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正（currentFrameを${adjustedFrame}に設定）`);
                               }}
                               style={{
                                 padding: '4px 12px',
