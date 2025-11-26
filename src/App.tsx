@@ -11,7 +11,7 @@ import Chart from "chart.js/auto";
 import { generateRunningEvaluation, type RunningEvaluation } from "./runningEvaluation";
 
 /** ウィザードのステップ */
-type WizardStep = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+type WizardStep = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 /** 測定者情報 */
 type AthleteInfo = {
@@ -359,6 +359,16 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   // 足元拡大
   const [footZoomEnabled, setFootZoomEnabled] = useState(false);
   const [zoomScale, setZoomScale] = useState(3);
+
+  // ------------ 動画最適化関連 -----------------
+  const [useOptimization, setUseOptimization] = useState<boolean | null>(null); // null=未選択, true=使用, false=スキップ
+  const [brightness, setBrightness] = useState(100); // 100 = 元の明るさ
+  const [contrast, setContrast] = useState(100); // 100 = 元のコントラスト
+  const [trimStart, setTrimStart] = useState(0); // トリム開始位置（秒）
+  const [trimEnd, setTrimEnd] = useState(0); // トリム終了位置（秒、0=最後まで）
+  const [targetFpsInput, setTargetFpsInput] = useState<number | null>(null); // FPS変換（null=元のまま）
+  const [optimizedVideoUrl, setOptimizedVideoUrl] = useState<string | null>(null);
+  const [isOptimizing, setIsOptimizing] = useState(false);
 
   // ------------ 姿勢推定関連 -----------------
   const [poseResults, setPoseResults] = useState<(FramePoseData | null)[]>([]);
@@ -1158,9 +1168,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         setStatus(`✅ 姿勢推定完了！（成功率: ${successRateStr}%）`);
       }
       
-      // 自動で次のステップへ
+      // 自動で次のステップへ（区間設定）
       setTimeout(() => {
-        setWizardStep(4);
+        setWizardStep(5);
       }, 1000);
     } catch (e: any) {
       console.error("Pose estimation error:", e);
@@ -1409,6 +1419,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     }
   };
 
+  // ------------ 動画最適化 ------------
+  // Note: 動画最適化はフレーム抽出時に適用されます
+  // このステップでは設定のみを行い、実際の処理はhandleExtractFramesで行います
+
   // ------------ フレーム抽出 ------------
   const handleExtractFrames = async () => {
     if (!videoFile) {
@@ -1541,10 +1555,30 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       }
     }
     
-    const maxFpsForLength = Math.floor(MAX_FRAMES / Math.max(duration, 0.001));
+    // 動画最適化設定の適用（トリミングとFPS変換）
+    let actualDuration = duration;
+    let actualStartTime = 0;
+    
+    if (useOptimization) {
+      // トリミング設定を適用
+      if (trimStart > 0 || trimEnd > 0) {
+        actualStartTime = Math.max(0, Math.min(trimStart, duration));
+        const endTime = trimEnd > 0 ? Math.min(trimEnd, duration) : duration;
+        actualDuration = Math.max(0.1, endTime - actualStartTime);
+        console.log(`✂️ Trimming applied: ${actualStartTime}s ~ ${endTime}s (duration: ${actualDuration}s)`);
+      }
+      
+      // FPS変換設定を適用
+      if (targetFpsInput && targetFpsInput !== confirmedFps) {
+        confirmedFps = targetFpsInput;
+        console.log(`🎬 FPS conversion applied: ${targetFpsInput}fps`);
+      }
+    }
+    
+    const maxFpsForLength = Math.floor(MAX_FRAMES / Math.max(actualDuration, 0.001));
     const targetFps = Math.max(30, Math.min(confirmedFps, maxFpsForLength));
     const dt = 1 / targetFps;
-    const totalFrames = Math.max(1, Math.floor(duration * targetFps));
+    const totalFrames = Math.max(1, Math.floor(actualDuration * targetFps));
 
     setUsedTargetFps(targetFps);
 
@@ -1619,22 +1653,28 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         setCurrentFrame(0);
         setStatus(`✅ フレーム抽出完了（${framesRef.current.length} フレーム）`);
         
-        // 自動で次のステップへ
+        // 自動で次のステップへ（姿勢推定）
         setTimeout(() => {
-          setWizardStep(3);
+          setWizardStep(4);
           runPoseEstimation();
         }, 1000);
         return;
       }
 
-      const currentTime = index * dt;
+      const currentTime = actualStartTime + (index * dt);
 
       const onSeeked = () => {
         video.removeEventListener("seeked", onSeeked);
 
         requestAnimationFrame(() => {
           try {
+            // 動画最適化設定を適用
+            if (useOptimization && (brightness !== 100 || contrast !== 100)) {
+              ctx.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
+            }
             ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
+            ctx.filter = 'none'; // フィルターをリセット
+            
             const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
             framesRef.current.push(imageData);
 
@@ -2979,17 +3019,12 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     return;
                   }
                   
-                  // ステップ2に移動してからフレーム抽出を開始
+                  // ステップ2（動画最適化）に移動
                   setWizardStep(2);
-                  
-                  // DOM更新を待ってから実行
-                  setTimeout(() => {
-                    handleExtractFrames();
-                  }, 300);
                 }}
                 disabled={!videoFile || !distanceValue || distanceValue <= 0}
               >
-                次へ：フレーム抽出
+                次へ：動画の最適化
               </button>
             </div>
           </div>
@@ -2999,55 +3034,218 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         return (
           <div className="wizard-content">
             <div className="wizard-step-header">
-              <h2 className="wizard-step-title">ステップ 2: フレーム抽出中</h2>
+              <h2 className="wizard-step-title">ステップ 2: 動画の最適化（任意）</h2>
               <p className="wizard-step-desc">
-                動画からフレームを抽出しています。しばらくお待ちください。
+                姿勢検出の精度を上げるため、動画を最適化できます。スキップも可能です。
               </p>
             </div>
 
-            <div className="progress-area">
-              <div className="progress-circle">
-                <svg viewBox="0 0 100 100" className="progress-ring">
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="45"
-                    fill="none"
-                    stroke="#e5e7eb"
-                    strokeWidth="8"
-                  />
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="45"
-                    fill="none"
-                    stroke="#2563eb"
-                    strokeWidth="8"
-                    strokeDasharray={`${extractProgress * 2.827}, 282.7`}
-                    strokeLinecap="round"
-                    transform="rotate(-90 50 50)"
-                  />
-                </svg>
-                <div className="progress-text">{extractProgress}%</div>
+            {useOptimization === null && (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1.5rem',
+                maxWidth: '600px',
+                margin: '0 auto'
+              }}>
+                <div style={{
+                  padding: '1.5rem',
+                  background: 'var(--gray-50)',
+                  borderRadius: '12px',
+                  border: '1px solid var(--gray-200)'
+                }}>
+                  <h3 style={{ fontSize: '1.1rem', marginBottom: '0.8rem', color: 'var(--gray-800)' }}>
+                    ✨ 最適化機能について
+                  </h3>
+                  <ul style={{ fontSize: '0.95rem', color: 'var(--gray-600)', lineHeight: '1.8', paddingLeft: '1.5rem' }}>
+                    <li>明るさ・コントラスト調整で検出精度向上</li>
+                    <li>動画のトリミングで処理時間短縮</li>
+                    <li>FPS変換で最適なフレームレート設定</li>
+                    <li>処理に1-3分程度かかります</li>
+                  </ul>
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <button
+                    className="btn-primary-large"
+                    onClick={() => setUseOptimization(true)}
+                    style={{ flex: 1 }}
+                  >
+                    ✓ 最適化を使用する
+                  </button>
+                  <button
+                    className="btn-ghost"
+                    onClick={() => {
+                      setUseOptimization(false);
+                      setWizardStep(3);
+                      setTimeout(() => {
+                        handleExtractFrames();
+                      }, 300);
+                    }}
+                    style={{ flex: 1 }}
+                  >
+                    スキップ
+                  </button>
+                </div>
               </div>
-              <div className="progress-status">{status}</div>
-            </div>
-            
-            {status.includes('❌') && (
-              <div className="wizard-actions">
-                <button className="btn-ghost" onClick={() => setWizardStep(1)}>
-                  最初に戻る
-                </button>
+            )}
+
+            {useOptimization === true && (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1.5rem',
+                maxWidth: '700px',
+                margin: '0 auto'
+              }}>
+                {/* 明るさ調整 */}
+                <div className="input-group">
+                  <label className="input-label">
+                    <span className="label-text">💡 明るさ: {brightness}%</span>
+                    <input
+                      type="range"
+                      min="50"
+                      max="150"
+                      step="5"
+                      value={brightness}
+                      onChange={(e) => setBrightness(Number(e.target.value))}
+                      className="input-field"
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.85rem', color: 'var(--gray-500)' }}>
+                      暗い動画は明るく、明るい動画は暗く調整
+                    </span>
+                  </label>
+                </div>
+
+                {/* コントラスト調整 */}
+                <div className="input-group">
+                  <label className="input-label">
+                    <span className="label-text">🎨 コントラスト: {contrast}%</span>
+                    <input
+                      type="range"
+                      min="50"
+                      max="150"
+                      step="5"
+                      value={contrast}
+                      onChange={(e) => setContrast(Number(e.target.value))}
+                      className="input-field"
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.85rem', color: 'var(--gray-500)' }}>
+                      輪郭をはっきりさせる場合は高めに設定
+                    </span>
+                  </label>
+                </div>
+
+                {/* 動画トリミング */}
+                <div className="input-group">
+                  <label className="input-label">
+                    <span className="label-text">✂️ トリミング開始位置（秒）</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={trimStart}
+                      onChange={(e) => setTrimStart(Number(e.target.value))}
+                      className="input-field"
+                      placeholder="0"
+                    />
+                  </label>
+                  <label className="input-label">
+                    <span className="label-text">✂️ トリミング終了位置（秒、0=最後まで）</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={trimEnd}
+                      onChange={(e) => setTrimEnd(Number(e.target.value))}
+                      className="input-field"
+                      placeholder="0"
+                    />
+                  </label>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--gray-500)' }}>
+                    解析に必要な部分のみを切り出し
+                  </span>
+                </div>
+
+                {/* FPS変換 */}
+                <div className="input-group">
+                  <label className="input-label">
+                    <span className="label-text">🎬 FPS変換（null=元のまま）</span>
+                    <select
+                      value={targetFpsInput || ''}
+                      onChange={(e) => setTargetFpsInput(e.target.value ? Number(e.target.value) : null)}
+                      className="input-field"
+                    >
+                      <option value="">元のFPSを維持</option>
+                      <option value="30">30 FPS（標準）</option>
+                      <option value="60">60 FPS（高品質）</option>
+                      <option value="120">120 FPS（ハイスピード）</option>
+                      <option value="240">240 FPS（超ハイスピード）</option>
+                    </select>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--gray-500)' }}>
+                      解析精度に影響します
+                    </span>
+                  </label>
+                </div>
+
+                {/* プレビューとボタン */}
+                <div style={{
+                  padding: '1rem',
+                  background: 'var(--gray-50)',
+                  borderRadius: '8px',
+                  fontSize: '0.9rem',
+                  color: 'var(--gray-600)'
+                }}>
+                  <strong>設定プレビュー:</strong>
+                  <ul style={{ marginTop: '0.5rem', paddingLeft: '1.5rem' }}>
+                    <li>明るさ: {brightness}%</li>
+                    <li>コントラスト: {contrast}%</li>
+                    <li>トリミング: {trimStart}秒 ～ {trimEnd > 0 ? `${trimEnd}秒` : '最後まで'}</li>
+                    <li>FPS: {targetFpsInput ? `${targetFpsInput} FPS` : '元のまま'}</li>
+                  </ul>
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <button
+                    className="btn-ghost"
+                    onClick={() => setUseOptimization(null)}
+                    disabled={isOptimizing}
+                  >
+                    戻る
+                  </button>
+                  <button
+                    className="btn-primary-large"
+                    onClick={() => {
+                      // 設定を確定してフレーム抽出へ
+                      console.log('📹 Video optimization settings applied:', {
+                        brightness,
+                        contrast,
+                        trimStart,
+                        trimEnd,
+                        targetFpsInput
+                      });
+                      setWizardStep(3);
+                      setTimeout(() => {
+                        handleExtractFrames();
+                      }, 300);
+                    }}
+                    style={{ flex: 1 }}
+                  >
+                    ✓ 設定を適用してフレーム抽出へ
+                  </button>
+                </div>
               </div>
             )}
           </div>
         );
 
-      case 3:
+      case 4:
         return (
           <div className="wizard-content">
             <div className="wizard-step-header">
-              <h2 className="wizard-step-title">ステップ 3: 姿勢推定中</h2>
+              <h2 className="wizard-step-title">ステップ 4: 姿勢推定中</h2>
               <p className="wizard-step-desc">
                 各フレームから姿勢を推定しています。しばらくお待ちください。
               </p>
@@ -3091,8 +3289,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           </div>
         );
 
-      case 4:
-        // 姿勢推定データがない場合は強制的にステップ3に戻す
+      case 5:
+        // 姿勢推定データがない場合は強制的にステップ4に戻す
         if (poseResults.length === 0) {
           return (
             <div className="wizard-content">
@@ -3112,25 +3310,25 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   姿勢推定データがありません
                 </div>
                 <div style={{ fontSize: '1rem', color: '#7f1d1d', marginBottom: '16px' }}>
-                  区間設定を行うには、先にステップ3で姿勢推定を実行する必要があります。
+                  区間設定を行うには、先にステップ4で姿勢推定を実行する必要があります。
                 </div>
                 <div style={{ fontSize: '0.9rem', color: '#7f1d1d', marginBottom: '24px', padding: '16px', background: 'rgba(255,255,255,0.5)', borderRadius: '8px' }}>
                   <strong>手順:</strong><br/>
-                  1. ステップ3に戻る<br/>
+                  1. ステップ4に戻る<br/>
                   2. 「姿勢推定を開始」ボタンをクリック<br/>
                   3. 完了まで待つ（数分かかります）<br/>
-                  4. 自動的にステップ4に進みます
+                  4. 自動的にステップ5に進みます
                 </div>
                 <button 
                   className="btn-primary-large"
                   onClick={() => {
-                    setWizardStep(3);
+                    setWizardStep(4);
                     // 姿勢推定を自動開始
                     setTimeout(() => runPoseEstimation(), 500);
                   }}
                   style={{ fontSize: '1.1rem', padding: '16px 32px' }}
                 >
-                  ステップ3に戻って姿勢推定を実行
+                  ステップ4に戻って姿勢推定を実行
                 </button>
               </div>
             </div>
@@ -3140,7 +3338,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         return (
           <div className="wizard-content">
             <div className="wizard-step-header">
-              <h2 className="wizard-step-title">ステップ 4: 区間設定</h2>
+              <h2 className="wizard-step-title">ステップ 5: 区間設定</h2>
               <p className="wizard-step-desc">
                 解析する区間の開始フレームと終了フレームを設定してください。
               </p>
@@ -3943,7 +4141,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               </button>
               <button
                 className="btn-primary-large"
-                onClick={() => setWizardStep(5)}
+                onClick={() => setWizardStep(6)}
                 disabled={!sectionStartFrame || !sectionEndFrame}
               >
                 次へ：マーカー打ち
@@ -3952,11 +4150,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           </div>
         );
 
-      case 5:
+      case 6:
         return (
           <div className="wizard-content">
             <div className="wizard-step-header">
-              <h2 className="wizard-step-title">ステップ 5: 接地/離地マーカー</h2>
+              <h2 className="wizard-step-title">ステップ 6: 接地/離地マーカー</h2>
               
               {/* キャリブレーション方式選択 */}
               {calibrationType === null ? (
@@ -4810,12 +5008,12 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             )}
 
             <div className="wizard-actions">
-              <button className="btn-ghost" onClick={() => setWizardStep(4)}>
+              <button className="btn-ghost" onClick={() => setWizardStep(5)}>
                 前へ
               </button>
               <button
                 className="btn-primary-large"
-                onClick={() => setWizardStep(6)}
+                onClick={() => setWizardStep(7)}
               >
                 次へ：解析結果
               </button>
@@ -4823,11 +5021,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           </div>
         );
 
-      case 6:
+      case 7:
         return (
           <div className="wizard-content">
             <div className="wizard-step-header">
-              <h2 className="wizard-step-title">ステップ 6: 解析結果</h2>
+              <h2 className="wizard-step-title">ステップ 7: 解析結果</h2>
               <p className="wizard-step-desc">
                 ステップ解析結果とグラフを確認できます。スライダーで各フレームの角度を確認できます。
               </p>
@@ -5282,13 +5480,13 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               <div style={{ marginTop: '32px', display: 'flex', gap: '12px', justifyContent: 'space-between' }}>
                 <button
                   className="wizard-btn secondary"
-                  onClick={() => setWizardStep(5)}
+                  onClick={() => setWizardStep(6)}
                 >
                   前へ: マーカー設定
                 </button>
                 <button
                   className="wizard-btn"
-                  onClick={() => setWizardStep(7)}
+                  onClick={() => setWizardStep(8)}
                   style={{
                     background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
                     border: 'none',
@@ -5302,11 +5500,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           </div>
         );
 
-      case 7:
+      case 8:
         return (
           <div className="wizard-content">
             <div className="wizard-step-header">
-              <h2 className="wizard-step-title">ステップ 7: データ詳細（プロ版）</h2>
+              <h2 className="wizard-step-title">ステップ 8: データ詳細（プロ版）</h2>
               <p className="wizard-step-desc">
                 詳細なステップメトリクス、グラフ、関節角度データを確認できます。
               </p>
@@ -5670,7 +5868,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             <div style={{ marginTop: '32px', display: 'flex', gap: '12px', justifyContent: 'space-between' }}>
               <button
                 className="wizard-btn secondary"
-                onClick={() => setWizardStep(6)}
+                onClick={() => setWizardStep(7)}
               >
                 前へ: 解析結果
               </button>
