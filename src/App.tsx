@@ -305,15 +305,13 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       const width = window.innerWidth;
       
       // モバイル判定（iPhone, Android phone）
-      const isMobileDevice = /iPhone|Android.*Mobile/i.test(ua) || width < 768;
+      // iPad含むモバイルデバイスとして統一（モバイルUI強制）
+      const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(ua) || width < 1024;
       
-      // タブレット判定（iPad, Android tablet）
-      const isTabletDevice = /iPad|Android(?!.*Mobile)/i.test(ua) || (width >= 768 && width < 1024);
+      setIsMobile(isMobileDevice);
+      setIsTablet(false); // iPadもモバイルとして扱うため、タブレット判定は常にfalse
       
-      setIsMobile(isMobileDevice && !isTabletDevice);
-      setIsTablet(isTabletDevice);
-      
-      console.log(`📱 デバイス判定: ${isMobileDevice ? 'モバイル' : isTabletDevice ? 'タブレット' : 'PC'} (幅: ${width}px)`);
+      console.log(`📱 デバイス判定: ${isMobileDevice ? 'モバイル（iPad含む）' : 'PC'} (幅: ${width}px, UA: ${ua.substring(0, 50)})`);
     };
     
     checkDevice();
@@ -1567,24 +1565,32 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       console.log('💻 Desktop detected: Using high-performance settings (120fps default, 1920px)');
     }
     
-    // フレームレートをユーザーに確認
+    // フレームレートをユーザーに確認（120fps以下は自動処理、240fpsのみ確認）
     const detectedFps = preferredFps;
-    const userFpsInput = prompt(
-      `動画のフレームレート（FPS）を入力してください。\n\n` +
-      `検出された値: ${detectedFps}fps\n` +
-      `一般的な値: 30fps, 60fps, 120fps, 240fps\n\n` +
-      `※ 正確なFPSを入力することで、解析精度が向上します。`,
-      detectedFps.toString()
-    );
-    
     let confirmedFps = detectedFps;
-    if (userFpsInput) {
-      const parsed = parseInt(userFpsInput);
-      if (!isNaN(parsed) && parsed > 0 && parsed <= 240) {
-        confirmedFps = parsed;
-        console.log(`✅ User confirmed FPS: ${confirmedFps}fps`);
-      } else {
-        console.warn(`⚠️ Invalid FPS input: ${userFpsInput}, using default: ${detectedFps}fps`);
+    
+    // 120fps以下は自動処理（アラート不要）
+    if (detectedFps <= 120) {
+      confirmedFps = detectedFps;
+      console.log(`✅ Auto-detected FPS: ${confirmedFps}fps (no prompt for ≤120fps)`);
+    } else {
+      // 240fpsなど高フレームレートの場合のみ確認
+      const userFpsInput = prompt(
+        `高フレームレート動画が検出されました。\n\n` +
+        `検出された値: ${detectedFps}fps\n` +
+        `一般的な値: 30fps, 60fps, 120fps, 240fps\n\n` +
+        `※ 正確なFPSを入力することで、解析精度が向上します。`,
+        detectedFps.toString()
+      );
+      
+      if (userFpsInput) {
+        const parsed = parseInt(userFpsInput);
+        if (!isNaN(parsed) && parsed > 0 && parsed <= 240) {
+          confirmedFps = parsed;
+          console.log(`✅ User confirmed FPS: ${confirmedFps}fps`);
+        } else {
+          console.warn(`⚠️ Invalid FPS input: ${userFpsInput}, using default: ${detectedFps}fps`);
+        }
       }
     }
     
@@ -1598,11 +1604,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
     // 4K動画の検出と確認
     const is4K = video.videoWidth >= 3840 || video.videoHeight >= 2160;
-    const isHighFps = targetFps >= 120;
+    const is240Fps = targetFps >= 240;
     
     let scale = Math.min(1, MAX_WIDTH / video.videoWidth);
     
-    // 4K動画の場合は確認
+    // 4K動画または240fpsの場合のみ確認（120fps以下は自動処理）
     if (is4K && !isMobile) {
       const fullResMemoryMB = (video.videoWidth * video.videoHeight * totalFrames * 4) / (1024 * 1024);
       const scaledMemoryMB = (MAX_WIDTH * (video.videoHeight * MAX_WIDTH / video.videoWidth) * totalFrames * 4) / (1024 * 1024);
@@ -1627,10 +1633,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     console.log(`💾 Estimated memory usage: ${estimatedMemoryMB.toFixed(1)}MB for ${totalFrames} frames at ${targetWidth}x${targetHeight}`);
     console.log(`📊 Video specs: ${targetFps}fps, ${totalFrames} frames, ${duration.toFixed(2)}s`);
     
-    // 高FPS動画の警告
-    if (isHighFps && estimatedMemoryMB > 500) {
-      console.warn(`⚠️ High FPS video (${targetFps}fps) with large memory usage`);
-      if (!confirm(`高フレームレート動画（${targetFps}fps）が検出されました。\nメモリ使用量: 約${estimatedMemoryMB.toFixed(0)}MB\n\n処理には時間がかかる場合があります。続行しますか？`)) {
+    // 240fps動画の警告（120fps以下は警告不要）
+    if (is240Fps && estimatedMemoryMB > 500) {
+      console.warn(`⚠️ Very high FPS video (${targetFps}fps) with large memory usage`);
+      if (!confirm(`超高フレームレート動画（${targetFps}fps）が検出されました。\nメモリ使用量: 約${estimatedMemoryMB.toFixed(0)}MB\n\n処理には時間がかかる場合があります。続行しますか？`)) {
         setIsExtracting(false);
         setStatus("キャンセルされました");
         return;
@@ -4628,15 +4634,20 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             )}
 
             <div className="wizard-actions">
-              <button className="btn-ghost" onClick={() => setWizardStep(5)}>
-                前へ
+              <button className="btn-ghost" onClick={() => setWizardStep(1)}>
+                最初に戻る
               </button>
-              <button
-                className="btn-primary-large"
-                onClick={() => setWizardStep(7)}
-              >
-                次へ：解析結果
-              </button>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button className="btn-ghost" onClick={() => setWizardStep(5)}>
+                  前へ
+                </button>
+                <button
+                  className="btn-primary-large"
+                  onClick={() => setWizardStep(7)}
+                >
+                  次へ：解析結果
+                </button>
+              </div>
             </div>
           </div>
         );
@@ -5097,24 +5108,32 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               </div>
 
               {/* ナビゲーションボタン */}
-              <div style={{ marginTop: '32px', display: 'flex', gap: '12px', justifyContent: 'space-between' }}>
+              <div style={{ marginTop: '32px', display: 'flex', gap: '12px', justifyContent: 'space-between', alignItems: 'center' }}>
                 <button
-                  className="wizard-btn secondary"
-                  onClick={() => setWizardStep(6)}
+                  className="btn-ghost"
+                  onClick={() => setWizardStep(1)}
                 >
-                  前へ: マーカー設定
+                  最初に戻る
                 </button>
-                <button
-                  className="wizard-btn"
-                  onClick={() => setWizardStep(8)}
-                  style={{
-                    background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
-                    border: 'none',
-                    boxShadow: '0 4px 12px rgba(251, 191, 36, 0.4)'
-                  }}
-                >
-                  次へ: データ詳細（プロ版） 🔒
-                </button>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button
+                    className="wizard-btn secondary"
+                    onClick={() => setWizardStep(6)}
+                  >
+                    前へ: マーカー設定
+                  </button>
+                  <button
+                    className="wizard-btn"
+                    onClick={() => setWizardStep(8)}
+                    style={{
+                      background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
+                      border: 'none',
+                      boxShadow: '0 4px 12px rgba(251, 191, 36, 0.4)'
+                    }}
+                  >
+                    次へ: データ詳細（プロ版） 🔒
+                  </button>
+                </div>
               </div>
             </div>
           </div>
