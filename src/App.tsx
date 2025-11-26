@@ -2901,11 +2901,59 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           <div className="wizard-content">
             <div className="wizard-step-header">
               <h2 className="wizard-step-title">ステップ 5: 接地/離地マーカー</h2>
-              <p className="wizard-step-desc mobile-only" style={{ fontSize: '0.8rem', margin: '4px 0' }}>
-                {calibrationMode 
-                  ? '最初の1ステップ：接地と離地を手動マーク' 
-                  : '接地のみマーク（離地は自動判定）'}
-              </p>
+              
+              {/* キャリブレーションモードの説明 */}
+              {calibrationMode ? (
+                <div style={{
+                  background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                  color: 'white',
+                  padding: '20px',
+                  borderRadius: '12px',
+                  marginTop: '16px',
+                  boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)'
+                }}>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>📍</span>
+                    <span>キャリブレーション（最初の1歩のみ）</span>
+                  </div>
+                  <div style={{ fontSize: '0.95rem', lineHeight: '1.8', marginBottom: '16px' }}>
+                    最初の1歩のみ、<strong>接地</strong>と<strong>離地</strong>の両方のフレームをマークしてください。<br />
+                    これにより、離地を自動検出するための閾値が計算されます。
+                  </div>
+                  <div style={{
+                    background: 'rgba(255,255,255,0.2)',
+                    borderRadius: '8px',
+                    padding: '12px',
+                    fontSize: '0.9rem',
+                    lineHeight: '1.6'
+                  }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>📝 手順：</div>
+                    <ol style={{ margin: 0, paddingLeft: '20px' }}>
+                      <li>足が<strong>地面に接地</strong>したフレームで「🟢 接地をマーク」</li>
+                      <li>足が<strong>地面から離れた</strong>フレームで「🔴 離地をマーク」</li>
+                      <li>キャリブレーション完了後、2歩目以降は接地のみマーク</li>
+                    </ol>
+                  </div>
+                </div>
+              ) : (
+                <div style={{
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: 'white',
+                  padding: '20px',
+                  borderRadius: '12px',
+                  marginTop: '16px',
+                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+                }}>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>✅</span>
+                    <span>自動検出モード</span>
+                  </div>
+                  <div style={{ fontSize: '0.95rem', lineHeight: '1.8' }}>
+                    2歩目以降は、<strong>接地のみ</strong>マークしてください。<br />
+                    離地は自動的に検出されます。
+                  </div>
+                </div>
+              )}
               
               {/* キャリブレーション状態表示 */}
               {!calibrationMode && toeOffThreshold !== null && (
