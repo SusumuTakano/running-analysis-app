@@ -382,6 +382,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const [savedStartHipX, setSavedStartHipX] = useState<number | null>(null);
   const [savedMidHipX, setSavedMidHipX] = useState<number | null>(null);
   const [savedEndHipX, setSavedEndHipX] = useState<number | null>(null);
+  
+  // ------------ 解析シチュエーション選択 ------------
+  const [analysisType, setAnalysisType] = useState<'acceleration' | 'topSpeed'>('topSpeed');
 
   const sectionRange = useMemo(() => {
     const rawStart = sectionStartFrame ?? 0;
@@ -2172,8 +2175,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       avgStepPitch: stepSummary.avgStepPitch ?? 0,
       avgStride: stepSummary.avgStride ?? 0,
       avgSpeed: stepSummary.avgSpeedMps ?? 0
-    });
-  }, [stepMetrics, threePhaseAngles, stepSummary]);
+    }, analysisType);
+  }, [stepMetrics, threePhaseAngles, stepSummary, analysisType]);
 
   // 研究データベース（目標記録に対する最適なピッチとストライド）
   // 出典: これまでの研究報告「身体の大きさ、四肢の長さがピッチに大きく影響し、体型によって至適ピッチが選択され、
@@ -3611,6 +3614,78 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   </div>
                 </>
               )}
+
+              {/* 解析シチュエーション選択 */}
+              <div style={{
+                marginTop: '24px',
+                padding: '16px',
+                background: '#f0f9ff',
+                borderRadius: '12px',
+                border: '2px solid #3b82f6'
+              }}>
+                <h3 style={{
+                  fontSize: '1.1rem',
+                  fontWeight: 'bold',
+                  marginBottom: '12px',
+                  color: '#1e40af'
+                }}>
+                  📊 解析シチュエーション
+                </h3>
+                <div style={{
+                  display: 'flex',
+                  gap: '12px',
+                  flexWrap: 'wrap'
+                }}>
+                  <button
+                    onClick={() => setAnalysisType('acceleration')}
+                    style={{
+                      flex: 1,
+                      minWidth: '180px',
+                      padding: '16px',
+                      borderRadius: '8px',
+                      border: analysisType === 'acceleration' ? '3px solid #3b82f6' : '2px solid #d1d5db',
+                      background: analysisType === 'acceleration' ? '#dbeafe' : 'white',
+                      cursor: 'pointer',
+                      fontWeight: analysisType === 'acceleration' ? 'bold' : 'normal',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>🏃</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '4px' }}>スタートからの加速分析</div>
+                    <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>0-30m加速局面</div>
+                  </button>
+                  <button
+                    onClick={() => setAnalysisType('topSpeed')}
+                    style={{
+                      flex: 1,
+                      minWidth: '180px',
+                      padding: '16px',
+                      borderRadius: '8px',
+                      border: analysisType === 'topSpeed' ? '3px solid #3b82f6' : '2px solid #d1d5db',
+                      background: analysisType === 'topSpeed' ? '#dbeafe' : 'white',
+                      cursor: 'pointer',
+                      fontWeight: analysisType === 'topSpeed' ? 'bold' : 'normal',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>⚡</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '4px' }}>トップスピード分析</div>
+                    <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>最高速度維持局面</div>
+                  </button>
+                </div>
+                <div style={{
+                  marginTop: '12px',
+                  padding: '12px',
+                  background: '#fef3c7',
+                  borderRadius: '8px',
+                  fontSize: '0.9rem',
+                  color: '#92400e'
+                }}>
+                  <strong>💡 Tip:</strong> {analysisType === 'acceleration' 
+                    ? 'スタート加速時は前傾姿勢（体幹角度86-88°）が理想的です。'
+                    : 'トップスピード時は垂直に近い姿勢（体幹角度80-90°）が理想的です。'}
+                </div>
+              </div>
 
               <div className="section-summary">
                 <div>区間フレーム数: {sectionRange.count}</div>

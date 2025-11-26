@@ -40,49 +40,104 @@ type StepSummary = {
 export function generateRunningEvaluation(
   stepMetrics: any[],
   phaseAngles: PhaseAngles[],
-  stepSummary: StepSummary
+  stepSummary: StepSummary,
+  analysisType: 'acceleration' | 'topSpeed' = 'topSpeed'
 ): RunningEvaluation | null {
   if (!stepMetrics.length || !phaseAngles.length) return null;
 
   const evaluations: EvaluationItem[] = [];
 
-  // 1. 姿勢評価（体幹角度）- より厳しい基準
+  // 1. 姿勢評価（体幹角度）- シチュエーション別評価基準
   const avgTrunkAngle = phaseAngles.reduce((sum, p) => {
     return sum + (p.angles.trunkAngle ?? 90);
   }, 0) / phaseAngles.length;
 
-  if (avgTrunkAngle >= 86 && avgTrunkAngle < 88) {
-    evaluations.push({
-      category: '姿勢',
-      score: 'excellent',
-      icon: '✅',
-      message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 理想的な前傾',
-      advice: '素晴らしい前傾姿勢です。股関節の伸展筋群を効率的に使えています。'
-    });
-  } else if (avgTrunkAngle >= 88 && avgTrunkAngle <= 90) {
-    evaluations.push({
-      category: '姿勢',
-      score: 'good',
-      icon: '⚠️',
-      message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - ほぼ垂直',
-      advice: '軽い前傾姿勢（86-88°）を意識すると、重心移動がスムーズになり推進力が向上します。'
-    });
-  } else if (avgTrunkAngle < 86) {
-    evaluations.push({
-      category: '姿勢',
-      score: 'poor',
-      icon: '❌',
-      message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 過度な前傾',
-      advice: '前傾しすぎです。腰への負担が大きく、膝への衝撃も増加します。上体を起こしましょう。'
-    });
+  if (analysisType === 'acceleration') {
+    // スタート加速時の基準（前傾重視）
+    if (avgTrunkAngle >= 86 && avgTrunkAngle < 88) {
+      evaluations.push({
+        category: '姿勢',
+        score: 'excellent',
+        icon: '✅',
+        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 理想的な前傾（加速局面）',
+        advice: '素晴らしい前傾姿勢です。股関節の伸展筋群を効率的に使えています。この姿勢で水平方向への力発揮が最大化されています。'
+      });
+    } else if (avgTrunkAngle >= 84 && avgTrunkAngle < 86) {
+      evaluations.push({
+        category: '姿勢',
+        score: 'good',
+        icon: '✅',
+        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 良好な前傾（加速局面）',
+        advice: '良好な前傾姿勢です。86-88°を目指すとさらに効率的な加速ができます。'
+      });
+    } else if (avgTrunkAngle >= 88 && avgTrunkAngle <= 90) {
+      evaluations.push({
+        category: '姿勢',
+        score: 'fair',
+        icon: '⚠️',
+        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 前傾不足（加速局面）',
+        advice: 'スタート加速時は軽い前傾姿勢（86-88°）を意識すると、重心移動がスムーズになり推進力が向上します。'
+      });
+    } else if (avgTrunkAngle < 84) {
+      evaluations.push({
+        category: '姿勢',
+        score: 'poor',
+        icon: '❌',
+        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 過度な前傾',
+        advice: '前傾しすぎです。腰への負担が大きく、膝への衝撃も増加します。84-88°の範囲を目指しましょう。'
+      });
+    } else {
+      evaluations.push({
+        category: '姿勢',
+        score: 'poor',
+        icon: '❌',
+        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 後傾しすぎ（加速局面）',
+        advice: '加速局面で後傾しています。前方への推進力が失われています。みぞおちを前に出し、86-88°の前傾を意識しましょう。'
+      });
+    }
   } else {
-    evaluations.push({
-      category: '姿勢',
-      score: 'fair',
-      icon: '⚠️',
-      message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 後傾気味',
-      advice: '後傾しています。みぞおちを前に出し、体幹の軸を作ることを意識しましょう。'
-    });
+    // トップスピード時の基準（垂直姿勢重視 80-90°）
+    if (avgTrunkAngle >= 80 && avgTrunkAngle <= 90) {
+      evaluations.push({
+        category: '姿勢',
+        score: 'excellent',
+        icon: '✅',
+        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 理想的（トップスピード）',
+        advice: '素晴らしい姿勢です。トップスピード維持に最適な体幹角度を保てています。真下への踏み込みで地面反力を最大化できています。'
+      });
+    } else if (avgTrunkAngle >= 78 && avgTrunkAngle < 80) {
+      evaluations.push({
+        category: '姿勢',
+        score: 'good',
+        icon: '✅',
+        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - 良好（トップスピード）',
+        advice: '良好な姿勢です。80°以上を目指すとさらに効率が向上します。'
+      });
+    } else if (avgTrunkAngle > 90 && avgTrunkAngle <= 92) {
+      evaluations.push({
+        category: '姿勢',
+        score: 'good',
+        icon: '✅',
+        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - ほぼ垂直（トップスピード）',
+        advice: 'ほぼ垂直姿勢です。軽く前傾（85-90°）を意識するとさらに効率的になります。'
+      });
+    } else if (avgTrunkAngle < 78) {
+      evaluations.push({
+        category: '姿勢',
+        score: 'fair',
+        icon: '⚠️',
+        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - やや前傾しすぎ（トップスピード）',
+        advice: 'トップスピード時は前傾を抑え、80-90°の範囲を目指しましょう。真下への踏み込みを意識してください。'
+      });
+    } else {
+      evaluations.push({
+        category: '姿勢',
+        score: 'fair',
+        icon: '⚠️',
+        message: '体幹角度: ' + avgTrunkAngle.toFixed(1) + '° - やや後傾（トップスピード）',
+        advice: '後傾しています。みぞおちを前に出し、体幹の軸を作ることを意識しましょう。80-90°の範囲を目指してください。'
+      });
+    }
   }
 
   // 2. ピッチとストライドのバランス - より厳しい基準
