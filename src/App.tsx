@@ -3198,21 +3198,63 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             <div className="wizard-step-header">
               <h2 className="wizard-step-title">ステップ 5: 区間設定</h2>
               <p className="wizard-step-desc">
-                スライダーで簡単に設定できます。自動提案ボタンも用意しています。
+                スライダーでフレームを選んで、ボタンで登録してください。
               </p>
             </div>
 
-            {/* 自動提案ボタン */}
+            {/* 登録状況表示 */}
             <div style={{ 
               marginBottom: '2rem', 
               padding: '1.5rem', 
-              background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+              background: 'var(--gray-100)',
               borderRadius: '12px',
-              border: '2px solid #3b82f6'
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: '1rem'
             }}>
-              <div style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '0.8rem', color: '#1e40af' }}>
-                💡 自動提案
+              <div style={{ 
+                padding: '1rem', 
+                background: sectionStartFrame !== null ? '#d1fae5' : 'white',
+                borderRadius: '8px',
+                border: `2px solid ${sectionStartFrame !== null ? '#059669' : '#d1d5db'}`,
+                textAlign: 'center'
+              }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>🟢</div>
+                <div style={{ fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '0.3rem' }}>スタート</div>
+                <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                  {sectionStartFrame !== null ? `Frame ${sectionStartFrame}` : '未登録'}
+                </div>
               </div>
+              <div style={{ 
+                padding: '1rem', 
+                background: sectionEndFrame !== null ? '#fee2e2' : 'white',
+                borderRadius: '8px',
+                border: `2px solid ${sectionEndFrame !== null ? '#dc2626' : '#d1d5db'}`,
+                textAlign: 'center'
+              }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>🔴</div>
+                <div style={{ fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '0.3rem' }}>フィニッシュ</div>
+                <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                  {sectionEndFrame !== null ? `Frame ${sectionEndFrame}` : '未登録'}
+                </div>
+              </div>
+              <div style={{ 
+                padding: '1rem', 
+                background: sectionMidFrame !== null ? '#fef3c7' : 'white',
+                borderRadius: '8px',
+                border: `2px solid ${sectionMidFrame !== null ? '#f59e0b' : '#d1d5db'}`,
+                textAlign: 'center'
+              }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>🟡</div>
+                <div style={{ fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '0.3rem' }}>中間（任意）</div>
+                <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                  {sectionMidFrame !== null ? `Frame ${sectionMidFrame}` : '未登録'}
+                </div>
+              </div>
+            </div>
+
+            {/* 自動設定ボタン */}
+            <div style={{ marginBottom: '2rem' }}>
               <button
                 onClick={() => {
                   const start = Math.floor(framesCount * 0.1);
@@ -3222,26 +3264,44 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   setSectionStartFrame(start);
                   setSectionEndFrame(end);
                   setSectionMidFrame(mid);
-                  setCurrentFrame(start);
                   
-                  const startHipX = calculateHipPosition(start);
-                  const endHipX = calculateHipPosition(end);
-                  const midHipX = calculateHipPosition(mid);
+                  const pose1 = poseResults[start];
+                  const pose2 = poseResults[end];
+                  const pose3 = poseResults[mid];
                   
-                  setSavedStartHipX(startHipX);
-                  setSavedEndHipX(endHipX);
-                  setSavedMidHipX(midHipX);
+                  if (pose1?.landmarks) {
+                    const leftHip = pose1.landmarks[23];
+                    const rightHip = pose1.landmarks[24];
+                    if (leftHip && rightHip) {
+                      setSavedStartHipX((leftHip.x + rightHip.x) / 2);
+                    }
+                  }
+                  if (pose2?.landmarks) {
+                    const leftHip = pose2.landmarks[23];
+                    const rightHip = pose2.landmarks[24];
+                    if (leftHip && rightHip) {
+                      setSavedEndHipX((leftHip.x + rightHip.x) / 2);
+                    }
+                  }
+                  if (pose3?.landmarks) {
+                    const leftHip = pose3.landmarks[23];
+                    const rightHip = pose3.landmarks[24];
+                    if (leftHip && rightHip) {
+                      setSavedMidHipX((leftHip.x + rightHip.x) / 2);
+                    }
+                  }
                   
                   setStartLineOffset(0);
                   setEndLineOffset(0);
                   setMidLineOffset(0);
+                  setCurrentFrame(start);
                   
-                  console.log(`✨ 自動提案: Start=${start}, Mid=${mid}, End=${end}`);
+                  alert(`✨ 自動設定完了！\n\n🟢 スタート: Frame ${start}\n🔴 フィニッシュ: Frame ${end}\n🟡 中間: Frame ${mid}`);
                 }}
                 className="btn-primary-large"
-                style={{ width: '100%' }}
+                style={{ width: '100%', fontSize: '1.1rem', padding: '16px' }}
               >
-                ✨ 自動で区間を設定（動画の10%〜90%）
+                ✨ 自動で全て設定（動画の10%〜90%）
               </button>
             </div>
 
@@ -3253,167 +3313,92 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               />
             </div>
 
-            {/* スライダーコントロール */}
+            {/* 登録ボタン */}
             <div style={{ 
               padding: '1.5rem', 
               background: 'var(--gray-50)', 
               borderRadius: '12px',
               marginBottom: '1.5rem'
             }}>
-              {/* スタート地点 */}
-              <div style={{ marginBottom: '2rem' }}>
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center',
-                  marginBottom: '0.8rem'
-                }}>
-                  <label style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#059669' }}>
-                    🟢 スタート地点
-                  </label>
-                  <div style={{ 
-                    fontSize: '1rem', 
-                    fontWeight: 'bold',
-                    color: '#059669',
-                    background: 'white',
-                    padding: '4px 12px',
-                    borderRadius: '6px'
-                  }}>
-                    フレーム: {sectionStartFrame ?? Math.floor(framesCount * 0.1)}
-                  </div>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(framesCount - 1, 0)}
-                  step={1}
-                  value={sectionStartFrame ?? Math.floor(framesCount * 0.1)}
-                  onChange={(e) => {
-                    const frame = Number(e.target.value);
-                    setSectionStartFrame(frame);
-                    setCurrentFrame(frame);
-                    
-                    // 腰の位置を計算
-                    const pose = poseResults[frame];
-                    let hipX = null;
-                    if (pose && pose.landmarks) {
+              <div style={{ 
+                fontSize: '1.1rem', 
+                fontWeight: 'bold', 
+                marginBottom: '1rem',
+                color: '#374151'
+              }}>
+                現在のフレーム: {currentFrame}
+              </div>
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(3, 1fr)', 
+                gap: '1rem' 
+              }}>
+                <button
+                  onClick={() => {
+                    setSectionStartFrame(currentFrame);
+                    const pose = poseResults[currentFrame];
+                    if (pose?.landmarks) {
                       const leftHip = pose.landmarks[23];
                       const rightHip = pose.landmarks[24];
                       if (leftHip && rightHip) {
-                        hipX = (leftHip.x + rightHip.x) / 2;
+                        setSavedStartHipX((leftHip.x + rightHip.x) / 2);
                       }
                     }
-                    setSavedStartHipX(hipX);
                     setStartLineOffset(0);
-                    console.log(`🟢 スタート地点変更: Frame ${frame}, HipX=${hipX}`);
+                    alert(`🟢 スタート地点を登録しました！\nFrame ${currentFrame}`);
                   }}
-                  className="input-field"
-                  style={{ cursor: 'pointer', width: '100%' }}
-                />
-              </div>
-
-              {/* フィニッシュ地点 */}
-              <div style={{ marginBottom: '2rem' }}>
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center',
-                  marginBottom: '0.8rem'
-                }}>
-                  <label style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#dc2626' }}>
-                    🔴 フィニッシュ地点
-                  </label>
-                  <div style={{ 
-                    fontSize: '1rem', 
-                    fontWeight: 'bold',
-                    color: '#dc2626',
-                    background: 'white',
-                    padding: '4px 12px',
-                    borderRadius: '6px'
-                  }}>
-                    フレーム: {sectionEndFrame ?? Math.floor(framesCount * 0.9)}
-                  </div>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(framesCount - 1, 0)}
-                  step={1}
-                  value={sectionEndFrame ?? Math.floor(framesCount * 0.9)}
-                  onChange={(e) => {
-                    const frame = Number(e.target.value);
-                    setSectionEndFrame(frame);
-                    setCurrentFrame(frame);
-                    
-                    // 腰の位置を計算
-                    const pose = poseResults[frame];
-                    let hipX = null;
-                    if (pose && pose.landmarks) {
+                  className="btn-primary-large"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    fontSize: '1rem'
+                  }}
+                >
+                  🟢 スタート登録
+                </button>
+                <button
+                  onClick={() => {
+                    setSectionEndFrame(currentFrame);
+                    const pose = poseResults[currentFrame];
+                    if (pose?.landmarks) {
                       const leftHip = pose.landmarks[23];
                       const rightHip = pose.landmarks[24];
                       if (leftHip && rightHip) {
-                        hipX = (leftHip.x + rightHip.x) / 2;
+                        setSavedEndHipX((leftHip.x + rightHip.x) / 2);
                       }
                     }
-                    setSavedEndHipX(hipX);
                     setEndLineOffset(0);
-                    console.log(`🔴 フィニッシュ地点変更: Frame ${frame}, HipX=${hipX}`);
+                    alert(`🔴 フィニッシュ地点を登録しました！\nFrame ${currentFrame}`);
                   }}
-                  className="input-field"
-                  style={{ cursor: 'pointer', width: '100%' }}
-                />
-              </div>
-
-              {/* 中間地点 */}
-              <div>
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center',
-                  marginBottom: '0.8rem'
-                }}>
-                  <label style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#f59e0b' }}>
-                    🟡 中間地点（任意）
-                  </label>
-                  <div style={{ 
-                    fontSize: '1rem', 
-                    fontWeight: 'bold',
-                    color: '#f59e0b',
-                    background: 'white',
-                    padding: '4px 12px',
-                    borderRadius: '6px'
-                  }}>
-                    フレーム: {sectionMidFrame ?? Math.floor(framesCount / 2)}
-                  </div>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(framesCount - 1, 0)}
-                  step={1}
-                  value={sectionMidFrame ?? Math.floor(framesCount / 2)}
-                  onChange={(e) => {
-                    const frame = Number(e.target.value);
-                    setSectionMidFrame(frame);
-                    setCurrentFrame(frame);
-                    
-                    // 腰の位置を計算
-                    const pose = poseResults[frame];
-                    let hipX = null;
-                    if (pose && pose.landmarks) {
+                  className="btn-primary-large"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                    fontSize: '1rem'
+                  }}
+                >
+                  🔴 フィニッシュ登録
+                </button>
+                <button
+                  onClick={() => {
+                    setSectionMidFrame(currentFrame);
+                    const pose = poseResults[currentFrame];
+                    if (pose?.landmarks) {
                       const leftHip = pose.landmarks[23];
                       const rightHip = pose.landmarks[24];
                       if (leftHip && rightHip) {
-                        hipX = (leftHip.x + rightHip.x) / 2;
+                        setSavedMidHipX((leftHip.x + rightHip.x) / 2);
                       }
                     }
-                    setSavedMidHipX(hipX);
                     setMidLineOffset(0);
-                    console.log(`🟡 中間地点変更: Frame ${frame}, HipX=${hipX}`);
+                    alert(`🟡 中間地点を登録しました！\nFrame ${currentFrame}`);
                   }}
-                  className="input-field"
-                  style={{ cursor: 'pointer', width: '100%' }}
-                />
+                  className="btn-primary-large"
+                  style={{ 
+                    background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                    fontSize: '1rem'
+                  }}
+                >
+                  🟡 中間登録
+                </button>
               </div>
             </div>
 
