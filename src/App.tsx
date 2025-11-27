@@ -1215,47 +1215,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     if (!usedTargetFps) return [];
     if (contactFrames.length < 3) return [];
 
-    // ✅ 身長ベースのスケール係数を計算
-    let scaleCoefficient: number | null = null;
-    const subjectHeight = parseFloat(subjectHeightInput);
-    
-    if (!isNaN(subjectHeight) && subjectHeight > 0 && poseResults.length > 0) {
-      // 代表的なフレームから身長（ピクセル）を推定
-      const sampleFrames = [
-        Math.floor(poseResults.length * 0.25),
-        Math.floor(poseResults.length * 0.5),
-        Math.floor(poseResults.length * 0.75)
-      ];
-      
-      let totalEstimatedHeight = 0;
-      let validSamples = 0;
-      
-      for (const frameIdx of sampleFrames) {
-        const pose = poseResults[frameIdx];
-        if (pose?.landmarks) {
-          const leftShoulder = pose.landmarks[11];
-          const rightShoulder = pose.landmarks[12];
-          const leftAnkle = pose.landmarks[27];
-          const rightAnkle = pose.landmarks[28];
-          
-          if (leftShoulder && rightShoulder && leftAnkle && rightAnkle) {
-            const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
-            const ankleY = (leftAnkle.y + rightAnkle.y) / 2;
-            const estimatedHeightPixels = Math.abs(ankleY - shoulderY);
-            totalEstimatedHeight += estimatedHeightPixels;
-            validSamples++;
-          }
-        }
-      }
-      
-      if (validSamples > 0) {
-        const avgEstimatedHeight = totalEstimatedHeight / validSamples;
-        // スケール係数 = 実際の身長（cm） / 推定身長（正規化座標）
-        scaleCoefficient = subjectHeight / avgEstimatedHeight;
-        console.log(`✅ スケール係数計算: 実身長=${subjectHeight}cm, 推定身長=${avgEstimatedHeight.toFixed(4)}, 係数=${scaleCoefficient.toFixed(2)}`);
-      }
-    }
-    
+    // ✅ 実測距離ベース: 各ステップの腰のX座標移動比率で配分
     // 総正規化距離を計算（腰のX座標を使用してより正確に）
     let totalNormalizedDistance = 0;
     if (poseResults.length > 0) {
@@ -1272,6 +1232,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         }
       }
     }
+    
+    console.log(`📏 実測距離: ${distanceValue}m, 総正規化移動: ${totalNormalizedDistance.toFixed(4)}`);
 
     const metrics: StepMetric[] = [];
 
@@ -1295,68 +1257,24 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         poseResults.length > 0 &&
         poseResults[contact]?.landmarks &&
         nextContact != null &&
-        poseResults[nextContact]?.landmarks
+        poseResults[nextContact]?.landmarks &&
+        distanceValue != null &&
+        totalNormalizedDistance > 0
       ) {
         const pose1 = poseResults[contact]!.landmarks;
         const pose2 = poseResults[nextContact]!.landmarks;
 
-        // 腰の中心座標を使用（足首より安定）
+        // 腰の中心X座標を使用（足首より安定）
         const hip1X = (pose1[23].x + pose1[24].x) / 2;
         const hip2X = (pose2[23].x + pose2[24].x) / 2;
-        const hip1Y = (pose1[23].y + pose1[24].y) / 2;
-        const hip2Y = (pose2[23].y + pose2[24].y) / 2;
-        const hip1Z = (pose1[23].z + pose1[24].z) / 2;
-        const hip2Z = (pose2[23].z + pose2[24].z) / 2;
-
-        // ✅ 身長ベースのスケール係数を優先使用
-        if (scaleCoefficient != null) {
-          let strideMethodA: number | null = null;
-          let strideMethodB: number | null = null;
-
-          // 【方法A】3D距離を使用（X, Y, Z座標すべて考慮）
-          const dx = hip2X - hip1X;
-          const dy = hip2Y - hip1Y;
-          const dz = hip2Z - hip1Z;
-          const distance3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
-          strideMethodA = (distance3D * scaleCoefficient) / 100;
-
-          // 【方法B】画面幅を考慮した2D距離
-          if (videoWidth != null && videoWidth > 0) {
-            const normalizedStride = Math.abs(hip2X - hip1X);
-            const pixelStride = normalizedStride * videoWidth;
-            strideMethodB = (pixelStride * scaleCoefficient / videoWidth) / 100;
-          }
-
-          // デバッグログ：両方の方法を比較
-          console.log(`📊 ステップ${i / 2 + 1}:`);
-          console.log(`  方法A (3D距離): ${strideMethodA?.toFixed(3)}m | dx=${dx.toFixed(4)}, dy=${dy.toFixed(4)}, dz=${dz.toFixed(4)}, 3D距離=${distance3D.toFixed(4)}`);
-          console.log(`  方法B (画面幅): ${strideMethodB?.toFixed(3)}m | 正規化X移動=${Math.abs(hip2X - hip1X).toFixed(4)}`);
-
-          // 両方試して、妥当な方を採用（1.0m～3.0mの範囲）
-          const isMethodAValid = strideMethodA != null && strideMethodA >= 0.8 && strideMethodA <= 3.5;
-          const isMethodBValid = strideMethodB != null && strideMethodB >= 0.8 && strideMethodB <= 3.5;
-
-          if (isMethodAValid && isMethodBValid) {
-            // 両方妥当な場合は方法Aを優先（3D距離は理論的に正確）
-            stride = strideMethodA;
-            console.log(`  ✅ 採用: 方法A (3D距離) = ${stride.toFixed(2)}m`);
-          } else if (isMethodAValid) {
-            stride = strideMethodA;
-            console.log(`  ✅ 採用: 方法A (3D距離) = ${stride.toFixed(2)}m`);
-          } else if (isMethodBValid) {
-            stride = strideMethodB;
-            console.log(`  ✅ 採用: 方法B (画面幅) = ${stride?.toFixed(2)}m`);
-          } else {
-            // どちらも妥当でない場合は、方法Aをそのまま使用（警告付き）
-            stride = strideMethodA;
-            console.warn(`  ⚠️ 両方とも範囲外。方法Aを採用: ${stride?.toFixed(2)}m`);
-          }
-        } else if (distanceValue != null && totalNormalizedDistance > 0) {
-          // フォールバック: 距離入力ベース
-          const normalizedStride = Math.abs(hip2X - hip1X);
-          stride =
-            (normalizedStride / totalNormalizedDistance) * distanceValue;
-        }
+        
+        // このステップの正規化移動距離
+        const normalizedStride = Math.abs(hip2X - hip1X);
+        
+        // 実測距離を各ステップの移動比率で配分
+        stride = (normalizedStride / totalNormalizedDistance) * distanceValue;
+        
+        console.log(`  ステップ${i / 2 + 1}: 正規化移動=${normalizedStride.toFixed(4)}, 比率=${(normalizedStride / totalNormalizedDistance * 100).toFixed(1)}%, ストライド=${stride.toFixed(2)}m`);
       } else if (distanceValue != null) {
         // 姿勢データがない場合は均等分割
         const totalSteps = Math.floor(contactFrames.length / 2);
@@ -1383,7 +1301,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       });
     }
     return metrics;
-  }, [contactFrames, usedTargetFps, poseResults, distanceValue, subjectHeightInput, videoWidth]);
+  }, [contactFrames, usedTargetFps, poseResults, distanceValue]);
 
   const stepSummary = useMemo(() => {
     if (!stepMetrics.length) {
@@ -4630,68 +4548,41 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               </div>
             </div>
 
-            {/* 被検者の身長入力 */}
+            {/* 実測距離の重要性を強調 */}
             <div style={{
-              background: '#f0f9ff',
-              border: '2px solid #3b82f6',
+              background: 'linear-gradient(135deg, #fef3c7 0%, #fef9e7 100%)',
+              border: '3px solid #f59e0b',
               borderRadius: '12px',
               padding: '24px',
               margin: '24px 0'
             }}>
               <h3 style={{
-                fontSize: '1.1rem',
+                fontSize: '1.2rem',
                 fontWeight: 'bold',
                 marginBottom: '16px',
-                color: '#1e40af'
-              }}>
-                👤 被検者の身長（ストライド計算に使用）
-              </h3>
-              <div style={{
+                color: '#92400e',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '16px',
-                marginBottom: '12px'
+                gap: '8px'
               }}>
-                <label style={{
-                  fontSize: '1rem',
-                  fontWeight: 'bold',
-                  color: '#374151',
-                  minWidth: '100px'
-                }}>
-                  身長:
-                </label>
-                <input
-                  type="number"
-                  value={subjectHeightInput}
-                  onChange={(e) => setSubjectHeightInput(e.target.value)}
-                  placeholder="170"
-                  style={{
-                    padding: '12px',
-                    border: '2px solid #3b82f6',
-                    borderRadius: '8px',
-                    fontSize: '1rem',
-                    width: '120px',
-                    fontWeight: 'bold'
-                  }}
-                />
-                <span style={{
-                  fontSize: '1rem',
-                  color: '#6b7280',
-                  fontWeight: 'bold'
-                }}>
-                  cm
-                </span>
-              </div>
+                ⚠️ 重要：実測距離の入力が必須です
+              </h3>
               <div style={{
-                fontSize: '0.85rem',
-                color: '#4b5563',
-                marginTop: '8px',
-                padding: '12px',
-                background: 'rgba(255,255,255,0.8)',
-                borderRadius: '6px'
+                fontSize: '0.95rem',
+                color: '#78350f',
+                padding: '16px',
+                background: 'rgba(255,255,255,0.9)',
+                borderRadius: '8px',
+                lineHeight: '1.8'
               }}>
-                💡 <strong>身長を入力すると、各ステップのストライド（歩幅）を正確に計算できます。</strong><br/>
-                姿勢推定データから身長を推定し、実際の身長との比率でストライドを算出します。
+                <strong>📏 ストライド・速度を正確に計算するには：</strong><br/>
+                <br/>
+                1️⃣ <strong>スタート位置からフィニッシュ位置までの実測距離</strong>をメジャーで測定<br/>
+                2️⃣ 測定した距離（メートル）を入力<br/>
+                3️⃣ システムが各ステップの腰の移動比率から、個別のストライドを自動計算<br/>
+                <br/>
+                💡 <strong>例：</strong> 10m区間の場合 → 「10」と入力<br/>
+                ✅ 各ステップが個別に計算されます（例: 1.8m, 2.1m, 1.9m...）
               </div>
             </div>
 
