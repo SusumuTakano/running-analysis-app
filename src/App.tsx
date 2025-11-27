@@ -584,18 +584,23 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     const detectedContacts: number[] = [];
     const detectedToeOffs: number[] = [];
     
-    // キャリブレーションの離地フレームの後から検索開始
-    // manualContactFrames[0] = キャリブレーション接地
-    // autoToeOffFrames[0] = キャリブレーション離地（または manualToeOffFrames[0]）
-    const calibrationToeOffFrame = calibrationType === 3 ? manualToeOffFrames[0] : autoToeOffFrames[0];
-    if (!calibrationToeOffFrame) {
-      console.error('❌ キャリブレーションの離地フレームが設定されていません');
-      return;
-    }
+    // モード1（自動検出）: スタートフレームから直接検索
+    // モード2・3（手動）: キャリブレーション離地の後から検索
+    let searchStartFrame = sectionStartFrame;
     
-    // キャリブレーション離地の少し後から検索開始（5フレーム後）
-    let searchStartFrame = calibrationToeOffFrame + 5;
-    console.log(`📍 検索範囲: Frame ${searchStartFrame} ～ ${sectionEndFrame} (キャリブレーション離地 ${calibrationToeOffFrame} の後から)`);
+    if (detectionMode === 1) {
+      // モード1: スタートフレームから検索
+      console.log(`📍 検索範囲: Frame ${searchStartFrame} ～ ${sectionEndFrame} (スタートから全自動)`);
+    } else {
+      // モード2・3: キャリブレーション後から検索
+      const calibrationToeOffFrame = calibrationType === 3 ? manualToeOffFrames[0] : autoToeOffFrames[0];
+      if (!calibrationToeOffFrame) {
+        console.error('❌ キャリブレーションの離地フレームが設定されていません');
+        return;
+      }
+      searchStartFrame = calibrationToeOffFrame + 5;
+      console.log(`📍 検索範囲: Frame ${searchStartFrame} ～ ${sectionEndFrame} (キャリブレーション離地 ${calibrationToeOffFrame} の後から)`);
+    }
     
     // 区間内を順次検索
     while (searchStartFrame < sectionEndFrame) {
@@ -622,14 +627,15 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     console.log(`📊 検出された接地フレーム: [${detectedContacts.join(', ')}]`);
     console.log(`📊 検出された離地フレーム: [${detectedToeOffs.join(', ')}]`);
     
-    // キャリブレーションの1歩目を保持し、その後に自動検出結果を追加
-    // manualContactFrames[0] = キャリブレーション接地
-    // detectedContacts = 自動検出された接地リスト
-    setManualContactFrames([manualContactFrames[0], ...detectedContacts]);
-    
-    // autoToeOffFrames は自動検出された離地のみを格納（キャリブレーション離地は含まない）
-    // インデックスi=0が2番目のステップの離地、i=1が3番目のステップの離地...
-    setAutoToeOffFrames(detectedToeOffs);
+    if (detectionMode === 1) {
+      // モード1: 全て自動検出結果を使用
+      setManualContactFrames(detectedContacts);
+      setAutoToeOffFrames(detectedToeOffs);
+    } else {
+      // モード2・3: キャリブレーションの1歩目を保持し、その後に自動検出結果を追加
+      setManualContactFrames([manualContactFrames[0], ...detectedContacts]);
+      setAutoToeOffFrames(detectedToeOffs);
+    }
   };
 
   // ========== 水平キャリブレーション関数 ==========
@@ -4020,8 +4026,57 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 </div>
               ) : null}
               
-              {/* キャリブレーションモードの説明 */}
-              {calibrationType !== null && calibrationMode < 2 ? (
+              {/* 検出モード別の説明とUI */}
+              {detectionMode === 1 ? (
+                // モード1: 自動検出 - キャリブレーション不要、直接スタートボタン
+                <div style={{
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: 'white',
+                  padding: '20px',
+                  borderRadius: '12px',
+                  marginTop: '16px',
+                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+                }}>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>⚡</span>
+                    <span>自動検出モード</span>
+                  </div>
+                  <div style={{ fontSize: '0.95rem', lineHeight: '1.8', marginBottom: '16px' }}>
+                    「自動検出スタート」ボタンを押すだけで、スタート～フィニッシュ間の<strong>全ての接地・離地</strong>を自動で検出します。<br />
+                    検出後、必要に応じて±ボタンで微調整できます。
+                  </div>
+                  {manualContactFrames.length === 0 ? (
+                    <button
+                      onClick={() => {
+                        console.log('🚀 自動検出を開始します...');
+                        autoDetectAllContactsAndToeOffs();
+                        setCalibrationMode(2); // 完了状態に
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '16px',
+                        fontSize: '1.1rem',
+                        fontWeight: 'bold',
+                        color: 'white',
+                        background: 'linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)',
+                        border: 'none',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                      onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                    >
+                      🚀 自動検出スタート
+                    </button>
+                  ) : (
+                    <div style={{ fontSize: '0.9rem', textAlign: 'center', padding: '12px', background: 'rgba(255,255,255,0.2)', borderRadius: '8px' }}>
+                      ✅ 検出完了: {manualContactFrames.length}ステップ
+                    </div>
+                  )}
+                </div>
+              ) : calibrationType !== null && calibrationMode < 2 ? (
                 <div style={{
                   background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
                   color: 'white',
