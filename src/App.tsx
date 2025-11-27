@@ -438,6 +438,14 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
   // 🎥 パン撮影モード（カメラ追従撮影対応）
   const [isPanMode, setIsPanMode] = useState<boolean>(false);
+  
+  // 🎓 1歩目学習データ（検出精度向上）
+  const [learnedStepPattern, setLearnedStepPattern] = useState<{
+    contactDuration: number;  // 接地時間（フレーム数）
+    toeOffRise: number;        // 離地時のつま先上昇量
+    contactToeY: number;       // 接地時のつま先Y座標
+    toeOffToeY: number;        // 離地時のつま先Y座標
+  } | null>(null);
 
   // ------------ 接地／離地マーカー（検出モード） ------------
   // 検出モード: 
