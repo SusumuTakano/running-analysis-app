@@ -419,6 +419,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const [labelInput, setLabelInput] = useState<string>("");
   const [notesInput, setNotesInput] = useState<string>("");
   
+  // ------------ 被検者の身長 ---------------
+  const [subjectHeightInput, setSubjectHeightInput] = useState<string>("170");
+  
   // ------------ 100m目標記録 ---------------
   const [target100mInput, setTarget100mInput] = useState<string>("");
   const [targetAdvice, setTargetAdvice] = useState<string>("");
@@ -1210,6 +1213,47 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     if (!usedTargetFps) return [];
     if (contactFrames.length < 3) return [];
 
+    // ✅ 身長ベースのスケール係数を計算
+    let scaleCoefficient: number | null = null;
+    const subjectHeight = parseFloat(subjectHeightInput);
+    
+    if (!isNaN(subjectHeight) && subjectHeight > 0 && poseResults.length > 0) {
+      // 代表的なフレームから身長（ピクセル）を推定
+      const sampleFrames = [
+        Math.floor(poseResults.length * 0.25),
+        Math.floor(poseResults.length * 0.5),
+        Math.floor(poseResults.length * 0.75)
+      ];
+      
+      let totalEstimatedHeight = 0;
+      let validSamples = 0;
+      
+      for (const frameIdx of sampleFrames) {
+        const pose = poseResults[frameIdx];
+        if (pose?.landmarks) {
+          const leftShoulder = pose.landmarks[11];
+          const rightShoulder = pose.landmarks[12];
+          const leftAnkle = pose.landmarks[27];
+          const rightAnkle = pose.landmarks[28];
+          
+          if (leftShoulder && rightShoulder && leftAnkle && rightAnkle) {
+            const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
+            const ankleY = (leftAnkle.y + rightAnkle.y) / 2;
+            const estimatedHeightPixels = Math.abs(ankleY - shoulderY);
+            totalEstimatedHeight += estimatedHeightPixels;
+            validSamples++;
+          }
+        }
+      }
+      
+      if (validSamples > 0) {
+        const avgEstimatedHeight = totalEstimatedHeight / validSamples;
+        // スケール係数 = 実際の身長（cm） / 推定身長（正規化座標）
+        scaleCoefficient = subjectHeight / avgEstimatedHeight;
+        console.log(`✅ スケール係数計算: 実身長=${subjectHeight}cm, 推定身長=${avgEstimatedHeight.toFixed(4)}, 係数=${scaleCoefficient.toFixed(2)}`);
+      }
+    }
+    
     // 総正規化距離を計算（腰のX座標を使用してより正確に）
     let totalNormalizedDistance = 0;
     if (poseResults.length > 0) {
@@ -1259,8 +1303,13 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         const hip2X = (pose2[23].x + pose2[24].x) / 2;
         const normalizedStride = Math.abs(hip2X - hip1X);
 
-        if (distanceValue != null && totalNormalizedDistance > 0) {
-          // 正規化されたストライドを実距離に変換
+        // ✅ 身長ベースのスケール係数を優先使用
+        if (scaleCoefficient != null) {
+          // 身長ベース: 正規化座標のストライド × スケール係数（cm） ÷ 100（m変換）
+          stride = (normalizedStride * scaleCoefficient) / 100;
+          console.log(`  ステップ${i / 2 + 1}: 正規化=${normalizedStride.toFixed(4)}, ストライド=${stride.toFixed(2)}m`);
+        } else if (distanceValue != null && totalNormalizedDistance > 0) {
+          // フォールバック: 距離入力ベース
           stride =
             (normalizedStride / totalNormalizedDistance) * distanceValue;
         }
@@ -1290,7 +1339,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       });
     }
     return metrics;
-  }, [contactFrames, usedTargetFps, poseResults, distanceValue]);
+  }, [contactFrames, usedTargetFps, poseResults, distanceValue, subjectHeightInput]);
 
   const stepSummary = useMemo(() => {
     if (!stepMetrics.length) {
@@ -4530,6 +4579,71 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 <strong>💡 Tip:</strong> {analysisType === 'acceleration' 
                   ? 'スタート加速時は強い前傾姿勢（体幹角度42-48°）が理想的です。膝を固定し、股関節伸展（大臀筋・ハムストリングス）でストライドを一歩ごとに伸ばしましょう。'
                   : 'トップスピード時は垂直に近い姿勢（体幹角度80-90°）が理想的です。真下への踏み込みで地面反力を最大化しましょう。'}
+              </div>
+            </div>
+
+            {/* 被検者の身長入力 */}
+            <div style={{
+              background: '#f0f9ff',
+              border: '2px solid #3b82f6',
+              borderRadius: '12px',
+              padding: '24px',
+              margin: '24px 0'
+            }}>
+              <h3 style={{
+                fontSize: '1.1rem',
+                fontWeight: 'bold',
+                marginBottom: '16px',
+                color: '#1e40af'
+              }}>
+                👤 被検者の身長（ストライド計算に使用）
+              </h3>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px',
+                marginBottom: '12px'
+              }}>
+                <label style={{
+                  fontSize: '1rem',
+                  fontWeight: 'bold',
+                  color: '#374151',
+                  minWidth: '100px'
+                }}>
+                  身長:
+                </label>
+                <input
+                  type="number"
+                  value={subjectHeightInput}
+                  onChange={(e) => setSubjectHeightInput(e.target.value)}
+                  placeholder="170"
+                  style={{
+                    padding: '12px',
+                    border: '2px solid #3b82f6',
+                    borderRadius: '8px',
+                    fontSize: '1rem',
+                    width: '120px',
+                    fontWeight: 'bold'
+                  }}
+                />
+                <span style={{
+                  fontSize: '1rem',
+                  color: '#6b7280',
+                  fontWeight: 'bold'
+                }}>
+                  cm
+                </span>
+              </div>
+              <div style={{
+                fontSize: '0.85rem',
+                color: '#4b5563',
+                marginTop: '8px',
+                padding: '12px',
+                background: 'rgba(255,255,255,0.8)',
+                borderRadius: '6px'
+              }}>
+                💡 <strong>身長を入力すると、各ステップのストライド（歩幅）を正確に計算できます。</strong><br/>
+                姿勢推定データから身長を推定し、実際の身長との比率でストライドを算出します。
               </div>
             </div>
 
