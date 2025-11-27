@@ -4115,6 +4115,17 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 ← 戻る
               </button>
               <button
+                className="btn-ghost"
+                onClick={() => {
+                  if (confirm('自動検出をスキップして、完全手動モードで入力しますか？\n\n各ステップの接地・離地を手動で入力する必要があります。')) {
+                    setWizardStep(7);
+                  }
+                }}
+                style={{ background: '#fbbf24', color: 'white' }}
+              >
+                ⚠️ スキップして手動入力
+              </button>
+              <button
                 className="btn-primary"
                 onClick={() => {
                   if (calibrationData.contactFrame === null || calibrationData.toeOffFrame === null) {
@@ -6465,10 +6476,48 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                         </tbody>
                       </table>
                     </div>
+                    
+                    {/* 新しいステップを追加 */}
+                    <div style={{ marginTop: '16px', textAlign: 'center' }}>
+                      <button
+                        className="btn-primary"
+                        onClick={() => {
+                          const lastContact = manualContactFrames[manualContactFrames.length - 1] || 0;
+                          const newContact = lastContact + 30;  // 前のステップの30フレーム後
+                          const newToeOff = newContact + 20;    // 接地の20フレーム後
+                          
+                          setManualContactFrames([...manualContactFrames, newContact]);
+                          setAutoToeOffFrames([...autoToeOffFrames, newToeOff]);
+                          alert(`新しいステップを追加しました！\n接地: ${newContact}\n離地: ${newToeOff}\n\n値を修正してください。`);
+                        }}
+                      >
+                        ➕ 新しいステップを追加
+                      </button>
+                    </div>
                   </>
                 ) : (
-                  <div className="empty-state">
-                    マーカーを打つとステップメトリクスが表示されます
+                  <div>
+                    <div className="empty-state">
+                      ステップメトリクスがありません
+                    </div>
+                    
+                    {/* 完全手動モード：最初のステップを追加 */}
+                    <div style={{ marginTop: '24px', textAlign: 'center' }}>
+                      <button
+                        className="btn-primary-large"
+                        onClick={() => {
+                          const firstContact = sectionStartFrame || 50;
+                          const firstToeOff = firstContact + 20;
+                          
+                          setManualContactFrames([firstContact]);
+                          setAutoToeOffFrames([firstToeOff]);
+                          alert(`最初のステップを追加しました！\n接地: ${firstContact}\n離地: ${firstToeOff}\n\n値を修正してください。`);
+                        }}
+                        style={{ fontSize: '1.1rem', padding: '16px 32px' }}
+                      >
+                        ➕ 最初のステップを追加
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
