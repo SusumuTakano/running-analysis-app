@@ -4508,6 +4508,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       onClick={() => {
                         setDetectionMode(1);
                         setCalibrationType(1);
+                        // 古いキャリブレーションデータをクリア
+                        setCalibrationData({ contactFrame: null, toeOffFrame: null });
                       }}
                       style={{
                         padding: '16px',
@@ -4536,6 +4538,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       onClick={() => {
                         setDetectionMode(2);
                         setCalibrationType(2);
+                        // 古いキャリブレーションデータをクリア
+                        setCalibrationData({ contactFrame: null, toeOffFrame: null });
                       }}
                       style={{
                         padding: '16px',
@@ -4564,6 +4568,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       onClick={() => {
                         setDetectionMode(3);
                         setCalibrationType(3);
+                        // 古いキャリブレーションデータをクリア
+                        setCalibrationData({ contactFrame: null, toeOffFrame: null });
                       }}
                       style={{
                         padding: '16px',
