@@ -2208,6 +2208,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     markers.forEach(({ frame, color, label, offset, savedHipX, savedPixelX }) => {
       // フレームが設定されていない場合はスキップ
       if (frame == null) return;
+      
+      // ✅ 改善: 現在のフレームと一致する場合のみ表示（確定後は消える）
+      if (currentFrameNum !== frame) return;
 
       let torsoX: number;
       let fromPose = false;
