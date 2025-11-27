@@ -744,24 +744,25 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       const toeY = calculateMovingAverage(i, 5);
       if (toeY === null) continue;
       
-      // 超緩い極大値検出：前後2フレームの平均より「わずかでも」下にあればOK
-      const beforeAvg = [1, 2].map(j => calculateMovingAverage(i - j, 5)).filter(y => y !== null);
-      const afterAvg = [1, 2].map(j => calculateMovingAverage(i + j, 5)).filter(y => y !== null);
+      // バランスの取れた極大値検出：前後3フレームの平均より明確に下にある
+      const beforeAvg = [1, 2, 3].map(j => calculateMovingAverage(i - j, 5)).filter(y => y !== null);
+      const afterAvg = [1, 2, 3].map(j => calculateMovingAverage(i + j, 5)).filter(y => y !== null);
       
       if (beforeAvg.length === 0 || afterAvg.length === 0) continue;
       
       const beforeMean = beforeAvg.reduce((sum, y) => sum + y!, 0) / beforeAvg.length;
       const afterMean = afterAvg.reduce((sum, y) => sum + y!, 0) / afterAvg.length;
       
-      // 現在が前後の平均より下（Y座標が大きい）にあればOK（閾値なし！）
-      const isLowerThanBefore = toeY >= beforeMean;
-      const isLowerThanAfter = toeY >= afterMean;
+      // 現在が前後の平均より0.001以上下（Y座標が大きい）にあればOK
+      const threshold = 0.001; // 適度な閾値
+      const isLowerThanBefore = toeY - beforeMean > threshold;
+      const isLowerThanAfter = toeY - afterMean > threshold;
       
       if (isLowerThanBefore && isLowerThanAfter) {
         // 極大値候補を発見
-        console.log(`🔸 極大値候補: フレーム ${i} (Y=${toeY.toFixed(4)}, 前平均=${beforeMean.toFixed(4)}, 後平均=${afterMean.toFixed(4)})`);
+        console.log(`🔸 極大値候補: フレーム ${i} (Y=${toeY.toFixed(4)}, 前平均=${beforeMean.toFixed(4)}, 後平均=${afterMean.toFixed(4)}, 差=${((toeY - beforeMean) + (toeY - afterMean)) / 2})`);
         
-        // 下降確認を削除：極大値であればすぐに検出
+        // 明確な極大値として検出
         console.log(`✅ 接地検出: フレーム ${i} (つま先Y=${toeY.toFixed(4)})`);
         return i;
       }
@@ -791,14 +792,18 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       const toeY = calculateMovingAverage(i, 3); // 移動平均を5→3に短縮（高速応答）
       if (toeY === null) continue;
       
-      // 極めてシンプルな上昇検出：接地よりわずかでも上にあればOK
+      // バランスの取れた上昇検出：接地より明確に上にある
       const liftAmount = contactY - toeY; // 正なら上昇
       
-      // 閾値を完全削除：わずかでも上昇していればOK
-      if (liftAmount > 0.0001) {
-        // 継続確認も削除：即座に検出
-        console.log(`✅ 離地検出: フレーム ${i} (つま先Y=${toeY.toFixed(4)}, 接地Y=${contactY.toFixed(4)}, 上昇幅=${liftAmount.toFixed(4)})`);
-        return i;
+      // 適度な閾値：0.003（0.3%）以上の上昇
+      if (liftAmount > 0.003) {
+        // 継続確認：次のフレームも上昇しているか
+        const nextY = calculateMovingAverage(i + 1, 3);
+        if (nextY !== null && nextY < toeY + 0.001) {
+          // 上昇継続またはほぼ同じ高さ
+          console.log(`✅ 離地検出: フレーム ${i} (つま先Y=${toeY.toFixed(4)}, 接地Y=${contactY.toFixed(4)}, 上昇幅=${liftAmount.toFixed(4)})`);
+          return i;
+        }
       }
     }
     
@@ -1316,12 +1321,12 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
       
       pose.setOptions({
-        modelComplexity: 2, // 最高精度モデル（0 < 1 < 2、精度重視）
+        modelComplexity: 1, // 標準モデル（0 < 1 < 2、バランス重視）
         smoothLandmarks: true,
         enableSegmentation: false,
         smoothSegmentation: false,
-        minDetectionConfidence: 0.3, // 検出閾値を適度に設定（0.3 = バランス重視）
-        minTrackingConfidence: 0.3, // トラッキング閾値を適度に設定
+        minDetectionConfidence: 0.5, // 検出閾値を標準に（0.5 = 高精度）
+        minTrackingConfidence: 0.5, // トラッキング閾値を標準に
       });
       
       console.log(`🎯 Pose estimation config: mobile=${isMobile}, iOS=${isIOS}, modelComplexity=2 (highest accuracy)`);
