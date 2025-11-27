@@ -1245,6 +1245,78 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     return results;
   }, [contactFrames, poseResults]);
 
+  // ------------ 欠損フレームの補間処理 ------------
+  const interpolateMissingPoses = (results: (FramePoseData | null)[]): (FramePoseData | null)[] => {
+    const interpolated = [...results];
+    
+    for (let i = 0; i < interpolated.length; i++) {
+      // 欠損フレームを発見
+      if (interpolated[i] === null || !interpolated[i]?.landmarks) {
+        // 前後の有効なフレームを探す
+        let prevIndex = i - 1;
+        let nextIndex = i + 1;
+        
+        // 前の有効なフレームを探す（最大10フレーム前まで）
+        while (prevIndex >= 0 && prevIndex >= i - 10) {
+          if (interpolated[prevIndex]?.landmarks) break;
+          prevIndex--;
+        }
+        
+        // 次の有効なフレームを探す（最大10フレーム後まで）
+        while (nextIndex < interpolated.length && nextIndex <= i + 10) {
+          if (interpolated[nextIndex]?.landmarks) break;
+          nextIndex++;
+        }
+        
+        // 前後両方が見つかった場合、線形補間
+        if (prevIndex >= 0 && prevIndex >= i - 10 && 
+            nextIndex < interpolated.length && nextIndex <= i + 10 &&
+            interpolated[prevIndex]?.landmarks && interpolated[nextIndex]?.landmarks) {
+          
+          const prevLandmarks = interpolated[prevIndex]!.landmarks;
+          const nextLandmarks = interpolated[nextIndex]!.landmarks;
+          const ratio = (i - prevIndex) / (nextIndex - prevIndex);
+          
+          // ランドマークを線形補間
+          const interpolatedLandmarks = prevLandmarks.map((prevLm, idx) => {
+            const nextLm = nextLandmarks[idx];
+            return {
+              x: prevLm.x + (nextLm.x - prevLm.x) * ratio,
+              y: prevLm.y + (nextLm.y - prevLm.y) * ratio,
+              z: prevLm.z + (nextLm.z - prevLm.z) * ratio,
+              visibility: Math.min(prevLm.visibility, nextLm.visibility) * 0.8 // 信頼度を少し下げる
+            };
+          });
+          
+          interpolated[i] = { landmarks: interpolatedLandmarks };
+          console.log(`🔧 Frame ${i} interpolated from ${prevIndex} and ${nextIndex}`);
+        }
+        // 前のフレームのみが見つかった場合、そのままコピー
+        else if (prevIndex >= 0 && prevIndex >= i - 5 && interpolated[prevIndex]?.landmarks) {
+          interpolated[i] = {
+            landmarks: interpolated[prevIndex]!.landmarks.map(lm => ({
+              ...lm,
+              visibility: lm.visibility * 0.7 // 信頼度を下げる
+            }))
+          };
+          console.log(`🔧 Frame ${i} copied from ${prevIndex}`);
+        }
+        // 次のフレームのみが見つかった場合、そのままコピー
+        else if (nextIndex < interpolated.length && nextIndex <= i + 5 && interpolated[nextIndex]?.landmarks) {
+          interpolated[i] = {
+            landmarks: interpolated[nextIndex]!.landmarks.map(lm => ({
+              ...lm,
+              visibility: lm.visibility * 0.7 // 信頼度を下げる
+            }))
+          };
+          console.log(`🔧 Frame ${i} copied from ${nextIndex}`);
+        }
+      }
+    }
+    
+    return interpolated;
+  };
+
   // ------------ 姿勢推定実行 ------------
   const runPoseEstimation = async () => {
     if (!framesRef.current.length) {
@@ -1274,15 +1346,15 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
       
       pose.setOptions({
-        modelComplexity: 1, // 標準モデル（より高精度）
+        modelComplexity: 2, // 最高精度モデル（0 < 1 < 2、精度重視）
         smoothLandmarks: true,
         enableSegmentation: false,
         smoothSegmentation: false,
-        minDetectionConfidence: 0.2, // 検出閾値を大幅に下げて検出しやすく（0.2 = 非常に寛容）
-        minTrackingConfidence: 0.2, // トラッキング閾値を大幅に下げて継続しやすく
+        minDetectionConfidence: 0.3, // 検出閾値を適度に設定（0.3 = バランス重視）
+        minTrackingConfidence: 0.3, // トラッキング閾値を適度に設定
       });
       
-      console.log(`🎯 Pose estimation config: mobile=${isMobile}, iOS=${isIOS}, modelComplexity=${isMobile ? 0 : 1}`);
+      console.log(`🎯 Pose estimation config: mobile=${isMobile}, iOS=${isIOS}, modelComplexity=2 (highest accuracy)`);
 
       const results: (FramePoseData | null)[] = [];
 
@@ -1361,13 +1433,24 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         );
       }
 
-      setPoseResults(results);
+      // 欠損フレームの補間処理
+      console.log('🔧 欠損フレームを補間中...');
+      const interpolatedResults = interpolateMissingPoses(results);
       
-      // 成功率を計算
+      setPoseResults(interpolatedResults);
+      
+      // 成功率を計算（補間前）
       const successCount = results.filter(r => r !== null && r.landmarks).length;
       const successRateNum = successCount / results.length * 100;
       const successRateStr = successRateNum.toFixed(1);
+      
+      // 補間後の成功率を計算
+      const interpolatedCount = interpolatedResults.filter(r => r !== null && r.landmarks).length;
+      const interpolatedRateNum = interpolatedCount / interpolatedResults.length * 100;
+      const interpolatedRateStr = interpolatedRateNum.toFixed(1);
+      
       console.log(`📊 Pose estimation complete: ${successCount}/${results.length} frames (${successRateStr}%)`);
+      console.log(`✨ After interpolation: ${interpolatedCount}/${interpolatedResults.length} frames (${interpolatedRateStr}%)`);
       
       if (successCount === 0) {
         setStatus("❌ 姿勢推定が完全に失敗しました。動画を変更してください。");
