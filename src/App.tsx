@@ -1213,13 +1213,19 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   // ------------ ステップメトリクス ------------
   const stepMetrics: StepMetric[] = useMemo(() => {
     if (!usedTargetFps) return [];
-    if (contactFrames.length < 3) return [];
+    
+    // calibrationType=2（接地のみ）の場合は最低2つの接地が必要
+    // それ以外（接地・離地ペア）の場合は最低3つ必要
+    const minFrames = calibrationType === 2 ? 2 : 3;
+    if (contactFrames.length < minFrames) return [];
 
     // ✅ パン撮影モード：平均ストライドを使用（カメラ移動の影響を除外）
     // ✅ 固定カメラモード：腰のX座標移動比率で配分
     
     let totalNormalizedDistance = 0;
-    const totalSteps = Math.floor(contactFrames.length / 2);
+    // calibrationType=2の場合は接地のみなので contactFrames.length - 1 がステップ数
+    // それ以外は接地・離地ペアなので contactFrames.length / 2 がステップ数
+    const totalSteps = calibrationType === 2 ? contactFrames.length - 1 : Math.floor(contactFrames.length / 2);
     
     // パン撮影モードでは平均ストライドを使用
     if (isPanMode) {
@@ -1247,78 +1253,123 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
     const metrics: StepMetric[] = [];
 
-    for (let i = 0; i + 2 < contactFrames.length; i += 2) {
-      const contact = contactFrames[i];
-      const toeOff = contactFrames[i + 1];
-      const nextContact = contactFrames[i + 2];
+    if (calibrationType === 2) {
+      // 🎯 モード2（接地のみ）：接地フレーム間でステップを計算
+      console.log(`🎯 モード2（接地のみ）: ${contactFrames.length}個の接地フレーム`);
+      
+      for (let i = 0; i < contactFrames.length - 1; i++) {
+        const contact = contactFrames[i];
+        const nextContact = contactFrames[i + 1];
 
-      const contactTime =
-        toeOff > contact ? (toeOff - contact) / usedTargetFps : null;
-      const flightTime =
-        nextContact > toeOff ? (nextContact - toeOff) / usedTargetFps : null;
-      const stepTime =
-        nextContact > contact ? (nextContact - contact) / usedTargetFps : null;
-      // ピッチは「歩/秒」なので stepTime の逆数
-      const stepPitch = stepTime && stepTime > 0 ? 1 / stepTime : null;
+        // 接地時間・滞空時間は不明（離地データがないため）
+        const contactTime = null;
+        const flightTime = null;
+        
+        // ステップタイム = 次の接地までの時間
+        const stepTime = (nextContact - contact) / usedTargetFps;
+        const stepPitch = stepTime > 0 ? 1 / stepTime : null;
 
-      let stride: number | null = null;
+        let stride: number | null = null;
 
-      if (isPanMode) {
-        // 📹 パン撮影モード：平均ストライドを使用
-        if (distanceValue != null && totalSteps > 0) {
-          stride = distanceValue / totalSteps;
-          console.log(`  📹 ステップ${i / 2 + 1}: 平均ストライド=${stride.toFixed(2)}m`);
+        if (isPanMode) {
+          // 📹 パン撮影モード：平均ストライド
+          if (distanceValue != null && totalSteps > 0) {
+            stride = distanceValue / totalSteps;
+          }
+        } else {
+          // 📷 固定カメラモード：腰のX座標移動比率で配分
+          if (
+            poseResults.length > 0 &&
+            poseResults[contact]?.landmarks &&
+            poseResults[nextContact]?.landmarks &&
+            distanceValue != null &&
+            totalNormalizedDistance > 0
+          ) {
+            const pose1 = poseResults[contact]!.landmarks;
+            const pose2 = poseResults[nextContact]!.landmarks;
+            const hip1X = (pose1[23].x + pose1[24].x) / 2;
+            const hip2X = (pose2[23].x + pose2[24].x) / 2;
+            const normalizedStride = Math.abs(hip2X - hip1X);
+            stride = (normalizedStride / totalNormalizedDistance) * distanceValue;
+          } else if (distanceValue != null && totalSteps > 0) {
+            stride = distanceValue / totalSteps;
+          }
         }
-      } else {
-        // 📷 固定カメラモード：腰のX座標移動比率で配分
-        if (
-          poseResults.length > 0 &&
-          poseResults[contact]?.landmarks &&
-          nextContact != null &&
-          poseResults[nextContact]?.landmarks &&
-          distanceValue != null &&
-          totalNormalizedDistance > 0
-        ) {
-          const pose1 = poseResults[contact]!.landmarks;
-          const pose2 = poseResults[nextContact]!.landmarks;
 
-          // 腰の中心X座標を使用（足首より安定）
-          const hip1X = (pose1[23].x + pose1[24].x) / 2;
-          const hip2X = (pose2[23].x + pose2[24].x) / 2;
-          
-          // このステップの正規化移動距離
-          const normalizedStride = Math.abs(hip2X - hip1X);
-          
-          // 実測距離を各ステップの移動比率で配分
-          stride = (normalizedStride / totalNormalizedDistance) * distanceValue;
-          
-          console.log(`  📷 ステップ${i / 2 + 1}: 正規化移動=${normalizedStride.toFixed(4)}, 比率=${(normalizedStride / totalNormalizedDistance * 100).toFixed(1)}%, ストライド=${stride.toFixed(2)}m`);
-        } else if (distanceValue != null && totalSteps > 0) {
-          // 姿勢データがない場合は均等分割
-          stride = distanceValue / totalSteps;
-        }
+        const speedMps = stride != null && stepTime > 0 ? stride / stepTime : null;
+
+        metrics.push({
+          index: i + 1,
+          contactFrame: contact,
+          toeOffFrame: 0, // 離地不明
+          nextContactFrame: nextContact,
+          contactTime,
+          flightTime,
+          stepTime,
+          stepPitch,
+          stride,
+          speedMps,
+        });
       }
+    } else {
+      // ⚡ モード1/3（自動検出 or 完全手動）：接地・離地ペアでステップを計算
+      console.log(`⚡ モード1/3: ${Math.floor(contactFrames.length / 2)}ステップ`);
+      
+      for (let i = 0; i + 2 < contactFrames.length; i += 2) {
+        const contact = contactFrames[i];
+        const toeOff = contactFrames[i + 1];
+        const nextContact = contactFrames[i + 2];
 
-      const speedMps =
-        stride != null && stepTime != null && stepTime > 0
-          ? stride / stepTime
-          : null;
+        const contactTime = toeOff > contact ? (toeOff - contact) / usedTargetFps : null;
+        const flightTime = nextContact > toeOff ? (nextContact - toeOff) / usedTargetFps : null;
+        const stepTime = nextContact > contact ? (nextContact - contact) / usedTargetFps : null;
+        const stepPitch = stepTime && stepTime > 0 ? 1 / stepTime : null;
 
-      metrics.push({
-        index: metrics.length + 1,
-        contactFrame: contact,
-        toeOffFrame: toeOff,
-        nextContactFrame: nextContact ?? null,
-        contactTime,
-        flightTime,
-        stepTime,
-        stepPitch,
-        stride,
-        speedMps,
-      });
+        let stride: number | null = null;
+
+        if (isPanMode) {
+          if (distanceValue != null && totalSteps > 0) {
+            stride = distanceValue / totalSteps;
+          }
+        } else {
+          if (
+            poseResults.length > 0 &&
+            poseResults[contact]?.landmarks &&
+            nextContact != null &&
+            poseResults[nextContact]?.landmarks &&
+            distanceValue != null &&
+            totalNormalizedDistance > 0
+          ) {
+            const pose1 = poseResults[contact]!.landmarks;
+            const pose2 = poseResults[nextContact]!.landmarks;
+            const hip1X = (pose1[23].x + pose1[24].x) / 2;
+            const hip2X = (pose2[23].x + pose2[24].x) / 2;
+            const normalizedStride = Math.abs(hip2X - hip1X);
+            stride = (normalizedStride / totalNormalizedDistance) * distanceValue;
+          } else if (distanceValue != null && totalSteps > 0) {
+            stride = distanceValue / totalSteps;
+          }
+        }
+
+        const speedMps = stride != null && stepTime != null && stepTime > 0 ? stride / stepTime : null;
+
+        metrics.push({
+          index: metrics.length + 1,
+          contactFrame: contact,
+          toeOffFrame: toeOff,
+          nextContactFrame: nextContact ?? null,
+          contactTime,
+          flightTime,
+          stepTime,
+          stepPitch,
+          stride,
+          speedMps,
+        });
+      }
     }
+    
     return metrics;
-  }, [contactFrames, usedTargetFps, poseResults, distanceValue, isPanMode]);
+  }, [contactFrames, usedTargetFps, poseResults, distanceValue, isPanMode, calibrationType]);
 
   const stepSummary = useMemo(() => {
     if (!stepMetrics.length) {
@@ -6292,12 +6343,16 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                               <td>
                                 <input
                                   type="number"
-                                  value={manualContactFrames[idx * 2] ?? s.contactFrame}
+                                  value={calibrationType === 2 ? (manualContactFrames[idx] ?? s.contactFrame) : (manualContactFrames[idx * 2] ?? s.contactFrame)}
                                   onChange={(e) => {
                                     const newValue = parseInt(e.target.value);
                                     if (!isNaN(newValue)) {
                                       const updated = [...manualContactFrames];
-                                      updated[idx * 2] = newValue;
+                                      if (calibrationType === 2) {
+                                        updated[idx] = newValue;
+                                      } else {
+                                        updated[idx * 2] = newValue;
+                                      }
                                       setManualContactFrames(updated);
                                     }
                                   }}
