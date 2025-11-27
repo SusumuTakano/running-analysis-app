@@ -2082,6 +2082,12 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     const idx = clamp(currentFrame, 0, frames.length - 1);
     const frame = frames[idx];
 
+    // フレームが存在しない場合は描画をスキップ
+    if (!frame || !frame.width || !frame.height) {
+      console.warn(`⚠️ フレーム ${idx} が存在しないか無効です`);
+      return;
+    }
+
     const w = frame.width;
     const h = frame.height;
 
@@ -4970,6 +4976,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 const newManualToeOff = [...manualToeOffFrames];
                                 // 現在の値を取得（更新されている可能性がある）
                                 const currentContactFrame = newManual[i];
+                                if (currentContactFrame === undefined) {
+                                  console.error(`エラー: ステップ ${i + 1} の接地フレームが存在しません`);
+                                  return;
+                                }
                                 // 前ステップの離地フレームを正しく取得
                                 const prevToeOff = i > 0 ? (
                                   calibrationType === 3 ? newManualToeOff[i - 1] : newAuto[i - 1]
@@ -5002,6 +5012,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 const newManualToeOff = [...manualToeOffFrames];
                                 // 現在の値を取得（更新されている可能性がある）
                                 const currentContactFrame = newManual[i];
+                                if (currentContactFrame === undefined) return;
                                 // 前ステップの離地フレームを正しく取得
                                 const prevToeOff = i > 0 ? (
                                   calibrationType === 3 ? newManualToeOff[i - 1] : newAuto[i - 1]
@@ -5036,6 +5047,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 const currentContactFrame = newManual[i];
                                 // 離地フレームを正しく取得
                                 const currentToeOffFrame = calibrationType === 3 ? newManualToeOff[i] : newAuto[i];
+                                if (currentContactFrame === undefined || currentToeOffFrame === undefined) return;
                                 // +1: 1フレーム進める（ただし離地-1より後には進めない）
                                 const targetFrame = currentContactFrame + 1;
                                 const maxLimit = currentToeOffFrame > 0 ? currentToeOffFrame - 1 : framesCount - 1;
@@ -5066,6 +5078,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 const currentContactFrame = newManual[i];
                                 // 離地フレームを正しく取得
                                 const currentToeOffFrame = calibrationType === 3 ? newManualToeOff[i] : newAuto[i];
+                                if (currentContactFrame === undefined || currentToeOffFrame === undefined) return;
                                 // +5: 5フレーム進める（ただし離地-1より後には進めない）
                                 const targetFrame = currentContactFrame + 5;
                                 const maxLimit = currentToeOffFrame > 0 ? currentToeOffFrame - 1 : framesCount - 1;
@@ -5125,8 +5138,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 const newManual = [...manualContactFrames];
                                 // 現在の値を正しく取得
                                 const currentToeOffFrame = newAuto[i];
-                                // 接地フレームも最新値を取得
                                 const currentContactFrame = newManual[i];
+                                if (currentToeOffFrame === undefined || currentContactFrame === undefined) {
+                                  console.error(`エラー: ステップ ${i + 1} のフレームが存在しません (toe=${currentToeOffFrame}, contact=${currentContactFrame})`);
+                                  return;
+                                }
                                 // -5: 5フレーム戻す（ただし接地+1より前には戻れない）
                                 const targetFrame = currentToeOffFrame - 5;
                                 const minLimit = currentContactFrame + 1;
