@@ -6277,11 +6277,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                           <tr>
                             <th>#</th>
                             <th>接地 ✏️</th>
-                            <th>離地 ✏️</th>
-                            <th>接地時間</th>
-                            <th>滞空時間</th>
+                            {calibrationType !== 2 && <th>離地 ✏️</th>}
+                            {calibrationType !== 2 && <th>接地時間</th>}
+                            {calibrationType !== 2 && <th>滞空時間</th>}
                             <th>ピッチ</th>
-                            <th>ストライド</th>
+                            <th>ストライド{isPanMode ? ' (平均)' : ''}</th>
                             <th>スピード</th>
                           </tr>
                         </thead>
@@ -6310,29 +6310,31 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                   }}
                                 />
                               </td>
-                              <td>
-                                <input
-                                  type="number"
-                                  value={autoToeOffFrames[idx] ?? s.toeOffFrame}
-                                  onChange={(e) => {
-                                    const newValue = parseInt(e.target.value);
-                                    if (!isNaN(newValue)) {
-                                      const updated = [...autoToeOffFrames];
-                                      updated[idx] = newValue;
-                                      setAutoToeOffFrames(updated);
-                                    }
-                                  }}
-                                  style={{
-                                    width: '60px',
-                                    padding: '4px',
-                                    border: '1px solid #d1d5db',
-                                    borderRadius: '4px',
-                                    fontSize: '0.9rem'
-                                  }}
-                                />
-                              </td>
-                              <td>{s.contactTime?.toFixed(3) ?? "ー"}</td>
-                              <td>{s.flightTime?.toFixed(3) ?? "ー"}</td>
+                              {calibrationType !== 2 && (
+                                <td>
+                                  <input
+                                    type="number"
+                                    value={autoToeOffFrames[idx] ?? s.toeOffFrame}
+                                    onChange={(e) => {
+                                      const newValue = parseInt(e.target.value);
+                                      if (!isNaN(newValue)) {
+                                        const updated = [...autoToeOffFrames];
+                                        updated[idx] = newValue;
+                                        setAutoToeOffFrames(updated);
+                                      }
+                                    }}
+                                    style={{
+                                      width: '60px',
+                                      padding: '4px',
+                                      border: '1px solid #d1d5db',
+                                      borderRadius: '4px',
+                                      fontSize: '0.9rem'
+                                    }}
+                                  />
+                                </td>
+                              )}
+                              {calibrationType !== 2 && <td>{s.contactTime?.toFixed(3) ?? "ー"}</td>}
+                              {calibrationType !== 2 && <td>{s.flightTime?.toFixed(3) ?? "ー"}</td>}
                               <td>{s.stepPitch?.toFixed(2) ?? "ー"}</td>
                               <td>{s.stride?.toFixed(2) ?? "ー"}</td>
                               <td>{s.speedMps?.toFixed(2) ?? "ー"}</td>
