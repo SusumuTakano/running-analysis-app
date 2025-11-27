@@ -11,7 +11,7 @@ import Chart from "chart.js/auto";
 import { generateRunningEvaluation, type RunningEvaluation } from "./runningEvaluation";
 
 /** ウィザードのステップ */
-type WizardStep = 0 | 1 | 3 | 3.5 | 4 | 4.5 | 5 | 6 | 7 | 8 | 9;
+type WizardStep = 0 | 1 | 3 | 3.5 | 4 | 5 | 5.5 | 6 | 7 | 8 | 9;
 
 /** 測定者情報 */
 type AthleteInfo = {
@@ -863,95 +863,59 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     
     console.log(`🎓 高度な接地検出開始: 検索範囲=${startFrame}～${endFrame}`);
     
-    let bestCandidate: { frame: number; score: number } | null = null;
-    let bestScore = -Infinity;
+    // ✅ つま先のY座標の実際の値を配列化（谷検出用）
+    const toeYArray: { frame: number; toeY: number }[] = [];
+    for (let i = startFrame; i < endFrame; i++) {
+      const features = getMultiJointFeatures(poseResults[i]);
+      if (features) {
+        toeYArray.push({ frame: i, toeY: features.relativeToeHeight });
+      }
+    }
     
-    // ウィンドウサイズ：つま先が「止まった」ことを検出するため
-    const lookBehind = 5;  // 前方確認フレーム数
-    const lookAhead = 5;   // 後方確認フレーム数
+    if (toeYArray.length < 10) {
+      console.warn(`⚠️ データ不足: ${toeYArray.length}フレーム`);
+      return null;
+    }
     
-    for (let i = startFrame + lookBehind; i < endFrame - lookAhead; i++) {
-      const curr = getMultiJointFeatures(poseResults[i]);
-      if (!curr) continue;
+    // ✅ 谷検出: つま先が「最も下がって止まった位置」= 局所的な最大値
+    const windowSize = 7;  // 前後7フレーム（合計15フレーム）を確認
+    let bestContact: { frame: number; toeY: number; valleyDepth: number } | null = null;
+    
+    for (let idx = windowSize; idx < toeYArray.length - windowSize; idx++) {
+      const curr = toeYArray[idx];
       
-      // 前方フレーム群の平均つま先高さ
-      let beforeSum = 0, beforeCount = 0;
-      for (let j = 1; j <= lookBehind; j++) {
-        const f = getMultiJointFeatures(poseResults[i - j]);
-        if (f) { beforeSum += f.relativeToeHeight; beforeCount++; }
+      // 前方の平均
+      let beforeSum = 0;
+      for (let j = 1; j <= windowSize; j++) {
+        beforeSum += toeYArray[idx - j].toeY;
       }
-      const beforeAvg = beforeCount > 0 ? beforeSum / beforeCount : null;
+      const beforeAvg = beforeSum / windowSize;
       
-      // 後方フレーム群の平均つま先高さ
-      let afterSum = 0, afterCount = 0;
-      for (let j = 1; j <= lookAhead; j++) {
-        const f = getMultiJointFeatures(poseResults[i + j]);
-        if (f) { afterSum += f.relativeToeHeight; afterCount++; }
+      // 後方の平均
+      let afterSum = 0;
+      for (let j = 1; j <= windowSize; j++) {
+        afterSum += toeYArray[idx + j].toeY;
       }
-      const afterAvg = afterCount > 0 ? afterSum / afterCount : null;
+      const afterAvg = afterSum / windowSize;
       
-      if (beforeAvg === null || afterAvg === null) continue;
-      
-      // 接地の特徴スコア計算
-      let score = 0;
-      
-      // ✅ 1. つま先が「最も下がって止まっている」（最重要）
-      // 現在のつま先が前後両方のフレーム群より明確に低い
-      const toeIsLowest = curr.relativeToeHeight > beforeAvg && 
-                         curr.relativeToeHeight > afterAvg;
-      if (toeIsLowest) {
-        // つま先の「谷」の深さをスコア化（より深い谷 = より確実な接地）
-        const valleyDepth = (curr.relativeToeHeight - beforeAvg) + 
-                           (curr.relativeToeHeight - afterAvg);
-        score += valleyDepth * 200;  // 100 → 200に増強（最重要）
-        console.log(`  📍 Frame ${i}: つま先谷検出 (深さ=${valleyDepth.toFixed(4)}, +${(valleyDepth * 200).toFixed(1)}点)`);
-      }
-      
-      // ✅ 2. つま先の下降速度がゼロに近い（「止まった」ことの確認）
-      const prev3 = getMultiJointFeatures(poseResults[i - 3]);
-      const next3 = getMultiJointFeatures(poseResults[i + 3]);
-      if (prev3 && next3) {
-        const velocityBefore = curr.relativeToeHeight - prev3.relativeToeHeight;
-        const velocityAfter = next3.relativeToeHeight - curr.relativeToeHeight;
-        // 速度変化が小さい = 止まっている
-        const velocityChange = Math.abs(velocityAfter - velocityBefore);
-        if (velocityChange < 0.005) {
-          score += 30;
-          console.log(`  ⏸️  Frame ${i}: 速度変化小 (${velocityChange.toFixed(5)}, +30点)`);
+      // ✅ 谷の条件: 現在のつま先が前後の平均より「下」（Y座標が大きい）
+      if (curr.toeY > beforeAvg && curr.toeY > afterAvg) {
+        const valleyDepth = (curr.toeY - beforeAvg) + (curr.toeY - afterAvg);
+        
+        // ベストな谷を更新
+        if (!bestContact || valleyDepth > bestContact.valleyDepth) {
+          bestContact = { frame: curr.frame, toeY: curr.toeY, valleyDepth };
+          console.log(`  📍 谷候補 Frame ${curr.frame}: toeY=${curr.toeY.toFixed(4)}, 谷深さ=${valleyDepth.toFixed(4)}`);
         }
       }
-      
-      // 3. 膝の角度が接地に適している（120°～150°）
-      const kneeAngleDeg = Math.abs(curr.leftKneeAngle) * 180 / Math.PI;
-      if (kneeAngleDeg > 120 && kneeAngleDeg < 150) {
-        score += 15;
-        console.log(`  🦵 Frame ${i}: 膝角度適正 (${kneeAngleDeg.toFixed(1)}°, +15点)`);
-      }
-      
-      // 4. 足首が低い（地面に近い）
-      if (curr.relativeAnkleHeight > beforeAvg) {
-        score += 10;
-      }
-      
-      // 5. 腰の高さが低い（接地時は重心が下がる）
-      const prev5 = getMultiJointFeatures(poseResults[i - 5]);
-      if (prev5 && curr.hipHeight > prev5.hipHeight) {
-        score += 8;
-      }
-      
-      if (score > bestScore) {
-        bestScore = score;
-        bestCandidate = { frame: i, score };
-      }
     }
     
-    // 閾値を40点に引き上げ（誤検出を減らす）
-    if (bestCandidate && bestScore > 40) {
-      console.log(`✅ 高度な接地検出: フレーム ${bestCandidate.frame} (スコア=${bestScore.toFixed(2)})`);
-      return bestCandidate.frame;
+    if (bestContact && bestContact.valleyDepth > 0.001) {  // 最小谷深さ: 0.1%
+      console.log(`✅ 高度な接地検出: フレーム ${bestContact.frame} (toeY=${bestContact.toeY.toFixed(4)}, 谷深さ=${bestContact.valleyDepth.toFixed(4)})`);
+      return bestContact.frame;
     }
     
-    console.warn(`⚠️ 高度な接地検出失敗（開始: ${startFrame}, 最高スコア: ${bestScore.toFixed(2)}）`);
+    console.warn(`⚠️ 高度な接地検出失敗（開始: ${startFrame}, 谷が見つからない）`);
     return null;
   };
 
@@ -1004,7 +968,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const detectToeOffFrame = (contactFrame: number): number | null => {
     if (!poseResults.length) return null;
     
-    console.log(`🔍 離地検出開始（改良版：膝・足首・つま先統合）: 接地フレーム=${contactFrame}`);
+    console.log(`🔍 離地検出開始（改良版：つま先上昇検出）: 接地フレーム=${contactFrame}`);
     
     // 接地後、少なくとも8フレーム（約0.067秒@120fps）は接地していると仮定
     const minContactDuration = 8;
@@ -1019,28 +983,32 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     }
     
     // 接地時のつま先高さを基準値とする
-    const contactToeHeight = contactFeatures.relativeToeHeight;
-    console.log(`  📌 接地時つま先高さ: ${contactToeHeight.toFixed(4)}`);
+    const contactToeY = contactFeatures.relativeToeHeight;
+    console.log(`  📌 接地時つま先Y: ${contactToeY.toFixed(4)}`);
     
+    // ✅ つま先が「上昇を始めた瞬間」を検出
+    // 条件: 接地時より0.5%以上低くなった（Y座標が減少 = 上昇）
     for (let i = searchStart; i < searchEnd; i++) {
       const curr = getMultiJointFeatures(poseResults[i]);
-      const prev = getMultiJointFeatures(poseResults[i - 3]);
+      if (!curr) continue;
       
-      if (!curr || !prev) continue;
+      const currToeY = curr.relativeToeHeight;
+      const diff = contactToeY - currToeY;  // 正なら上昇
       
-      // ✅ 1. つま先が接地時より明確に上がっている
-      const heightIncrease = contactToeHeight - curr.relativeToeHeight;
-      if (heightIncrease > 0.01) {  // 閾値: 1%以上の上昇
-        // ✅ 2. 前フレームからも上昇している（上昇開始の瞬間）
-        const recentIncrease = prev.relativeToeHeight - curr.relativeToeHeight;
-        if (recentIncrease > 0.002) {  // 閾値: 0.2%以上の上昇
-          console.log(`✅ 離地検出: Frame ${i} (接地比+${(heightIncrease * 100).toFixed(2)}%, 直近+${(recentIncrease * 100).toFixed(2)}%)`);
-          return i;
+      if (diff > 0.005) {  // 閾値: 0.5%以上の上昇
+        // ✅ 前フレームと比較して上昇継続を確認
+        const prev = getMultiJointFeatures(poseResults[i - 2]);
+        if (prev) {
+          const prevDiff = contactToeY - prev.relativeToeHeight;
+          if (diff > prevDiff) {  // 上昇加速中
+            console.log(`✅ 離地検出: Frame ${i} (接地比+${(diff * 100).toFixed(2)}%, 前フレーム比+${((diff - prevDiff) * 100).toFixed(2)}%)`);
+            return i;
+          }
         }
       }
     }
     
-    console.warn(`⚠️ 離地が検出できませんでした（接地=${contactFrame}, 基準高さ=${contactToeHeight.toFixed(4)}）`);
+    console.warn(`⚠️ 離地が検出できませんでした（接地=${contactFrame}, 基準toeY=${contactToeY.toFixed(4)}）`);
     return null;
   };
 
@@ -1708,9 +1676,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         setStatus(`✅ 姿勢推定完了！（成功率: ${successRateStr}%）`);
       }
       
-      // 自動で次のステップへ（最初の1歩キャリブレーション）
+      // 自動で次のステップへ（区間設定）
       setTimeout(() => {
-        setWizardStep(4.5);
+        setWizardStep(5);
       }, 1000);
     } catch (e: any) {
       console.error("Pose estimation error:", e);
@@ -3969,11 +3937,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           </div>
         );
 
-      case 4.5:
+      case 5.5:
         return (
           <div className="wizard-content">
             <div className="wizard-step-header">
-              <h2 className="wizard-step-title">ステップ 4.5: 最初の1歩を手動設定</h2>
+              <h2 className="wizard-step-title">ステップ 5.5: 最初の1歩を手動設定</h2>
               <p className="wizard-step-desc">
                 最初の接地と離地を手動で設定してください。<br />
                 この情報を使って残りのステップを自動検出します。
@@ -4142,7 +4110,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             <div className="wizard-actions">
               <button 
                 className="btn-ghost" 
-                onClick={() => setWizardStep(4)}
+                onClick={() => setWizardStep(5)}
               >
                 ← 戻る
               </button>
@@ -4153,11 +4121,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     alert('接地フレームと離地フレームの両方を設定してください');
                     return;
                   }
-                  setWizardStep(5);
+                  setWizardStep(6);
                 }}
                 disabled={calibrationData.contactFrame === null || calibrationData.toeOffFrame === null}
               >
-                次へ: 区間設定 →
+                次へ: 自動検出 →
               </button>
             </div>
           </div>
@@ -4571,10 +4539,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   if (sectionMidFrame === null) {
                     setSectionMidFrame(Math.floor(framesCount / 2));
                   }
-                  setWizardStep(6);
+                  setWizardStep(5.5);
                 }}
               >
-                次へ：マーカー打ち
+                次へ：最初の1歩設定
               </button>
             </div>
           </div>
