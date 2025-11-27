@@ -603,10 +603,20 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     }
     
     // 区間内を順次検索
-    while (searchStartFrame < sectionEndFrame) {
+    let loopCount = 0;
+    const maxLoops = 50; // 無限ループ防止
+    while (searchStartFrame < sectionEndFrame && loopCount < maxLoops) {
+      loopCount++;
+      console.log(`🔄 ループ ${loopCount}: 検索開始フレーム=${searchStartFrame}, 終了=${sectionEndFrame}`);
+      
       // 次の接地を検出
       const contactFrame = detectNextContactFrame(searchStartFrame, sectionEndFrame);
-      if (contactFrame === null) break;
+      if (contactFrame === null) {
+        console.warn(`⚠️ ループ ${loopCount}: 接地が検出できませんでした（開始=${searchStartFrame}）`);
+        break;
+      }
+      
+      console.log(`✅ ループ ${loopCount}: 接地検出 Frame ${contactFrame}`);
       
       // 接地フレームを記録
       detectedContacts.push(contactFrame);
@@ -614,13 +624,21 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       // その接地に対応する離地を検出
       const toeOffFrame = detectToeOffFrame(contactFrame);
       if (toeOffFrame !== null) {
+        console.log(`✅ ループ ${loopCount}: 離地検出 Frame ${toeOffFrame}`);
         detectedToeOffs.push(toeOffFrame);
         // 次の検索は離地フレームの少し後から
         searchStartFrame = toeOffFrame + 5;
+        console.log(`➡️ 次の検索開始: ${searchStartFrame}`);
       } else {
+        console.warn(`⚠️ ループ ${loopCount}: 離地が検出できませんでした（接地=${contactFrame}）`);
         // 離地が見つからない場合は、接地の少し後から検索
         searchStartFrame = contactFrame + 10;
+        console.log(`➡️ 離地未検出、次の検索開始: ${searchStartFrame}`);
       }
+    }
+    
+    if (loopCount >= maxLoops) {
+      console.warn(`⚠️ 最大ループ数 ${maxLoops} に達しました`);
     }
     
     console.log(`✅ 自動検出完了: 接地 ${detectedContacts.length}回, 離地 ${detectedToeOffs.length}回`);
@@ -733,9 +751,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       // 1. 以前は下降していた（velocityBefore > 0）
       // 2. 現在は停止している（velocityCurrent ≈ 0）
       // 3. 次も停止または上昇し始める（velocityAfter <= 0）
-      const wasDescending = velocityBefore > 0.0005; // 下降中
-      const isNearZero = Math.abs(velocityCurrent) < 0.0003; // 停止
-      const stopsOrAscends = velocityAfter <= 0.0005; // 停止または上昇
+      const wasDescending = velocityBefore > 0.0002; // 下降中（感度UP: 0.0005 → 0.0002）
+      const isNearZero = Math.abs(velocityCurrent) < 0.0008; // 停止（感度UP: 0.0003 → 0.0008）
+      const stopsOrAscends = velocityAfter <= 0.001; // 停止または上昇（感度UP: 0.0005 → 0.001）
       
       if (wasDescending && isNearZero && stopsOrAscends) {
         // 極小値（谷）の確認：前後数フレームよりY座標が大きい（下にある）
@@ -794,9 +812,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       // 1. 以前は停止していた（velocityBefore ≈ 0）
       // 2. 現在は上昇し始めた（velocityCurrent < 0）
       // 3. 次も上昇している（velocityAfter < 0）
-      const wasStopped = Math.abs(velocityBefore) < 0.0003; // 停止
-      const isAscending = velocityCurrent < -0.0005; // 上昇中
-      const continuesAscending = velocityAfter < -0.0003; // 上昇継続
+      const wasStopped = Math.abs(velocityBefore) < 0.0008; // 停止（感度UP: 0.0003 → 0.0008）
+      const isAscending = velocityCurrent < -0.0002; // 上昇中（感度UP: -0.0005 → -0.0002）
+      const continuesAscending = velocityAfter < -0.0001; // 上昇継続（感度UP: -0.0003 → -0.0001）
       
       if (wasStopped && isAscending && continuesAscending) {
         // 上昇の確認：次の数フレームもY座標が小さくなる（上に移動）
