@@ -383,6 +383,11 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const [savedMidHipX, setSavedMidHipX] = useState<number | null>(null);
   const [savedEndHipX, setSavedEndHipX] = useState<number | null>(null);
   
+  // 🎥 パン撮影対応: 絶対ピクセル位置を保存（腰の位置ではなく、画面上の固定位置）
+  const [savedStartPixelX, setSavedStartPixelX] = useState<number | null>(null);
+  const [savedMidPixelX, setSavedMidPixelX] = useState<number | null>(null);
+  const [savedEndPixelX, setSavedEndPixelX] = useState<number | null>(null);
+  
   // ------------ 解析シチュエーション選択 ------------
   const [analysisType, setAnalysisType] = useState<'acceleration' | 'topSpeed'>('topSpeed');
 
@@ -870,7 +875,14 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         }
         setSavedStartHipX(hipX);
         setStartLineOffset(0);
-        console.log(`🟢 スタート地点初期値設定: Frame ${initialStart}, HipX=${hipX}`);
+        // 🎥 パン撮影対応: 初期ピクセル位置を保存
+        if (hipX !== null && displayCanvasRef.current) {
+          const pixelX = hipX * displayCanvasRef.current.width;
+          setSavedStartPixelX(pixelX);
+          console.log(`🟢 スタート地点初期値設定: Frame ${initialStart}, HipX=${hipX}, PixelX=${pixelX.toFixed(0)}`);
+        } else {
+          console.log(`🟢 スタート地点初期値設定: Frame ${initialStart}, HipX=${hipX}`);
+        }
       }
       
       if (sectionEndFrame === null) {
@@ -889,7 +901,14 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         }
         setSavedEndHipX(hipX);
         setEndLineOffset(0);
-        console.log(`🔴 フィニッシュ地点初期値設定: Frame ${initialEnd}, HipX=${hipX}`);
+        // 🎥 パン撮影対応: 初期ピクセル位置を保存
+        if (hipX !== null && displayCanvasRef.current) {
+          const pixelX = hipX * displayCanvasRef.current.width;
+          setSavedEndPixelX(pixelX);
+          console.log(`🔴 フィニッシュ地点初期値設定: Frame ${initialEnd}, HipX=${hipX}, PixelX=${pixelX.toFixed(0)}`);
+        } else {
+          console.log(`🔴 フィニッシュ地点初期値設定: Frame ${initialEnd}, HipX=${hipX}`);
+        }
       }
       
       if (sectionMidFrame === null) {
@@ -908,7 +927,14 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         }
         setSavedMidHipX(hipX);
         setMidLineOffset(0);
-        console.log(`🟡 中間地点初期値設定: Frame ${initialMid}, HipX=${hipX}`);
+        // 🎥 パン撮影対応: 初期ピクセル位置を保存
+        if (hipX !== null && displayCanvasRef.current) {
+          const pixelX = hipX * displayCanvasRef.current.width;
+          setSavedMidPixelX(pixelX);
+          console.log(`🟡 中間地点初期値設定: Frame ${initialMid}, HipX=${hipX}, PixelX=${pixelX.toFixed(0)}`);
+        } else {
+          console.log(`🟡 中間地点初期値設定: Frame ${initialMid}, HipX=${hipX}`);
+        }
       }
     }
   }, [wizardStep, framesCount, poseResults, sectionStartFrame, sectionEndFrame, sectionMidFrame]);
@@ -1717,6 +1743,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     setSavedStartHipX(null);
     setSavedMidHipX(null);
     setSavedEndHipX(null);
+    // 🎥 パン撮影対応: ピクセル位置もクリア
+    setSavedStartPixelX(null);
+    setSavedMidPixelX(null);
+    setSavedEndPixelX(null);
     setManualContactFrames([]);
     setAutoToeOffFrames([]);
     setCalibrationMode(0);
@@ -2162,21 +2192,26 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     viewParams?: { srcX: number; srcY: number; srcW: number; srcH: number; scale: number }
   ) => {
     const markers = [
-      { frame: sectionStartFrame, color: "#10b981", label: "スタート", offset: startLineOffset, savedHipX: savedStartHipX },
-      { frame: sectionMidFrame, color: "#f59e0b", label: "中間", offset: midLineOffset, savedHipX: savedMidHipX },
-      { frame: sectionEndFrame, color: "#ef4444", label: "フィニッシュ", offset: endLineOffset, savedHipX: savedEndHipX },
+      { frame: sectionStartFrame, color: "#10b981", label: "スタート", offset: startLineOffset, savedHipX: savedStartHipX, savedPixelX: savedStartPixelX },
+      { frame: sectionMidFrame, color: "#f59e0b", label: "中間", offset: midLineOffset, savedHipX: savedMidHipX, savedPixelX: savedMidPixelX },
+      { frame: sectionEndFrame, color: "#ef4444", label: "フィニッシュ", offset: endLineOffset, savedHipX: savedEndHipX, savedPixelX: savedEndPixelX },
     ];
 
-    markers.forEach(({ frame, color, label, offset, savedHipX }) => {
+    markers.forEach(({ frame, color, label, offset, savedHipX, savedPixelX }) => {
       // フレームが設定されていない場合はスキップ
       if (frame == null) return;
 
-      // 保存された腰の位置を使用（正規化座標 0-1）
       let torsoX: number;
       let fromPose = false;
       
-      if (savedHipX !== null) {
-        // 保存された位置を使用（常に設定時の腰の位置を表示）
+      // 🎥 パン撮影対応: 固定ピクセル位置を優先使用
+      if (isPanMode && savedPixelX !== null) {
+        // パン撮影モード: 最初に設定したピクセル位置に固定
+        torsoX = savedPixelX;
+        fromPose = true;
+        console.log(`🎥 [${label}] Pan mode: Using fixed pixel position: ${torsoX.toFixed(0)}px`);
+      } else if (savedHipX !== null) {
+        // 固定カメラモード: 腰の位置を使用（従来通り）
         if (viewParams) {
           // 拡大表示時の座標変換
           const origX = savedHipX * width;
@@ -2187,7 +2222,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           torsoX = savedHipX * width;
         }
         fromPose = true;
-        console.log(`📌 [${label}] Using saved hip position: ${(savedHipX * 100).toFixed(1)}% → ${torsoX.toFixed(0)}px`);
+        console.log(`📌 [${label}] Fixed camera: Using saved hip position: ${(savedHipX * 100).toFixed(1)}% → ${torsoX.toFixed(0)}px`);
       } else {
         // 保存された位置がない場合はデフォルト（センター）
         torsoX = width / 2;
