@@ -717,23 +717,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     // 検索開始位置の決定
     let searchStartFrame = sectionStartFrame;
     
-    if (calibrationData.toeOffFrame !== null) {
-      // ✅ キャリブレーションがある場合：離地の後から検索
-      searchStartFrame = calibrationData.toeOffFrame + 5;
-      console.log(`📍 検索範囲: Frame ${searchStartFrame} ～ ${sectionEndFrame} (キャリブレーション離地 ${calibrationData.toeOffFrame} の後から)`);
-    } else if (detectionMode === 1) {
-      // モード1: スタートフレームから検索
-      console.log(`📍 検索範囲: Frame ${searchStartFrame} ～ ${sectionEndFrame} (スタートから全自動)`);
-    } else {
-      // モード2・3: 旧キャリブレーション後から検索
-      const calibrationToeOffFrame = calibrationType === 3 ? manualToeOffFrames[0] : autoToeOffFrames[0];
-      if (!calibrationToeOffFrame) {
-        console.error('❌ キャリブレーションの離地フレームが設定されていません');
-        return;
-      }
-      searchStartFrame = calibrationToeOffFrame + 5;
-      console.log(`📍 検索範囲: Frame ${searchStartFrame} ～ ${sectionEndFrame} (キャリブレーション離地 ${calibrationToeOffFrame} の後から)`);
-    }
+    // 🚀 ステップ5.5削除後：常にスタートフレームから検索
+    console.log(`📍 検索範囲: Frame ${searchStartFrame} ～ ${sectionEndFrame} (区間スタートから全自動検出)`);
+    console.log(`🎯 検出モード: ${calibrationType === 1 ? '⚡自動検出' : calibrationType === 2 ? '🎯接地のみ' : '✋完全手動'}`);
     
     // 区間内を順次検索
     let loopCount = 0;
