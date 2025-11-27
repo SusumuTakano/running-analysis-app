@@ -11,7 +11,7 @@ import Chart from "chart.js/auto";
 import { generateRunningEvaluation, type RunningEvaluation } from "./runningEvaluation";
 
 /** ウィザードのステップ */
-type WizardStep = 0 | 1 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+type WizardStep = 0 | 1 | 3 | 3.5 | 4 | 5 | 6 | 7 | 8 | 9;
 
 /** 測定者情報 */
 type AthleteInfo = {
@@ -431,6 +431,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   // ------------ 区間設定クリックモード ------------
   const [sectionClickMode, setSectionClickMode] = useState<'start' | 'mid' | 'end' | null>(null);
 
+  // 🎥 パン撮影モード（カメラ追従撮影対応）
+  const [isPanMode, setIsPanMode] = useState<boolean>(false);
+
   // ------------ 接地／離地マーカー（検出モード） ------------
   // 検出モード: 
   // 1 = 自動検出（接地・離地とも自動）
@@ -481,6 +484,36 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     setToeOffThreshold(null);
     setBaseThreshold(null);
     setCalibrationType(null); // 方式選択もリセット
+  };
+
+  // 🎥 パン撮影対応：腰からの相対的なつま先の高さを取得
+  // カメラが移動しても、体幹からの相対位置で足の動きを検出
+  const getRelativeToeHeight = (poseData: FramePoseData | null): number | null => {
+    if (!poseData || !poseData.landmarks) return null;
+    
+    // 腰の位置（基準点）
+    const leftHip = poseData.landmarks[23];
+    const rightHip = poseData.landmarks[24];
+    if (!leftHip || !rightHip) return null;
+    const hipY = (leftHip.y + rightHip.y) / 2;
+    
+    // つま先の位置
+    let leftToe = poseData.landmarks[31];
+    let rightToe = poseData.landmarks[32];
+    if (!leftToe || !rightToe) return null;
+    
+    // 水平補正を適用
+    if (isHorizonCalibrated && horizonAngle !== 0) {
+      const centerX = displayCanvasRef.current?.width ? displayCanvasRef.current.width / 2 : 0;
+      const centerY = displayCanvasRef.current?.height ? displayCanvasRef.current.height / 2 : 0;
+      leftToe = rotatePoint(leftToe.x, leftToe.y, leftToe.z, leftToe.visibility, horizonAngle, centerX, centerY);
+      rightToe = rotatePoint(rightToe.x, rightToe.y, rightToe.z, rightToe.visibility, horizonAngle, centerX, centerY);
+    }
+    
+    const toeY = Math.max(leftToe.y, rightToe.y);
+    
+    // 腰からつま先までの相対的な高さ（パン撮影でも安定）
+    return toeY - hipY;
   };
 
   // つま先のY座標を取得（地面に近い方を基準）
@@ -709,9 +742,12 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     let count = 0;
     
     for (let i = start; i <= end; i++) {
-      const toeY = getToeY(poseResults[i]);
-      if (toeY !== null) {
-        sum += toeY;
+      // 🎥 パン撮影モード: 腰からの相対位置を使用
+      const toeValue = isPanMode 
+        ? getRelativeToeHeight(poseResults[i]) 
+        : getToeY(poseResults[i]);
+      if (toeValue !== null) {
+        sum += toeValue;
         count++;
       }
     }
@@ -1931,10 +1967,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         setCurrentFrame(0);
         setStatus(`✅ フレーム抽出完了（${framesRef.current.length} フレーム）`);
         
-        // 自動で次のステップへ（姿勢推定）
+        // 🎥 パン撮影モード選択画面へ（ステップ3.5）
         setTimeout(() => {
-          setWizardStep(4);
-          runPoseEstimation();
+          setWizardStep(3.5); // パン撮影モード選択
         }, 1000);
         return;
       }
@@ -3531,6 +3566,117 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 </button>
               </div>
             )}
+          </div>
+        );
+
+      case 3.5:
+        return (
+          <div className="wizard-content">
+            <div className="wizard-step-header">
+              <h2 className="wizard-step-title">🎥 撮影モード選択</h2>
+              <p className="wizard-step-desc">
+                動画の撮影方法を選択してください。
+              </p>
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '24px',
+              margin: '32px 0'
+            }}>
+              {/* 固定カメラモード */}
+              <div 
+                onClick={() => {
+                  setIsPanMode(false);
+                  setWizardStep(4);
+                  runPoseEstimation();
+                }}
+                style={{
+                  background: !isPanMode ? '#dbeafe' : 'white',
+                  border: !isPanMode ? '3px solid #3b82f6' : '2px solid #e5e7eb',
+                  borderRadius: '16px',
+                  padding: '32px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  textAlign: 'center'
+                }}
+              >
+                <div style={{ fontSize: '4rem', marginBottom: '16px' }}>📹</div>
+                <h3 style={{ fontSize: '1.3rem', fontWeight: 'bold', marginBottom: '12px', color: '#1f2937' }}>
+                  固定カメラ
+                </h3>
+                <p style={{ fontSize: '0.95rem', color: '#6b7280', marginBottom: '16px', lineHeight: '1.6' }}>
+                  カメラを三脚で固定して撮影<br/>
+                  <strong>推奨:</strong> 4-6m区間を高精度測定
+                </p>
+                <div style={{ 
+                  background: '#f0f9ff', 
+                  padding: '12px', 
+                  borderRadius: '8px',
+                  fontSize: '0.85rem',
+                  color: '#0369a1'
+                }}>
+                  ✅ 高精度<br/>
+                  ✅ 安定した検出
+                </div>
+              </div>
+
+              {/* パン撮影モード */}
+              <div 
+                onClick={() => {
+                  setIsPanMode(true);
+                  setWizardStep(4);
+                  runPoseEstimation();
+                }}
+                style={{
+                  background: isPanMode ? '#dbeafe' : 'white',
+                  border: isPanMode ? '3px solid #3b82f6' : '2px solid #e5e7eb',
+                  borderRadius: '16px',
+                  padding: '32px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  textAlign: 'center'
+                }}
+              >
+                <div style={{ fontSize: '4rem', marginBottom: '16px' }}>🎥</div>
+                <h3 style={{ fontSize: '1.3rem', fontWeight: 'bold', marginBottom: '12px', color: '#1f2937' }}>
+                  パン撮影（追従）
+                </h3>
+                <p style={{ fontSize: '0.95rem', color: '#6b7280', marginBottom: '16px', lineHeight: '1.6' }}>
+                  カメラで人物を追いながら撮影<br/>
+                  <strong>推奨:</strong> 10-20m全体を測定
+                </p>
+                <div style={{ 
+                  background: '#fef3c7', 
+                  padding: '12px', 
+                  borderRadius: '8px',
+                  fontSize: '0.85rem',
+                  color: '#92400e'
+                }}>
+                  🚀 10m以上対応<br/>
+                  ⚡ 人物を大きく撮影
+                </div>
+              </div>
+            </div>
+
+            <div style={{
+              background: '#fffbeb',
+              border: '2px solid #fbbf24',
+              borderRadius: '12px',
+              padding: '20px',
+              marginTop: '24px'
+            }}>
+              <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#92400e' }}>
+                💡 パン撮影のコツ
+              </div>
+              <ul style={{ fontSize: '0.9rem', color: '#78350f', margin: 0, paddingLeft: '20px' }}>
+                <li>人物を画面の中央・大きく保つ（画面の60-80%）</li>
+                <li>スムーズに追従（急な動きを避ける）</li>
+                <li>120fps で撮影（モーションブラー軽減）</li>
+                <li>光学ズームを活用</li>
+              </ul>
+            </div>
           </div>
         );
 
