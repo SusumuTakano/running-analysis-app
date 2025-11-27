@@ -1215,25 +1215,35 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     if (!usedTargetFps) return [];
     if (contactFrames.length < 3) return [];
 
-    // ✅ 実測距離ベース: 各ステップの腰のX座標移動比率で配分
-    // 総正規化距離を計算（腰のX座標を使用してより正確に）
+    // ✅ パン撮影モード：平均ストライドを使用（カメラ移動の影響を除外）
+    // ✅ 固定カメラモード：腰のX座標移動比率で配分
+    
     let totalNormalizedDistance = 0;
-    if (poseResults.length > 0) {
-      for (let j = 0; j + 2 < contactFrames.length; j += 2) {
-        const c1 = contactFrames[j];
-        const c2 = contactFrames[j + 2];
-        if (poseResults[c1]?.landmarks && poseResults[c2]?.landmarks) {
-          const p1 = poseResults[c1]!.landmarks;
-          const p2 = poseResults[c2]!.landmarks;
-          // 腰の中心を使用（より安定）
-          const hip1X = (p1[23].x + p1[24].x) / 2;
-          const hip2X = (p2[23].x + p2[24].x) / 2;
-          totalNormalizedDistance += Math.abs(hip2X - hip1X);
+    const totalSteps = Math.floor(contactFrames.length / 2);
+    
+    // パン撮影モードでは平均ストライドを使用
+    if (isPanMode) {
+      console.log(`📹 パン撮影モード: 平均ストライドを使用`);
+      console.log(`📏 実測距離: ${distanceValue}m, 総ステップ数: ${totalSteps}, 平均ストライド: ${distanceValue && totalSteps > 0 ? (distanceValue / totalSteps).toFixed(2) : 'N/A'}m`);
+    } else {
+      // 固定カメラモードでは腰のX座標移動比率で配分
+      if (poseResults.length > 0) {
+        for (let j = 0; j + 2 < contactFrames.length; j += 2) {
+          const c1 = contactFrames[j];
+          const c2 = contactFrames[j + 2];
+          if (poseResults[c1]?.landmarks && poseResults[c2]?.landmarks) {
+            const p1 = poseResults[c1]!.landmarks;
+            const p2 = poseResults[c2]!.landmarks;
+            // 腰の中心を使用（より安定）
+            const hip1X = (p1[23].x + p1[24].x) / 2;
+            const hip2X = (p2[23].x + p2[24].x) / 2;
+            totalNormalizedDistance += Math.abs(hip2X - hip1X);
+          }
         }
       }
+      console.log(`📷 固定カメラモード: 腰のX座標移動比率で配分`);
+      console.log(`📏 実測距離: ${distanceValue}m, 総正規化移動: ${totalNormalizedDistance.toFixed(4)}`);
     }
-    
-    console.log(`📏 実測距離: ${distanceValue}m, 総正規化移動: ${totalNormalizedDistance.toFixed(4)}`);
 
     const metrics: StepMetric[] = [];
 
@@ -1253,33 +1263,40 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
       let stride: number | null = null;
 
-      if (
-        poseResults.length > 0 &&
-        poseResults[contact]?.landmarks &&
-        nextContact != null &&
-        poseResults[nextContact]?.landmarks &&
-        distanceValue != null &&
-        totalNormalizedDistance > 0
-      ) {
-        const pose1 = poseResults[contact]!.landmarks;
-        const pose2 = poseResults[nextContact]!.landmarks;
+      if (isPanMode) {
+        // 📹 パン撮影モード：平均ストライドを使用
+        if (distanceValue != null && totalSteps > 0) {
+          stride = distanceValue / totalSteps;
+          console.log(`  📹 ステップ${i / 2 + 1}: 平均ストライド=${stride.toFixed(2)}m`);
+        }
+      } else {
+        // 📷 固定カメラモード：腰のX座標移動比率で配分
+        if (
+          poseResults.length > 0 &&
+          poseResults[contact]?.landmarks &&
+          nextContact != null &&
+          poseResults[nextContact]?.landmarks &&
+          distanceValue != null &&
+          totalNormalizedDistance > 0
+        ) {
+          const pose1 = poseResults[contact]!.landmarks;
+          const pose2 = poseResults[nextContact]!.landmarks;
 
-        // 腰の中心X座標を使用（足首より安定）
-        const hip1X = (pose1[23].x + pose1[24].x) / 2;
-        const hip2X = (pose2[23].x + pose2[24].x) / 2;
-        
-        // このステップの正規化移動距離
-        const normalizedStride = Math.abs(hip2X - hip1X);
-        
-        // 実測距離を各ステップの移動比率で配分
-        stride = (normalizedStride / totalNormalizedDistance) * distanceValue;
-        
-        console.log(`  ステップ${i / 2 + 1}: 正規化移動=${normalizedStride.toFixed(4)}, 比率=${(normalizedStride / totalNormalizedDistance * 100).toFixed(1)}%, ストライド=${stride.toFixed(2)}m`);
-      } else if (distanceValue != null) {
-        // 姿勢データがない場合は均等分割
-        const totalSteps = Math.floor(contactFrames.length / 2);
-        const denom = totalSteps > 0 ? totalSteps : 1;
-        stride = distanceValue / denom;
+          // 腰の中心X座標を使用（足首より安定）
+          const hip1X = (pose1[23].x + pose1[24].x) / 2;
+          const hip2X = (pose2[23].x + pose2[24].x) / 2;
+          
+          // このステップの正規化移動距離
+          const normalizedStride = Math.abs(hip2X - hip1X);
+          
+          // 実測距離を各ステップの移動比率で配分
+          stride = (normalizedStride / totalNormalizedDistance) * distanceValue;
+          
+          console.log(`  📷 ステップ${i / 2 + 1}: 正規化移動=${normalizedStride.toFixed(4)}, 比率=${(normalizedStride / totalNormalizedDistance * 100).toFixed(1)}%, ストライド=${stride.toFixed(2)}m`);
+        } else if (distanceValue != null && totalSteps > 0) {
+          // 姿勢データがない場合は均等分割
+          stride = distanceValue / totalSteps;
+        }
       }
 
       const speedMps =
@@ -1301,7 +1318,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       });
     }
     return metrics;
-  }, [contactFrames, usedTargetFps, poseResults, distanceValue]);
+  }, [contactFrames, usedTargetFps, poseResults, distanceValue, isPanMode]);
 
   const stepSummary = useMemo(() => {
     if (!stepMetrics.length) {
@@ -1555,20 +1572,20 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
       });
 
-      // デバイスに応じた設定（安定性重視）
+      // 🚀 最高精度設定（固定カメラの検出率向上）
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
       
       pose.setOptions({
-        modelComplexity: 1, // 標準モデル（0 < 1 < 2、バランス重視）
+        modelComplexity: 2, // 🔥 最高精度モデル（0 < 1 < 2）
         smoothLandmarks: true,
         enableSegmentation: false,
         smoothSegmentation: false,
-        minDetectionConfidence: 0.5, // 検出閾値を標準に（0.5 = 高精度）
-        minTrackingConfidence: 0.5, // トラッキング閾値を標準に
+        minDetectionConfidence: 0.1, // 🔥🔥 検出閾値を最低に（0.1 = 最大限検出）
+        minTrackingConfidence: 0.1, // 🔥🔥 トラッキング閾値を最低に
       });
       
-      console.log(`🎯 Pose estimation config: mobile=${isMobile}, iOS=${isIOS}, modelComplexity=1 (balanced)`);
+      console.log(`🚀🔥 Pose estimation config: ULTRA SENSITIVITY - mobile=${isMobile}, iOS=${isIOS}, modelComplexity=2, confidence=0.1 (LOWEST)`);
 
       const results: (FramePoseData | null)[] = [];
 
