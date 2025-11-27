@@ -4967,13 +4967,15 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                               onClick={() => {
                                 const newManual = [...manualContactFrames];
                                 const prevToeOff = i > 0 ? contactFrames[(i - 1) * 2 + 1] : 0;
+                                // 現在の値を取得（更新されている可能性がある）
+                                const currentContactFrame = newManual[i];
                                 // -5: 5フレーム戻す（ただし前ステップの離地+1より前には戻れない）
-                                const targetFrame = contactFrame - 5;
+                                const targetFrame = currentContactFrame - 5;
                                 const adjustedFrame = Math.max(prevToeOff + 1, targetFrame);
                                 newManual[i] = adjustedFrame;
                                 setManualContactFrames(newManual);
                                 setCurrentFrame(adjustedFrame);
-                                console.log(`-5ボタン: ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最小制限=${prevToeOff + 1}）`);
+                                console.log(`-5ボタン: ステップ ${i + 1} の接地を ${currentContactFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最小制限=${prevToeOff + 1}）`);
                               }}
                               style={{
                                 padding: '4px 12px',
@@ -4991,13 +4993,15 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                               onClick={() => {
                                 const newManual = [...manualContactFrames];
                                 const prevToeOff = i > 0 ? contactFrames[(i - 1) * 2 + 1] : 0;
+                                // 現在の値を取得（更新されている可能性がある）
+                                const currentContactFrame = newManual[i];
                                 // -1: 1フレーム戻す（ただし前ステップの離地+1より前には戻れない）
-                                const targetFrame = contactFrame - 1;
+                                const targetFrame = currentContactFrame - 1;
                                 const adjustedFrame = Math.max(prevToeOff + 1, targetFrame);
                                 newManual[i] = adjustedFrame;
                                 setManualContactFrames(newManual);
                                 setCurrentFrame(adjustedFrame);
-                                console.log(`-1ボタン: ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最小制限=${prevToeOff + 1}）`);
+                                console.log(`-1ボタン: ステップ ${i + 1} の接地を ${currentContactFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最小制限=${prevToeOff + 1}）`);
                               }}
                               style={{
                                 padding: '4px 12px',
@@ -5014,13 +5018,15 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                             <button
                               onClick={() => {
                                 const newManual = [...manualContactFrames];
+                                // 現在の値を取得（更新されている可能性がある）
+                                const currentContactFrame = newManual[i];
                                 // +1: 1フレーム進める（ただし離地-1より後には進めない）
-                                const targetFrame = contactFrame + 1;
+                                const targetFrame = currentContactFrame + 1;
                                 const adjustedFrame = Math.min(toeOffFrame - 1, targetFrame);
                                 newManual[i] = adjustedFrame;
                                 setManualContactFrames(newManual);
                                 setCurrentFrame(adjustedFrame);
-                                console.log(`+1ボタン: ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最大制限=${toeOffFrame - 1}）`);
+                                console.log(`+1ボタン: ステップ ${i + 1} の接地を ${currentContactFrame} → ${adjustedFrame} の修正（目標=${targetFrame}, 最大制限=${toeOffFrame - 1}）`);
                               }}
                               style={{
                                 padding: '4px 12px',
@@ -5037,13 +5043,15 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                             <button
                               onClick={() => {
                                 const newManual = [...manualContactFrames];
+                                // 現在の値を取得（更新されている可能性がある）
+                                const currentContactFrame = newManual[i];
                                 // +5: 5フレーム進める（ただし離地-1より後には進めない）
-                                const targetFrame = contactFrame + 5;
+                                const targetFrame = currentContactFrame + 5;
                                 const adjustedFrame = Math.min(toeOffFrame - 1, targetFrame);
                                 newManual[i] = adjustedFrame;
                                 setManualContactFrames(newManual);
                                 setCurrentFrame(adjustedFrame);
-                                console.log(`+5ボタン: ステップ ${i + 1} の接地を ${contactFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最大制限=${toeOffFrame - 1}）`);
+                                console.log(`+5ボタン: ステップ ${i + 1} の接地を ${currentContactFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最大制限=${toeOffFrame - 1}）`);
                               }}
                               style={{
                                 padding: '4px 12px',
@@ -5092,13 +5100,15 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                               onClick={() => {
                                 // このステップ（i）の離地フレームのみを修正
                                 const newAuto = [...autoToeOffFrames];
+                                // 現在の値を取得（更新されている可能性がある）
+                                const currentToeOffFrame = newAuto[i - 1];
                                 // -5: 5フレーム戻す（ただし接地+1より前には戻れない）
-                                const targetFrame = toeOffFrame - 5;
+                                const targetFrame = currentToeOffFrame - 5;
                                 const adjustedFrame = Math.max(contactFrame + 1, targetFrame);
                                 newAuto[i - 1] = adjustedFrame; // i-1: 最初はキャリブレーション
                                 setAutoToeOffFrames(newAuto);
                                 setCurrentFrame(adjustedFrame);
-                                console.log(`-5ボタン: ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最小制限=${contactFrame + 1}）`);
+                                console.log(`-5ボタン: ステップ ${i + 1} の離地を ${currentToeOffFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最小制限=${contactFrame + 1}）`);
                               }}
                               style={{
                                 padding: '4px 12px',
@@ -5115,13 +5125,15 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                             <button
                               onClick={() => {
                                 const newAuto = [...autoToeOffFrames];
+                                // 現在の値を取得（更新されている可能性がある）
+                                const currentToeOffFrame = newAuto[i - 1];
                                 // -1: 1フレーム戻す（ただし接地+1より前には戻れない）
-                                const targetFrame = toeOffFrame - 1;
+                                const targetFrame = currentToeOffFrame - 1;
                                 const adjustedFrame = Math.max(contactFrame + 1, targetFrame);
                                 newAuto[i - 1] = adjustedFrame;
                                 setAutoToeOffFrames(newAuto);
                                 setCurrentFrame(adjustedFrame);
-                                console.log(`-1ボタン: ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最小制限=${contactFrame + 1}）`);
+                                console.log(`-1ボタン: ステップ ${i + 1} の離地を ${currentToeOffFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最小制限=${contactFrame + 1}）`);
                               }}
                               style={{
                                 padding: '4px 12px',
@@ -5138,13 +5150,15 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                             <button
                               onClick={() => {
                                 const newAuto = [...autoToeOffFrames];
+                                // 現在の値を取得（更新されている可能性がある）
+                                const currentToeOffFrame = newAuto[i - 1];
                                 // +1: 1フレーム進める（ただし最終フレームを超えない）
-                                const targetFrame = toeOffFrame + 1;
+                                const targetFrame = currentToeOffFrame + 1;
                                 const adjustedFrame = Math.min(framesCount - 1, targetFrame);
                                 newAuto[i - 1] = adjustedFrame;
                                 setAutoToeOffFrames(newAuto);
                                 setCurrentFrame(adjustedFrame);
-                                console.log(`+1ボタン: ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最大制限=${framesCount - 1}）`);
+                                console.log(`+1ボタン: ステップ ${i + 1} の離地を ${currentToeOffFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最大制限=${framesCount - 1}）`);
                               }}
                               style={{
                                 padding: '4px 12px',
@@ -5161,13 +5175,15 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                             <button
                               onClick={() => {
                                 const newAuto = [...autoToeOffFrames];
+                                // 現在の値を取得（更新されている可能性がある）
+                                const currentToeOffFrame = newAuto[i - 1];
                                 // +5: 5フレーム進める（ただし最終フレームを超えない）
-                                const targetFrame = toeOffFrame + 5;
+                                const targetFrame = currentToeOffFrame + 5;
                                 const adjustedFrame = Math.min(framesCount - 1, targetFrame);
                                 newAuto[i - 1] = adjustedFrame;
                                 setAutoToeOffFrames(newAuto);
                                 setCurrentFrame(adjustedFrame);
-                                console.log(`+5ボタン: ステップ ${i + 1} の離地を ${toeOffFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最大制限=${framesCount - 1}）`);
+                                console.log(`+5ボタン: ステップ ${i + 1} の離地を ${currentToeOffFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最大制限=${framesCount - 1}）`);
                               }}
                               style={{
                                 padding: '4px 12px',
