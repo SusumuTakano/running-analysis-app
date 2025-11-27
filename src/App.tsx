@@ -53,6 +53,7 @@ type StepMetric = {
   stepPitch: number | null;
   stride: number | null;
   speedMps: number | null;
+  acceleration: number | null; // 加速度 (m/s²)
 };
 
 /** 各フレームの姿勢推定結果 */
@@ -1309,6 +1310,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           stepPitch,
           stride,
           speedMps,
+          acceleration: null, // 後で計算
         });
       }
     } else {
@@ -1364,9 +1366,23 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           stepPitch,
           stride,
           speedMps,
+          acceleration: null, // 後で計算
         });
       }
     }
+    
+    // 加速度を計算（各ステップ間の速度変化）
+    for (let i = 0; i < metrics.length - 1; i++) {
+      const currentSpeed = metrics[i].speedMps;
+      const nextSpeed = metrics[i + 1].speedMps;
+      const stepTime = metrics[i].stepTime;
+      
+      if (currentSpeed != null && nextSpeed != null && stepTime != null && stepTime > 0) {
+        // 加速度 = (次の速度 - 現在の速度) / 時間
+        metrics[i].acceleration = (nextSpeed - currentSpeed) / stepTime;
+      }
+    }
+    // 最後のステップは次のステップがないので加速度なし
     
     return metrics;
   }, [contactFrames, usedTargetFps, poseResults, distanceValue, isPanMode, calibrationType]);
@@ -6187,6 +6203,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                             pitch: calcAvg(firstHalf, 'stepPitch'),
                             stride: calcAvg(firstHalf, 'stride'),
                             speed: calcAvg(firstHalf, 'speedMps'),
+                            acceleration: calcAvg(firstHalf, 'acceleration'),
                           };
                           
                           const secondHalfAvg = {
@@ -6195,6 +6212,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                             pitch: calcAvg(secondHalf, 'stepPitch'),
                             stride: calcAvg(secondHalf, 'stride'),
                             speed: calcAvg(secondHalf, 'speedMps'),
+                            acceleration: calcAvg(secondHalf, 'acceleration'),
                           };
                           
                           return (
@@ -6249,6 +6267,18 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                                 <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>後半 スピード</div>
                                 <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px' }}>
                                   {secondHalfAvg.speed?.toFixed(2) ?? 'ー'}m/s
+                                </div>
+                              </div>
+                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>前半 加速度</div>
+                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px', color: firstHalfAvg.acceleration != null && firstHalfAvg.acceleration > 0 ? '#10b981' : firstHalfAvg.acceleration != null && firstHalfAvg.acceleration < 0 ? '#ef4444' : 'white' }}>
+                                  {firstHalfAvg.acceleration != null ? `${firstHalfAvg.acceleration > 0 ? '+' : ''}${firstHalfAvg.acceleration.toFixed(2)}` : 'ー'}m/s²
+                                </div>
+                              </div>
+                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>後半 加速度</div>
+                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px', color: secondHalfAvg.acceleration != null && secondHalfAvg.acceleration > 0 ? '#10b981' : secondHalfAvg.acceleration != null && secondHalfAvg.acceleration < 0 ? '#ef4444' : 'white' }}>
+                                  {secondHalfAvg.acceleration != null ? `${secondHalfAvg.acceleration > 0 ? '+' : ''}${secondHalfAvg.acceleration.toFixed(2)}` : 'ー'}m/s²
                                 </div>
                               </div>
                             </div>
@@ -6334,6 +6364,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                             <th>ピッチ</th>
                             <th>ストライド{isPanMode ? ' (平均)' : ''}</th>
                             <th>スピード</th>
+                            <th>加速度</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -6393,6 +6424,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                               <td>{s.stepPitch?.toFixed(2) ?? "ー"}</td>
                               <td>{s.stride?.toFixed(2) ?? "ー"}</td>
                               <td>{s.speedMps?.toFixed(2) ?? "ー"}</td>
+                              <td style={{ color: s.acceleration != null && s.acceleration > 0 ? '#10b981' : s.acceleration != null && s.acceleration < 0 ? '#ef4444' : 'inherit' }}>
+                                {s.acceleration != null ? `${s.acceleration > 0 ? '+' : ''}${s.acceleration.toFixed(2)}` : "ー"} {s.acceleration != null && 'm/s²'}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
