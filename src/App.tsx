@@ -426,11 +426,14 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   // ------------ 区間設定クリックモード ------------
   const [sectionClickMode, setSectionClickMode] = useState<'start' | 'mid' | 'end' | null>(null);
 
-  // ------------ 接地／離地マーカー（キャリブレーション対応） ------------
-  // キャリブレーション方式: 
-  // 1 = 1歩完全手動→残り完全自動
-  // 2 = 1歩完全手動→残り接地のみ手動
-  // 3 = すべて手動
+  // ------------ 接地／離地マーカー（検出モード） ------------
+  // 検出モード: 
+  // 1 = 自動検出（接地・離地とも自動）
+  // 2 = 接地のみ手動（離地なし、ピッチ・ストライド解析用）
+  // 3 = 接地・離地とも手動（接地時間も解析）
+  const [detectionMode, setDetectionMode] = useState<1 | 2 | 3 | null>(null);
+  
+  // 旧変数（互換性のため残す）
   const [calibrationType, setCalibrationType] = useState<1 | 2 | 3 | null>(null);
   const [calibrationMode, setCalibrationMode] = useState<number>(0); // キャリブレーション進捗 (0-2: 接地1→離地1→完了)
   const [calibrationData, setCalibrationData] = useState<{contact1?: number, toeOff1?: number}>({});
@@ -440,16 +443,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const [autoToeOffFrames, setAutoToeOffFrames] = useState<number[]>([]); // 離地フレーム（自動判定）
   const [manualToeOffFrames, setManualToeOffFrames] = useState<number[]>([]); // 離地フレーム（手動、方式3用）
   
-  // 水平キャリブレーション用ステート
-  const [horizonPoint1, setHorizonPoint1] = useState<{x: number, y: number} | null>(null); // 基準点1（レーン上）
-  const [horizonPoint2, setHorizonPoint2] = useState<{x: number, y: number} | null>(null); // 基準点2（レーン上）
-  const [horizonAngle, setHorizonAngle] = useState<number>(0); // 水平補正角度（ラジアン）
-  const [isHorizonCalibrated, setIsHorizonCalibrated] = useState<boolean>(false); // キャリブレーション完了フラグ
-  const [horizonZoom, setHorizonZoom] = useState<number>(1); // ズーム倍率（1 = 100%）
-  const [horizonPan, setHorizonPan] = useState<{x: number, y: number}>({x: 0, y: 0}); // パン位置
-  const [isPanning, setIsPanning] = useState<boolean>(false); // パン中かどうか
-  const [panStart, setPanStart] = useState<{x: number, y: number} | null>(null); // パン開始位置
-  const [hadPanned, setHadPanned] = useState<boolean>(false); // パン操作が行われたかどうか（クリック抑制用）
+  // 水平補正は使用しない（常に0度）が、座標変換関数の互換性のため変数は保持
+  const horizonAngle = 0; // 水平補正角度（使用しない）
+  const isHorizonCalibrated = false; // 水平キャリブレーション不要
   
   // 互換性のため、contactFrames を計算で生成（接地・離地を交互に並べる）
   const contactFrames = useMemo(() => {
@@ -3494,351 +3490,6 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         );
 
       case 5:
-        // 水平キャリブレーション（トラックレーンを基準に水平補正）
-        return (
-          <div className="wizard-content">
-            <div className="wizard-step-header">
-              <h2 className="wizard-step-title">ステップ 5: 水平キャリブレーション</h2>
-              <p className="wizard-step-desc">
-                トラックのレーンや基準線上の2点をクリックして、水平基準を設定してください。
-              </p>
-            </div>
-
-            {/* 説明 */}
-            <div style={{
-              background: '#f0f9ff',
-              padding: '20px',
-              borderRadius: '12px',
-              margin: '16px 0',
-              border: '2px solid #3b82f6'
-            }}>
-              <h4 style={{ marginBottom: '12px', color: '#1e40af', fontWeight: 'bold' }}>
-                📏 水平補正について
-              </h4>
-              <div style={{ fontSize: '0.95rem', color: '#374151', lineHeight: '1.6' }}>
-                <p style={{ marginBottom: '8px' }}>
-                  カメラの傾きを補正することで、つま先の高さを正確に測定できます。
-                </p>
-                <p style={{ marginBottom: '8px' }}>
-                  <strong>手順：</strong>
-                </p>
-                <ol style={{ marginLeft: '20px', marginBottom: '12px' }}>
-                  <li>トラックのレーン（白線）や地面の基準線上で、<strong>左端の点</strong>をクリック</li>
-                  <li>同じレーン上で、<strong>右端の点</strong>をクリック</li>
-                  <li>2点を結ぶ線が水平基準となり、全座標が自動補正されます</li>
-                </ol>
-                <p style={{ fontSize: '0.85rem', color: '#6b7280' }}>
-                  💡 ヒント: できるだけ画面の左右端に近い2点を選ぶと精度が向上します
-                </p>
-              </div>
-            </div>
-
-            {/* ズームコントロール */}
-            <div style={{
-              display: 'flex',
-              gap: '12px',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '12px',
-              padding: '12px',
-              background: '#f9fafb',
-              borderRadius: '8px'
-            }}>
-              <button
-                onClick={() => setHorizonZoom(Math.max(1, horizonZoom - 0.5))}
-                disabled={horizonZoom <= 1}
-                style={{
-                  padding: '8px 16px',
-                  fontSize: '1rem',
-                  fontWeight: 'bold',
-                  borderRadius: '6px',
-                  border: '2px solid #3b82f6',
-                  background: horizonZoom <= 1 ? '#e5e7eb' : 'white',
-                  color: horizonZoom <= 1 ? '#9ca3af' : '#3b82f6',
-                  cursor: horizonZoom <= 1 ? 'not-allowed' : 'pointer'
-                }}
-              >
-                🔍 ズームアウト
-              </button>
-              <div style={{ fontWeight: 'bold', color: '#374151', minWidth: '80px', textAlign: 'center' }}>
-                {Math.round(horizonZoom * 100)}%
-              </div>
-              <button
-                onClick={() => setHorizonZoom(Math.min(5, horizonZoom + 0.5))}
-                disabled={horizonZoom >= 5}
-                style={{
-                  padding: '8px 16px',
-                  fontSize: '1rem',
-                  fontWeight: 'bold',
-                  borderRadius: '6px',
-                  border: '2px solid #3b82f6',
-                  background: horizonZoom >= 5 ? '#e5e7eb' : 'white',
-                  color: horizonZoom >= 5 ? '#9ca3af' : '#3b82f6',
-                  cursor: horizonZoom >= 5 ? 'not-allowed' : 'pointer'
-                }}
-              >
-                🔍 ズームイン
-              </button>
-              {horizonZoom > 1 && (
-                <button
-                  onClick={() => {
-                    setHorizonZoom(1);
-                    setHorizonPan({x: 0, y: 0});
-                  }}
-                  style={{
-                    padding: '8px 16px',
-                    fontSize: '0.9rem',
-                    fontWeight: 'bold',
-                    borderRadius: '6px',
-                    border: '1px solid #6b7280',
-                    background: 'white',
-                    color: '#374151',
-                    cursor: 'pointer'
-                  }}
-                >
-                  リセット
-                </button>
-              )}
-            </div>
-
-            {/* キャンバスプレビュー */}
-            <div className="canvas-area" style={{ 
-              marginBottom: '2rem', 
-              position: 'relative',
-              overflow: horizonZoom > 1 ? 'hidden' : 'visible',
-              cursor: isPanning ? 'grabbing' : (isHorizonCalibrated ? 'default' : (horizonZoom > 1 ? 'grab' : 'crosshair'))
-            }}>
-              <canvas 
-                ref={displayCanvasRef} 
-                className="preview-canvas"
-                onMouseDown={(e) => {
-                  if (horizonZoom > 1 && !isHorizonCalibrated) {
-                    setIsPanning(true);
-                    setHadPanned(false); // パン開始時はリセット
-                    setPanStart({ x: e.clientX - horizonPan.x, y: e.clientY - horizonPan.y });
-                  }
-                }}
-                onMouseMove={(e) => {
-                  if (isPanning && panStart) {
-                    setHadPanned(true); // マウスが動いたらパン操作フラグを立てる
-                    const newPanX = e.clientX - panStart.x;
-                    const newPanY = e.clientY - panStart.y;
-                    setHorizonPan({ x: newPanX, y: newPanY });
-                  }
-                }}
-                onMouseUp={(e) => {
-                  setIsPanning(false);
-                  setPanStart(null);
-                  // hadPannedフラグは少し遅れてリセット（onClickより後に実行されるように）
-                  setTimeout(() => setHadPanned(false), 100);
-                }}
-                onMouseLeave={() => {
-                  setIsPanning(false);
-                  setPanStart(null);
-                  setTimeout(() => setHadPanned(false), 100);
-                }}
-                onClick={(e) => {
-                  // パン操作中またはパン直後のクリックを防ぐ
-                  if (hadPanned || isPanning || isHorizonCalibrated) return;
-                  
-                  const canvas = displayCanvasRef.current;
-                  if (!canvas) return;
-                  
-                  const rect = canvas.getBoundingClientRect();
-                  const x = e.clientX - rect.left;
-                  const y = e.clientY - rect.top;
-                  
-                  // ズームとパンを考慮した座標変換
-                  const scaleX = canvas.width / rect.width;
-                  const scaleY = canvas.height / rect.height;
-                  
-                  const adjustedX = (x - horizonPan.x / horizonZoom) * scaleX;
-                  const adjustedY = (y - horizonPan.y / horizonZoom) * scaleY;
-                  
-                  const actualX = adjustedX / horizonZoom;
-                  const actualY = adjustedY / horizonZoom;
-                  
-                  if (!horizonPoint1) {
-                    setHorizonPoint1({ x: actualX, y: actualY });
-                    console.log(`✅ 基準点1を設定: (${actualX.toFixed(1)}, ${actualY.toFixed(1)})`);
-                  } else if (!horizonPoint2) {
-                    setHorizonPoint2({ x: actualX, y: actualY });
-                    const angle = calculateHorizonAngle(horizonPoint1, { x: actualX, y: actualY });
-                    setHorizonAngle(angle);
-                    setIsHorizonCalibrated(true);
-                    console.log(`✅ 基準点2を設定、水平角度: ${(angle * 180 / Math.PI).toFixed(2)}°`);
-                    
-                    // 2点設定完了後、1秒後に自動的に次のステップへ進む
-                    setTimeout(() => {
-                      setWizardStep(6);
-                      console.log('➡️ 水平キャリブレーション完了、次のステップへ自動進行');
-                    }, 1000);
-                  }
-                }}
-                style={{ 
-                  transform: `scale(${horizonZoom}) translate(${horizonPan.x / horizonZoom}px, ${horizonPan.y / horizonZoom}px)`,
-                  transformOrigin: 'top left',
-                  transition: isPanning ? 'none' : 'transform 0.2s ease-out'
-                }}
-              />
-              
-              {/* 選択した点を表示 */}
-              {horizonPoint1 && displayCanvasRef.current && (
-                <div style={{
-                  position: 'absolute',
-                  left: `${(horizonPoint1.x / displayCanvasRef.current.width) * 100}%`,
-                  top: `${(horizonPoint1.y / displayCanvasRef.current.height) * 100}%`,
-                  width: '16px',
-                  height: '16px',
-                  background: '#10b981',
-                  border: '3px solid white',
-                  borderRadius: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-                  pointerEvents: 'none'
-                }} />
-              )}
-              {horizonPoint2 && displayCanvasRef.current && (
-                <div style={{
-                  position: 'absolute',
-                  left: `${(horizonPoint2.x / displayCanvasRef.current.width) * 100}%`,
-                  top: `${(horizonPoint2.y / displayCanvasRef.current.height) * 100}%`,
-                  width: '16px',
-                  height: '16px',
-                  background: '#3b82f6',
-                  border: '3px solid white',
-                  borderRadius: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-                  pointerEvents: 'none'
-                }} />
-              )}
-              
-              {/* 基準線を表示 */}
-              {horizonPoint1 && horizonPoint2 && displayCanvasRef.current && (
-                <svg style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%',
-                  pointerEvents: 'none'
-                }}>
-                  <line
-                    x1={`${(horizonPoint1.x / displayCanvasRef.current.width) * 100}%`}
-                    y1={`${(horizonPoint1.y / displayCanvasRef.current.height) * 100}%`}
-                    x2={`${(horizonPoint2.x / displayCanvasRef.current.width) * 100}%`}
-                    y2={`${(horizonPoint2.y / displayCanvasRef.current.height) * 100}%`}
-                    stroke="#f59e0b"
-                    strokeWidth="3"
-                    strokeDasharray="10,5"
-                  />
-                </svg>
-              )}
-            </div>
-
-            {/* 状態表示 */}
-            <div style={{
-              background: '#f9fafb',
-              padding: '16px',
-              borderRadius: '8px',
-              marginBottom: '16px'
-            }}>
-              <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', alignItems: 'center' }}>
-                <div style={{
-                  padding: '12px 20px',
-                  borderRadius: '8px',
-                  background: horizonPoint1 ? '#d1fae5' : '#fee2e2',
-                  border: horizonPoint1 ? '2px solid #10b981' : '2px solid #ef4444',
-                  fontWeight: 'bold',
-                  color: horizonPoint1 ? '#065f46' : '#991b1b'
-                }}>
-                  {horizonPoint1 ? '✅ 基準点1: 設定済み' : '❌ 基準点1: 未設定'}
-                </div>
-                <span style={{ fontSize: '1.5rem' }}>→</span>
-                <div style={{
-                  padding: '12px 20px',
-                  borderRadius: '8px',
-                  background: horizonPoint2 ? '#dbeafe' : '#fee2e2',
-                  border: horizonPoint2 ? '2px solid #3b82f6' : '2px solid #ef4444',
-                  fontWeight: 'bold',
-                  color: horizonPoint2 ? '#1e40af' : '#991b1b'
-                }}>
-                  {horizonPoint2 ? '✅ 基準点2: 設定済み' : '❌ 基準点2: 未設定'}
-                </div>
-              </div>
-              
-              {isHorizonCalibrated && (
-                <div style={{
-                  marginTop: '16px',
-                  padding: '12px',
-                  background: '#fef3c7',
-                  borderRadius: '8px',
-                  textAlign: 'center',
-                  border: '2px solid #f59e0b'
-                }}>
-                  <div style={{ fontWeight: 'bold', color: '#92400e', marginBottom: '4px' }}>
-                    📐 検出された傾き角度
-                  </div>
-                  <div style={{ fontSize: '1.3rem', fontWeight: 'bold', color: '#92400e' }}>
-                    {(horizonAngle * 180 / Math.PI).toFixed(2)}°
-                  </div>
-                  <div style={{ fontSize: '0.85rem', color: '#78350f', marginTop: '4px' }}>
-                    この角度で全座標を補正します
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* アクションボタン */}
-            <div className="wizard-actions">
-              <button className="btn-ghost" onClick={() => setWizardStep(4)}>
-                前へ
-              </button>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                {(horizonPoint1 || horizonPoint2) && (
-                  <button
-                    className="btn-ghost"
-                    onClick={() => {
-                      setHorizonPoint1(null);
-                      setHorizonPoint2(null);
-                      setHorizonAngle(0);
-                      setIsHorizonCalibrated(false);
-                      console.log('🔄 水平キャリブレーションをリセット');
-                    }}
-                  >
-                    やり直し
-                  </button>
-                )}
-                <button
-                  className="btn-ghost"
-                  onClick={() => {
-                    // キャリブレーションをスキップ
-                    setIsHorizonCalibrated(false);
-                    setHorizonAngle(0);
-                    setWizardStep(6);
-                    console.log('⏭️ 水平キャリブレーションをスキップ');
-                  }}
-                >
-                  スキップ（補正なし）
-                </button>
-                <button
-                  className="btn-primary-large"
-                  onClick={() => setWizardStep(6)}
-                  disabled={!isHorizonCalibrated}
-                  style={{
-                    opacity: isHorizonCalibrated ? 1 : 0.5,
-                    cursor: isHorizonCalibrated ? 'pointer' : 'not-allowed'
-                  }}
-                >
-                  次へ：区間設定
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-
-      case 6:
         // 姿勢推定データがない場合は強制的にステップ4に戻す
         if (poseResults.length === 0) {
           return (
@@ -4246,7 +3897,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   if (sectionMidFrame === null) {
                     setSectionMidFrame(Math.floor(framesCount / 2));
                   }
-                  setWizardStep(7);
+                  setWizardStep(6);
                 }}
               >
                 次へ：マーカー打ち
@@ -4255,14 +3906,14 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           </div>
         );
 
-      case 7:
+      case 6:
         return (
           <div className="wizard-content">
             <div className="wizard-step-header">
-              <h2 className="wizard-step-title">ステップ 7: 接地/離地マーカー</h2>
+              <h2 className="wizard-step-title">ステップ 6: 検出モード選択</h2>
               
-              {/* キャリブレーション方式選択 */}
-              {calibrationType === null ? (
+              {/* 検出モード選択 */}
+              {detectionMode === null ? (
                 <div style={{
                   background: '#f0f9ff',
                   padding: '24px',
@@ -4276,14 +3927,17 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     marginBottom: '16px',
                     color: '#1e40af'
                   }}>
-                    📊 キャリブレーション方式を選択
+                    📊 検出モードを選択
                   </h3>
                   <p style={{ marginBottom: '16px', color: '#374151' }}>
-                    あなたの解析スタイルに合った方式を選んでください：
+                    解析スタイルに合ったモードを選んでください：
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <button
-                      onClick={() => setCalibrationType(1)}
+                      onClick={() => {
+                        setDetectionMode(1);
+                        setCalibrationType(1);
+                      }}
                       style={{
                         padding: '16px',
                         borderRadius: '8px',
@@ -4297,18 +3951,21 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
                     >
                       <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '4px', color: '#047857' }}>
-                        ⚡ 1. 自動マーカー
+                        ⚡ 1. 自動検出（推奨）
                       </div>
                       <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '4px' }}>
-                        最初の接地・離地のみ手動 → 以後はつま先の高さ判定で全自動
+                        接地・離地をつま先の動き（下降→停止→上昇）から全自動で検出
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 'bold' }}>
-                        ⚠️ 姿勢推定（Step 4）が必須
+                      <div style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 'bold' }}>
+                        ✅ 手動調整可能 | 接地時間・ピッチ・ストライド解析
                       </div>
                     </button>
                     
                     <button
-                      onClick={() => setCalibrationType(2)}
+                      onClick={() => {
+                        setDetectionMode(2);
+                        setCalibrationType(2);
+                      }}
                       style={{
                         padding: '16px',
                         borderRadius: '8px',
@@ -4322,18 +3979,21 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
                     >
                       <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '4px', color: '#1e40af' }}>
-                        🎯 2. 半自動マーカー（推奨）
+                        🎯 2. 接地のみ手動入力
                       </div>
                       <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '4px' }}>
-                        最初の接地・離地のみ手動 → 以後は接地のみ手動、離地は接地時のつま先高さで自動判定
+                        接地のみ手動でマーク。離地は検出せず、ピッチとストライドのみ解析
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 'bold' }}>
-                        ⚠️ 姿勢推定（Step 4）が必須
+                      <div style={{ fontSize: '0.75rem', color: '#3b82f6', fontWeight: 'bold' }}>
+                        ✅ シンプル | ピッチ・ストライド解析のみ
                       </div>
                     </button>
                     
                     <button
-                      onClick={() => setCalibrationType(3)}
+                      onClick={() => {
+                        setDetectionMode(3);
+                        setCalibrationType(3);
+                      }}
                       style={{
                         padding: '16px',
                         borderRadius: '8px',
@@ -4347,13 +4007,13 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
                     >
                       <div style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '4px', color: '#92400e' }}>
-                        ✋ 3. 手動マーカー
+                        ✋ 3. 接地・離地とも手動入力
                       </div>
                       <div style={{ fontSize: '0.9rem', color: '#6b7280', marginBottom: '4px' }}>
-                        接地・離地をすべて手動で行う（最も正確だが時間がかかる）
+                        接地・離地をすべて手動でマーク。接地時間も正確に解析可能
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 'bold' }}>
-                        ✅ 姿勢推定なしでも使用可能
+                      <div style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 'bold' }}>
+                        ✅ 最も正確 | 接地時間・ピッチ・ストライド全解析
                       </div>
                     </button>
                   </div>
@@ -5350,7 +5010,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 </button>
                 <button
                   className="btn-primary-large"
-                  onClick={() => setWizardStep(8)}
+                  onClick={() => setWizardStep(7)}
                 >
                   次へ：解析結果
                 </button>
@@ -5359,7 +5019,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           </div>
         );
 
-      case 8:
+      case 7:
         return (
           <div className="wizard-content">
             <div className="wizard-step-header">
@@ -5831,7 +5491,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   </button>
                   <button
                     className="wizard-btn"
-                    onClick={() => setWizardStep(9)}
+                    onClick={() => setWizardStep(8)}
                     style={{
                       background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
                       border: 'none',
@@ -5846,7 +5506,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           </div>
         );
 
-      case 9:
+      case 8:
         return (
           <div className="wizard-content">
             <div className="wizard-step-header">
@@ -6214,7 +5874,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             <div style={{ marginTop: '32px', display: 'flex', gap: '12px', justifyContent: 'space-between' }}>
               <button
                 className="wizard-btn secondary"
-                onClick={() => setWizardStep(8)}
+                onClick={() => setWizardStep(7)}
               >
                 前へ: 解析結果
               </button>
