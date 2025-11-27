@@ -5979,13 +5979,26 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       </div>
                     </div>
 
+                    <div style={{
+                      background: '#f0f9ff',
+                      border: '2px solid #3b82f6',
+                      borderRadius: '8px',
+                      padding: '12px 16px',
+                      margin: '16px 0',
+                      fontSize: '0.9rem',
+                      color: '#1e40af'
+                    }}>
+                      ✏️ <strong>接地・離地フレームを直接編集できます</strong><br/>
+                      数値をクリックして修正し、Enterキーで確定してください。
+                    </div>
+
                     <div className="table-scroll">
                       <table className="metrics-table">
                         <thead>
                           <tr>
                             <th>#</th>
-                            <th>接地</th>
-                            <th>離地</th>
+                            <th>接地 ✏️</th>
+                            <th>離地 ✏️</th>
                             <th>接地時間</th>
                             <th>滞空時間</th>
                             <th>ピッチ</th>
@@ -5994,11 +6007,51 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                           </tr>
                         </thead>
                         <tbody>
-                          {stepMetrics.map((s) => (
+                          {stepMetrics.map((s, idx) => (
                             <tr key={s.index}>
                               <td>{s.index}</td>
-                              <td>{s.contactFrame}</td>
-                              <td>{s.toeOffFrame}</td>
+                              <td>
+                                <input
+                                  type="number"
+                                  value={manualContactFrames[idx * 2] ?? s.contactFrame}
+                                  onChange={(e) => {
+                                    const newValue = parseInt(e.target.value);
+                                    if (!isNaN(newValue)) {
+                                      const updated = [...manualContactFrames];
+                                      updated[idx * 2] = newValue;
+                                      setManualContactFrames(updated);
+                                    }
+                                  }}
+                                  style={{
+                                    width: '60px',
+                                    padding: '4px',
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '4px',
+                                    fontSize: '0.9rem'
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  value={autoToeOffFrames[idx] ?? s.toeOffFrame}
+                                  onChange={(e) => {
+                                    const newValue = parseInt(e.target.value);
+                                    if (!isNaN(newValue)) {
+                                      const updated = [...autoToeOffFrames];
+                                      updated[idx] = newValue;
+                                      setAutoToeOffFrames(updated);
+                                    }
+                                  }}
+                                  style={{
+                                    width: '60px',
+                                    padding: '4px',
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '4px',
+                                    fontSize: '0.9rem'
+                                  }}
+                                />
+                              </td>
                               <td>{s.contactTime?.toFixed(3) ?? "ー"}</td>
                               <td>{s.flightTime?.toFixed(3) ?? "ー"}</td>
                               <td>{s.stepPitch?.toFixed(2) ?? "ー"}</td>
