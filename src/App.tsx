@@ -11,7 +11,7 @@ import Chart from "chart.js/auto";
 import { generateRunningEvaluation, type RunningEvaluation } from "./runningEvaluation";
 
 /** ウィザードのステップ */
-type WizardStep = 0 | 1 | 3 | 3.5 | 4 | 5 | 6 | 7 | 8 | 9;
+type WizardStep = 0 | 1 | 3 | 3.5 | 4 | 4.5 | 5 | 6 | 7 | 8 | 9;
 
 /** 測定者情報 */
 type AthleteInfo = {
@@ -457,7 +457,15 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   // 旧変数（互換性のため残す）
   const [calibrationType, setCalibrationType] = useState<1 | 2 | 3 | null>(null);
   const [calibrationMode, setCalibrationMode] = useState<number>(0); // キャリブレーション進捗 (0-2: 接地1→離地1→完了)
-  const [calibrationData, setCalibrationData] = useState<{contact1?: number, toeOff1?: number}>({});
+  const [calibrationData, setCalibrationData] = useState<{
+    contactFrame: number | null;
+    toeOffFrame: number | null;
+    contact1?: number;
+    toeOff1?: number;
+  }>({
+    contactFrame: null,
+    toeOffFrame: null
+  });
   const [toeOffThreshold, setToeOffThreshold] = useState<number | null>(null); // つま先上昇閾値（ピクセル）
   const [baseThreshold, setBaseThreshold] = useState<number | null>(null); // 元の閾値（調整用）
   const [manualContactFrames, setManualContactFrames] = useState<number[]>([]); // 接地フレーム（手動）
@@ -493,7 +501,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     setAutoToeOffFrames([]);
     setManualToeOffFrames([]);
     setCalibrationMode(0);
-    setCalibrationData({});
+    setCalibrationData({ contactFrame: null, toeOffFrame: null });
     setToeOffThreshold(null);
     setBaseThreshold(null);
     setCalibrationType(null); // 方式選択もリセット
@@ -693,15 +701,25 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     const detectedContacts: number[] = [];
     const detectedToeOffs: number[] = [];
     
-    // モード1（自動検出）: スタートフレームから直接検索
-    // モード2・3（手動）: キャリブレーション離地の後から検索
+    // ✅ キャリブレーションデータがあれば最初の1歩として追加
+    if (calibrationData.contactFrame !== null && calibrationData.toeOffFrame !== null) {
+      detectedContacts.push(calibrationData.contactFrame);
+      detectedToeOffs.push(calibrationData.toeOffFrame);
+      console.log(`🎯 キャリブレーション: 最初の1歩を追加 (接地=${calibrationData.contactFrame}, 離地=${calibrationData.toeOffFrame})`);
+    }
+    
+    // 検索開始位置の決定
     let searchStartFrame = sectionStartFrame;
     
-    if (detectionMode === 1) {
+    if (calibrationData.toeOffFrame !== null) {
+      // ✅ キャリブレーションがある場合：離地の後から検索
+      searchStartFrame = calibrationData.toeOffFrame + 5;
+      console.log(`📍 検索範囲: Frame ${searchStartFrame} ～ ${sectionEndFrame} (キャリブレーション離地 ${calibrationData.toeOffFrame} の後から)`);
+    } else if (detectionMode === 1) {
       // モード1: スタートフレームから検索
       console.log(`📍 検索範囲: Frame ${searchStartFrame} ～ ${sectionEndFrame} (スタートから全自動)`);
     } else {
-      // モード2・3: キャリブレーション後から検索
+      // モード2・3: 旧キャリブレーション後から検索
       const calibrationToeOffFrame = calibrationType === 3 ? manualToeOffFrames[0] : autoToeOffFrames[0];
       if (!calibrationToeOffFrame) {
         console.error('❌ キャリブレーションの離地フレームが設定されていません');
@@ -1124,7 +1142,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           // キャリブレーションモード：1歩分(接地→離地)を手動マーク
           if (calibrationMode === 0) {
             // 接地
-            setCalibrationData({ contact1: currentFrame });
+            setCalibrationData({ contactFrame: null, toeOffFrame: null, contact1: currentFrame });
             setCalibrationMode(1);
             console.log(`📍 キャリブレーション 1/2: 接地フレーム ${currentFrame}`);
           } else if (calibrationMode === 1) {
@@ -1690,9 +1708,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         setStatus(`✅ 姿勢推定完了！（成功率: ${successRateStr}%）`);
       }
       
-      // 自動で次のステップへ（区間設定）
+      // 自動で次のステップへ（最初の1歩キャリブレーション）
       setTimeout(() => {
-        setWizardStep(5);
+        setWizardStep(4.5);
       }, 1000);
     } catch (e: any) {
       console.error("Pose estimation error:", e);
@@ -3951,6 +3969,200 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           </div>
         );
 
+      case 4.5:
+        return (
+          <div className="wizard-content">
+            <div className="wizard-step-header">
+              <h2 className="wizard-step-title">ステップ 4.5: 最初の1歩を手動設定</h2>
+              <p className="wizard-step-desc">
+                最初の接地と離地を手動で設定してください。<br />
+                この情報を使って残りのステップを自動検出します。
+              </p>
+            </div>
+
+            {/* ビデオプレビュー */}
+            <div style={{ position: 'relative', maxWidth: '100%', margin: '0 auto' }}>
+              <canvas
+                ref={displayCanvasRef}
+                style={{
+                  width: '100%',
+                  height: 'auto',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: '8px'
+                }}
+              />
+            </div>
+
+            {/* フレームスライダー */}
+            <div style={{ margin: '24px 0', padding: '0 16px' }}>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '12px',
+                fontSize: '14px',
+                color: '#6b7280'
+              }}>
+                <span>フレーム: {currentFrame} / {framesCount}</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={framesCount - 1}
+                value={currentFrame}
+                onChange={(e) => setCurrentFrame(Number(e.target.value))}
+                style={{ width: '100%' }}
+              />
+              <div style={{ display: 'flex', gap: '8px', marginTop: '12px', justifyContent: 'center' }}>
+                <button className="btn-ghost" onClick={() => setCurrentFrame(Math.max(0, currentFrame - 10))}>
+                  -10
+                </button>
+                <button className="btn-ghost" onClick={() => setCurrentFrame(Math.max(0, currentFrame - 1))}>
+                  -1
+                </button>
+                <button className="btn-ghost" onClick={() => setCurrentFrame(Math.min(framesCount - 1, currentFrame + 1))}>
+                  +1
+                </button>
+                <button className="btn-ghost" onClick={() => setCurrentFrame(Math.min(framesCount - 1, currentFrame + 10))}>
+                  +10
+                </button>
+              </div>
+            </div>
+
+            {/* キャリブレーション設定 */}
+            <div style={{
+              background: '#f0fdf4',
+              border: '2px solid #10b981',
+              borderRadius: '12px',
+              padding: '24px',
+              margin: '24px 0'
+            }}>
+              <h3 style={{ 
+                fontSize: '18px', 
+                fontWeight: 'bold', 
+                marginBottom: '16px',
+                color: '#059669'
+              }}>
+                🎯 最初の1歩を設定
+              </h3>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/* 接地設定 */}
+                <div style={{
+                  background: 'white',
+                  padding: '16px',
+                  borderRadius: '8px',
+                  border: '1px solid #d1fae5'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <span style={{ fontWeight: 'bold', color: '#059669' }}>接地フレーム</span>
+                      {calibrationData.contactFrame !== null && (
+                        <span style={{ marginLeft: '12px', color: '#6b7280' }}>
+                          フレーム {calibrationData.contactFrame}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      className="btn-primary"
+                      onClick={() => {
+                        setCalibrationData(prev => ({
+                          ...prev,
+                          contactFrame: currentFrame
+                        }));
+                        alert(`接地フレーム ${currentFrame} を設定しました！`);
+                      }}
+                      style={{ minWidth: '120px' }}
+                    >
+                      {calibrationData.contactFrame !== null ? '✓ 設定済み' : '接地を設定'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 離地設定 */}
+                <div style={{
+                  background: 'white',
+                  padding: '16px',
+                  borderRadius: '8px',
+                  border: '1px solid #d1fae5'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <span style={{ fontWeight: 'bold', color: '#059669' }}>離地フレーム</span>
+                      {calibrationData.toeOffFrame !== null && (
+                        <span style={{ marginLeft: '12px', color: '#6b7280' }}>
+                          フレーム {calibrationData.toeOffFrame}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      className="btn-primary"
+                      onClick={() => {
+                        if (calibrationData.contactFrame === null) {
+                          alert('先に接地フレームを設定してください');
+                          return;
+                        }
+                        if (currentFrame <= calibrationData.contactFrame) {
+                          alert('離地フレームは接地フレームより後にしてください');
+                          return;
+                        }
+                        setCalibrationData(prev => ({
+                          ...prev,
+                          toeOffFrame: currentFrame
+                        }));
+                        alert(`離地フレーム ${currentFrame} を設定しました！`);
+                      }}
+                      style={{ minWidth: '120px' }}
+                      disabled={calibrationData.contactFrame === null}
+                    >
+                      {calibrationData.toeOffFrame !== null ? '✓ 設定済み' : '離地を設定'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 設定完了後の説明 */}
+              {calibrationData.contactFrame !== null && calibrationData.toeOffFrame !== null && (
+                <div style={{
+                  marginTop: '16px',
+                  padding: '12px',
+                  background: '#d1fae5',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  color: '#047857'
+                }}>
+                  ✅ キャリブレーション完了！<br />
+                  接地時間: {((calibrationData.toeOffFrame - calibrationData.contactFrame) / (usedTargetFps || 120)).toFixed(3)}秒<br />
+                  この情報を使って残りのステップを自動検出します。
+                </div>
+              )}
+            </div>
+
+            {/* アクション */}
+            <div className="wizard-actions">
+              <button 
+                className="btn-ghost" 
+                onClick={() => setWizardStep(4)}
+              >
+                ← 戻る
+              </button>
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  if (calibrationData.contactFrame === null || calibrationData.toeOffFrame === null) {
+                    alert('接地フレームと離地フレームの両方を設定してください');
+                    return;
+                  }
+                  setWizardStep(5);
+                }}
+                disabled={calibrationData.contactFrame === null || calibrationData.toeOffFrame === null}
+              >
+                次へ: 区間設定 →
+              </button>
+            </div>
+          </div>
+        );
+
       case 5:
         // 姿勢推定データがない場合は強制的にステップ4に戻す
         if (poseResults.length === 0) {
@@ -4605,7 +4817,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                           handleClearMarkers();
                           setCalibrationType(null);
                           setCalibrationMode(0);
-                          setCalibrationData({});
+                          setCalibrationData({ contactFrame: null, toeOffFrame: null });
                         }
                       }}
                       style={{
@@ -4951,7 +5163,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     if (calibrationMode < 2) {
                       // キャリブレーションモード: 1歩分(接地→離地)
                       if (calibrationMode === 0) {
-                        setCalibrationData({ contact1: currentFrame });
+                        setCalibrationData({ contactFrame: null, toeOffFrame: null, contact1: currentFrame });
                         setCalibrationMode(1);
                         console.log(`📍 キャリブレーション 1/2: 接地フレーム ${currentFrame}`);
                       } else if (calibrationMode === 1) {
