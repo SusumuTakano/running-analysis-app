@@ -1299,6 +1299,13 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       return;
     }
 
+    // 🔥 CRITICAL: 前回の結果を完全にクリア（メモリリークと状態汚染を防ぐ）
+    console.log('🧹 Clearing previous pose estimation results...');
+    setPoseResults([]);
+    
+    // 少し待ってから処理開始（状態のクリアを確実にする）
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     setIsPoseProcessing(true);
     setPoseProgress(0);
     setStatus("姿勢推定を実行中...");
@@ -1329,7 +1336,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         minTrackingConfidence: 0.5, // トラッキング閾値を標準に
       });
       
-      console.log(`🎯 Pose estimation config: mobile=${isMobile}, iOS=${isIOS}, modelComplexity=2 (highest accuracy)`);
+      console.log(`🎯 Pose estimation config: mobile=${isMobile}, iOS=${isIOS}, modelComplexity=1 (balanced)`);
 
       const results: (FramePoseData | null)[] = [];
 
@@ -1406,6 +1413,14 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         setStatus(
           `姿勢推定中... ${i + 1}/${framesRef.current.length} フレーム`
         );
+      }
+
+      // MediaPipe Pose インスタンスを明示的にクローズ（メモリ解放）
+      try {
+        pose.close();
+        console.log('🧹 MediaPipe Pose instance closed successfully');
+      } catch (e) {
+        console.warn('⚠️ Failed to close Pose instance:', e);
       }
 
       // 欠損フレームの補間処理
