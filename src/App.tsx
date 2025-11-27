@@ -499,6 +499,64 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     setCalibrationType(null); // 方式選択もリセット
   };
 
+  // 🎓 多関節統合：身体全体の動きから接地・離地を判定
+  const getMultiJointFeatures = (poseData: FramePoseData | null) => {
+    if (!poseData || !poseData.landmarks) return null;
+    
+    const landmarks = poseData.landmarks;
+    
+    // 必要な関節点
+    const leftHip = landmarks[23];
+    const rightHip = landmarks[24];
+    const leftKnee = landmarks[25];
+    const rightKnee = landmarks[26];
+    const leftAnkle = landmarks[27];
+    const rightAnkle = landmarks[28];
+    const leftToe = landmarks[31];
+    const rightToe = landmarks[32];
+    const leftShoulder = landmarks[11];
+    const rightShoulder = landmarks[12];
+    
+    if (!leftHip || !rightHip || !leftKnee || !rightKnee || 
+        !leftAnkle || !rightAnkle || !leftToe || !rightToe ||
+        !leftShoulder || !rightShoulder) {
+      return null;
+    }
+    
+    // 1. つま先の高さ（地面からの距離）
+    const hipY = (leftHip.y + rightHip.y) / 2;
+    const toeY = Math.max(leftToe.y, rightToe.y);
+    const relativeToeHeight = toeY - hipY;
+    
+    // 2. 膝の角度（接地時は膝が曲がる）
+    const leftKneeAngle = Math.atan2(leftAnkle.y - leftKnee.y, leftAnkle.x - leftKnee.x) - 
+                          Math.atan2(leftHip.y - leftKnee.y, leftHip.x - leftKnee.x);
+    const rightKneeAngle = Math.atan2(rightAnkle.y - rightKnee.y, rightAnkle.x - rightKnee.x) - 
+                           Math.atan2(rightHip.y - rightKnee.y, rightHip.x - rightKnee.x);
+    
+    // 3. 足首の高さ（接地時は低い）
+    const ankleY = Math.max(leftAnkle.y, rightAnkle.y);
+    const relativeAnkleHeight = ankleY - hipY;
+    
+    // 4. 上半身の前傾角度（スタート加速時は前傾）
+    const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
+    const torsoAngle = Math.atan2(shoulderY - hipY, 0.01); // 垂直からの角度
+    
+    // 5. 腰の高さ（接地時は低くなる）
+    const hipHeight = hipY;
+    
+    return {
+      relativeToeHeight,
+      leftKneeAngle,
+      rightKneeAngle,
+      relativeAnkleHeight,
+      torsoAngle,
+      hipHeight,
+      toeY,
+      ankleY
+    };
+  };
+
   // 🎥 パン撮影対応：腰からの相対的なつま先の高さを取得
   // カメラが移動しても、体幹からの相対位置で足の動きを検出
   const getRelativeToeHeight = (poseData: FramePoseData | null): number | null => {
@@ -781,8 +839,69 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     return (afterY - beforeY) / (windowSize * 2);
   };
   
+  // 🎓 NEW: 多関節統合検出（高精度）
+  const detectNextContactFrameAdvanced = (startFrame: number, endFrame: number): number | null => {
+    if (!poseResults.length) return null;
+    
+    console.log(`🎓 高度な接地検出開始: 検索範囲=${startFrame}～${endFrame}`);
+    
+    let bestCandidate: { frame: number; score: number } | null = null;
+    let bestScore = -Infinity;
+    
+    for (let i = startFrame + 5; i < endFrame - 5; i++) {
+      const curr = getMultiJointFeatures(poseResults[i]);
+      const prev = getMultiJointFeatures(poseResults[i - 3]);
+      const next = getMultiJointFeatures(poseResults[i + 3]);
+      
+      if (!curr || !prev || !next) continue;
+      
+      // 接地の特徴スコア計算
+      let score = 0;
+      
+      // 1. つま先が最も低い（重要度: 高）
+      const toeIsLowest = curr.relativeToeHeight > prev.relativeToeHeight && 
+                         curr.relativeToeHeight > next.relativeToeHeight;
+      if (toeIsLowest) score += 10;
+      
+      // 2. 足首も低い（重要度: 中）
+      const ankleIsLow = curr.relativeAnkleHeight > prev.relativeAnkleHeight;
+      if (ankleIsLow) score += 5;
+      
+      // 3. 膝の角度が変化（接地で膝が曲がる）（重要度: 中）
+      const kneeAngleChange = Math.abs(curr.leftKneeAngle - prev.leftKneeAngle) + 
+                             Math.abs(curr.rightKneeAngle - prev.rightKneeAngle);
+      score += kneeAngleChange * 20;
+      
+      // 4. 腰の高さが低い（接地時は重心が下がる）（重要度: 低）
+      if (curr.hipHeight > prev.hipHeight) score += 3;
+      
+      // 5. つま先が前後のフレームより明確に低い（定量的）
+      const toeAdvantage = (curr.relativeToeHeight - prev.relativeToeHeight) + 
+                          (curr.relativeToeHeight - next.relativeToeHeight);
+      score += toeAdvantage * 100;
+      
+      if (score > bestScore) {
+        bestScore = score;
+        bestCandidate = { frame: i, score };
+      }
+    }
+    
+    if (bestCandidate && bestScore > 5) { // 閾値: 最低5点
+      console.log(`✅ 高度な接地検出: フレーム ${bestCandidate.frame} (スコア=${bestScore.toFixed(2)})`);
+      return bestCandidate.frame;
+    }
+    
+    console.warn(`⚠️ 高度な接地検出失敗（開始: ${startFrame}）`);
+    return null;
+  };
+
   // 次の接地フレームを検出：つま先が最も下にある瞬間（極大値 = Y座標が最大）
   const detectNextContactFrame = (startFrame: number, endFrame: number): number | null => {
+    // 🎓 まず高度な検出を試す
+    const advanced = detectNextContactFrameAdvanced(startFrame, endFrame);
+    if (advanced !== null) return advanced;
+    
+    // フォールバック: 従来の方法
     if (!poseResults.length) return null;
     
     console.log(`🔍 接地検出開始（つま先動き検出方式）: 検索範囲=${startFrame}～${endFrame}`);
