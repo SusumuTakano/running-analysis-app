@@ -345,6 +345,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const [currentFrame, setCurrentFrame] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [videoWidth, setVideoWidth] = useState<number | null>(null);
+  const [videoHeight, setVideoHeight] = useState<number | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const displayCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1298,18 +1300,60 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         const pose1 = poseResults[contact]!.landmarks;
         const pose2 = poseResults[nextContact]!.landmarks;
 
-        // 腰の中心X座標を使用（足首より安定）
+        // 腰の中心座標を使用（足首より安定）
         const hip1X = (pose1[23].x + pose1[24].x) / 2;
         const hip2X = (pose2[23].x + pose2[24].x) / 2;
-        const normalizedStride = Math.abs(hip2X - hip1X);
+        const hip1Y = (pose1[23].y + pose1[24].y) / 2;
+        const hip2Y = (pose2[23].y + pose2[24].y) / 2;
+        const hip1Z = (pose1[23].z + pose1[24].z) / 2;
+        const hip2Z = (pose2[23].z + pose2[24].z) / 2;
 
         // ✅ 身長ベースのスケール係数を優先使用
         if (scaleCoefficient != null) {
-          // 身長ベース: 正規化座標のストライド × スケール係数（cm） ÷ 100（m変換）
-          stride = (normalizedStride * scaleCoefficient) / 100;
-          console.log(`  ステップ${i / 2 + 1}: 正規化=${normalizedStride.toFixed(4)}, ストライド=${stride.toFixed(2)}m`);
+          let strideMethodA: number | null = null;
+          let strideMethodB: number | null = null;
+
+          // 【方法A】3D距離を使用（X, Y, Z座標すべて考慮）
+          const dx = hip2X - hip1X;
+          const dy = hip2Y - hip1Y;
+          const dz = hip2Z - hip1Z;
+          const distance3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          strideMethodA = (distance3D * scaleCoefficient) / 100;
+
+          // 【方法B】画面幅を考慮した2D距離
+          if (videoWidth != null && videoWidth > 0) {
+            const normalizedStride = Math.abs(hip2X - hip1X);
+            const pixelStride = normalizedStride * videoWidth;
+            strideMethodB = (pixelStride * scaleCoefficient / videoWidth) / 100;
+          }
+
+          // デバッグログ：両方の方法を比較
+          console.log(`📊 ステップ${i / 2 + 1}:`);
+          console.log(`  方法A (3D距離): ${strideMethodA?.toFixed(3)}m | dx=${dx.toFixed(4)}, dy=${dy.toFixed(4)}, dz=${dz.toFixed(4)}, 3D距離=${distance3D.toFixed(4)}`);
+          console.log(`  方法B (画面幅): ${strideMethodB?.toFixed(3)}m | 正規化X移動=${Math.abs(hip2X - hip1X).toFixed(4)}`);
+
+          // 両方試して、妥当な方を採用（1.0m～3.0mの範囲）
+          const isMethodAValid = strideMethodA != null && strideMethodA >= 0.8 && strideMethodA <= 3.5;
+          const isMethodBValid = strideMethodB != null && strideMethodB >= 0.8 && strideMethodB <= 3.5;
+
+          if (isMethodAValid && isMethodBValid) {
+            // 両方妥当な場合は方法Aを優先（3D距離は理論的に正確）
+            stride = strideMethodA;
+            console.log(`  ✅ 採用: 方法A (3D距離) = ${stride.toFixed(2)}m`);
+          } else if (isMethodAValid) {
+            stride = strideMethodA;
+            console.log(`  ✅ 採用: 方法A (3D距離) = ${stride.toFixed(2)}m`);
+          } else if (isMethodBValid) {
+            stride = strideMethodB;
+            console.log(`  ✅ 採用: 方法B (画面幅) = ${stride?.toFixed(2)}m`);
+          } else {
+            // どちらも妥当でない場合は、方法Aをそのまま使用（警告付き）
+            stride = strideMethodA;
+            console.warn(`  ⚠️ 両方とも範囲外。方法Aを採用: ${stride?.toFixed(2)}m`);
+          }
         } else if (distanceValue != null && totalNormalizedDistance > 0) {
           // フォールバック: 距離入力ベース
+          const normalizedStride = Math.abs(hip2X - hip1X);
           stride =
             (normalizedStride / totalNormalizedDistance) * distanceValue;
         }
@@ -1339,7 +1383,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       });
     }
     return metrics;
-  }, [contactFrames, usedTargetFps, poseResults, distanceValue, subjectHeightInput]);
+  }, [contactFrames, usedTargetFps, poseResults, distanceValue, subjectHeightInput, videoWidth]);
 
   const stepSummary = useMemo(() => {
     if (!stepMetrics.length) {
@@ -2027,6 +2071,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         const onLoaded = () => {
           video.removeEventListener("loadedmetadata", onLoaded);
           video.removeEventListener("error", onError);
+          // 動画のサイズを保存
+          setVideoWidth(video.videoWidth);
+          setVideoHeight(video.videoHeight);
+          console.log(`📹 動画サイズ: ${video.videoWidth} × ${video.videoHeight}`);
           resolve();
         };
         const onError = () => {
