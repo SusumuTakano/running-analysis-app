@@ -4415,10 +4415,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   if (sectionMidFrame === null) {
                     setSectionMidFrame(Math.floor(framesCount / 2));
                   }
-                  setWizardStep(7);
+                  setWizardStep(6);
                 }}
               >
-                次へ：手動ステップ入力
+                次へ：検出モード選択
               </button>
             </div>
           </div>
