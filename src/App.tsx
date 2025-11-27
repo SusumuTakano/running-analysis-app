@@ -2334,12 +2334,24 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       let torsoX: number;
       let fromPose = false;
       
-      // 🎥 パン撮影対応: 固定ピクセル位置を優先使用
-      if (isPanMode && savedPixelX !== null) {
-        // パン撮影モード: 最初に設定したピクセル位置に固定
-        torsoX = savedPixelX;
-        fromPose = true;
-        console.log(`🎥 [${label}] Pan mode: Using fixed pixel position: ${torsoX.toFixed(0)}px`);
+      // 🎥 パン撮影モード: 現在のフレームの腰位置をリアルタイムで取得
+      if (isPanMode) {
+        // 姿勢推定データから現在フレームの腰位置を取得
+        const hipX = calculateHipPosition(frame);
+        if (hipX !== null) {
+          torsoX = hipX * width;
+          fromPose = true;
+          console.log(`🎥 [${label}] Pan mode: Using current frame hip position: ${(hipX * 100).toFixed(1)}% → ${torsoX.toFixed(0)}px`);
+        } else {
+          // 姿勢推定データがない場合は保存されたピクセル位置を使用
+          if (savedPixelX !== null) {
+            torsoX = savedPixelX;
+            console.log(`🎥 [${label}] Pan mode: Using saved pixel position (no pose): ${torsoX.toFixed(0)}px`);
+          } else {
+            torsoX = width / 2;
+            console.log(`📍 [${label}] Pan mode: No data, using center: ${torsoX.toFixed(0)}px`);
+          }
+        }
       } else if (savedHipX !== null) {
         // 固定カメラモード: 腰の位置を使用（従来通り）
         if (viewParams) {
