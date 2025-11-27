@@ -604,7 +604,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     
     // 区間内を順次検索
     let loopCount = 0;
-    const maxLoops = 50; // 無限ループ防止
+    const maxLoops = 100; // 無限ループ防止（50→100に増加）
     while (searchStartFrame < sectionEndFrame && loopCount < maxLoops) {
       loopCount++;
       console.log(`🔄 ループ ${loopCount}: 検索開始フレーム=${searchStartFrame}, 終了=${sectionEndFrame}`);
@@ -733,50 +733,52 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     
     console.log(`🔍 接地検出開始（つま先動き検出方式）: 検索範囲=${startFrame}～${endFrame}`);
     
-    const velocityWindow = 5; // 速度計算用のウィンドウサイズ
-    const minStableFrames = 3; // 極小値判定のための安定フレーム数
+    const windowSize = 7; // ウィンドウサイズを大きくしてノイズ耐性UP
     
-    for (let i = startFrame + velocityWindow; i < endFrame - velocityWindow; i++) {
-      const toeY = calculateMovingAverage(i, 3);
+    for (let i = startFrame + windowSize; i < endFrame - windowSize; i++) {
+      const toeY = calculateMovingAverage(i, 5);
       if (toeY === null) continue;
       
-      // 前後の速度を計算
-      const velocityBefore = calculateToeVelocity(i - 2, 3);
-      const velocityCurrent = calculateToeVelocity(i, 3);
-      const velocityAfter = calculateToeVelocity(i + 2, 3);
+      // シンプルな極小値検出：前後のフレームより低い位置にあるか
+      let isLocalMinimum = true;
       
-      if (velocityBefore === null || velocityCurrent === null || velocityAfter === null) continue;
-      
-      // 接地判定条件：
-      // 1. 以前は下降していた（velocityBefore > 0）
-      // 2. 現在は停止している（velocityCurrent ≈ 0）
-      // 3. 次も停止または上昇し始める（velocityAfter <= 0）
-      const wasDescending = velocityBefore > 0.0002; // 下降中（感度UP: 0.0005 → 0.0002）
-      const isNearZero = Math.abs(velocityCurrent) < 0.0008; // 停止（感度UP: 0.0003 → 0.0008）
-      const stopsOrAscends = velocityAfter <= 0.001; // 停止または上昇（感度UP: 0.0005 → 0.001）
-      
-      if (wasDescending && isNearZero && stopsOrAscends) {
-        // 極小値（谷）の確認：前後数フレームよりY座標が大きい（下にある）
-        let isLocalMinimum = true;
-        const currentY = toeY;
+      // 前5フレームと後5フレームをチェック
+      for (let j = 1; j <= 5; j++) {
+        const beforeY = calculateMovingAverage(i - j, 5);
+        const afterY = calculateMovingAverage(i + j, 5);
         
-        for (let j = 1; j <= minStableFrames; j++) {
-          const beforeY = calculateMovingAverage(i - j, 3);
-          const afterY = calculateMovingAverage(i + j, 3);
-          
-          if (beforeY !== null && beforeY > currentY + 0.001) {
-            isLocalMinimum = false;
-            break;
-          }
-          if (afterY !== null && afterY > currentY + 0.001) {
-            isLocalMinimum = false;
-            break;
-          }
+        // より緩い判定：0.003ピクセルの差でもOK（以前は0.001）
+        if (beforeY !== null && beforeY - toeY > 0.003) {
+          // 前のフレームが明らかに高い（上にある）→ 極小値候補
+        } else if (beforeY !== null && beforeY <= toeY) {
+          // 前のフレームが同じか低い → 極小値ではない
+          isLocalMinimum = false;
+          break;
         }
         
-        if (isLocalMinimum) {
-          console.log(`✅ 接地検出: フレーム ${i} (つま先Y=${toeY.toFixed(4)}, 速度: 前=${velocityBefore.toFixed(6)}, 現=${velocityCurrent.toFixed(6)}, 後=${velocityAfter.toFixed(6)})`);
-          return i;
+        if (afterY !== null && afterY - toeY > 0.003) {
+          // 後のフレームが明らかに高い（上にある）→ 極小値候補
+        } else if (afterY !== null && afterY <= toeY) {
+          // 後のフレームが同じか低い → 極小値ではない
+          isLocalMinimum = false;
+          break;
+        }
+      }
+      
+      if (isLocalMinimum) {
+        // さらに詳細チェック：前のフレームから下降してきたか
+        const toeY_prev5 = calculateMovingAverage(i - 5, 5);
+        const toeY_prev10 = calculateMovingAverage(i - 10, 5);
+        
+        if (toeY_prev5 !== null && toeY_prev10 !== null) {
+          const wasDescending = toeY_prev10 < toeY_prev5; // 10フレーム前より5フレーム前の方が下にある
+          
+          if (wasDescending) {
+            console.log(`✅ 接地検出: フレーム ${i} (つま先Y=${toeY.toFixed(4)}, 前10=${toeY_prev10.toFixed(4)}, 前5=${toeY_prev5.toFixed(4)})`);
+            return i;
+          } else {
+            console.log(`🔸 極小値候補だが下降していない: フレーム ${i} (Y=${toeY.toFixed(4)})`);
+          }
         }
       }
     }
@@ -786,7 +788,6 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   };
 
   // 離地検出：つま先が上昇を始めた瞬間を検出
-  // 新方式：つま先の速度が0（停止）→負（上昇）に変わる瞬間
   const detectToeOffFrame = (contactFrame: number): number | null => {
     if (!poseResults.length) return null;
     
@@ -795,44 +796,32 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     // 接地フレームから最大60フレーム先まで検索
     const maxSearchFrames = 60;
     const endFrame = Math.min(contactFrame + maxSearchFrames, poseResults.length - 10);
-    const velocityWindow = 5;
     
-    for (let i = contactFrame + 5; i < endFrame - velocityWindow; i++) {
-      const toeY = calculateMovingAverage(i, 3);
+    for (let i = contactFrame + 5; i < endFrame - 10; i++) {
+      const toeY = calculateMovingAverage(i, 5);
       if (toeY === null) continue;
       
-      // 前後の速度を計算
-      const velocityBefore = calculateToeVelocity(i - 2, 3);
-      const velocityCurrent = calculateToeVelocity(i, 3);
-      const velocityAfter = calculateToeVelocity(i + 2, 3);
+      // シンプルな上昇検出：現在から後ろ5フレームまでずっと上昇しているか
+      let isRising = true;
+      const currentY = toeY;
       
-      if (velocityBefore === null || velocityCurrent === null || velocityAfter === null) continue;
-      
-      // 離地判定条件：
-      // 1. 以前は停止していた（velocityBefore ≈ 0）
-      // 2. 現在は上昇し始めた（velocityCurrent < 0）
-      // 3. 次も上昇している（velocityAfter < 0）
-      const wasStopped = Math.abs(velocityBefore) < 0.0008; // 停止（感度UP: 0.0003 → 0.0008）
-      const isAscending = velocityCurrent < -0.0002; // 上昇中（感度UP: -0.0005 → -0.0002）
-      const continuesAscending = velocityAfter < -0.0001; // 上昇継続（感度UP: -0.0003 → -0.0001）
-      
-      if (wasStopped && isAscending && continuesAscending) {
-        // 上昇の確認：次の数フレームもY座標が小さくなる（上に移動）
-        let isRising = true;
-        const currentY = toeY;
-        
-        for (let j = 1; j <= 3; j++) {
-          const nextY = calculateMovingAverage(i + j, 3);
-          if (nextY !== null && nextY >= currentY - 0.001) {
-            // 上昇していない
-            isRising = false;
-            break;
-          }
+      for (let j = 1; j <= 5; j++) {
+        const nextY = calculateMovingAverage(i + j, 5);
+        if (nextY === null || nextY >= currentY - 0.002) {
+          // 上昇していない（または上昇幅が小さすぎる）
+          isRising = false;
+          break;
         }
-        
-        if (isRising) {
-          console.log(`✅ 離地検出: フレーム ${i} (つま先Y=${toeY.toFixed(4)}, 速度: 前=${velocityBefore.toFixed(6)}, 現=${velocityCurrent.toFixed(6)}, 後=${velocityAfter.toFixed(6)})`);
+      }
+      
+      if (isRising) {
+        // さらに確認：接地フレームよりも明らかに上にあるか
+        const contactY = calculateMovingAverage(contactFrame, 5);
+        if (contactY !== null && contactY - currentY > 0.01) {
+          console.log(`✅ 離地検出: フレーム ${i} (つま先Y=${toeY.toFixed(4)}, 接地Y=${contactY.toFixed(4)}, 上昇幅=${(contactY - currentY).toFixed(4)})`);
           return i;
+        } else {
+          console.log(`🔸 上昇中だが接地からの差が小さい: フレーム ${i} (Y=${toeY.toFixed(4)})`);
         }
       }
     }
