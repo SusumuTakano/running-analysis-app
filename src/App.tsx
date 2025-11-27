@@ -395,13 +395,18 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       sectionEndFrame ??
       (framesRef.current.length > 0 ? framesRef.current.length - 1 : 0);
     const count = end >= start ? end - start + 1 : 0;
+    
+    // 実際の選択範囲のフレーム数（スタート地点～フィニッシュ地点）
+    const actualCount = (sectionStartFrame != null && sectionEndFrame != null) 
+      ? sectionEndFrame - sectionStartFrame
+      : 0;
 
-    return { start, end, count, displayStart: rawStart };
+    return { start, end, count, displayStart: rawStart, actualCount };
   }, [sectionStartFrame, sectionEndFrame, framesCount]);
 
   const sectionTime =
-    usedTargetFps && sectionRange.count > 0
-      ? sectionRange.count / usedTargetFps
+    usedTargetFps && sectionRange.actualCount > 0
+      ? sectionRange.actualCount / usedTargetFps
       : null;
 
   // ------------ 距離・速度・ラベル ---------------
@@ -3783,7 +3788,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   fontSize: '0.85rem',
                   fontWeight: 'bold'
                 }}>
-                  選択範囲: {(sectionEndFrame ?? framesCount - 1) - (sectionStartFrame ?? 0)} フレーム
+                  選択範囲: {sectionRange.actualCount} フレーム
                 </div>
               </div>
 
@@ -3804,7 +3809,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                   <div>
                     <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '4px' }}>区間フレーム数</div>
                     <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#374151' }}>
-                      {sectionRange.count}
+                      {sectionRange.actualCount}
                     </div>
                   </div>
                   <div>
