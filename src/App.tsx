@@ -631,8 +631,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       if (toeOffFrame !== null) {
         console.log(`✅ ループ ${loopCount}: 離地検出 Frame ${toeOffFrame}`);
         detectedToeOffs.push(toeOffFrame);
-        // 次の検索は離地フレームの少し後から
-        searchStartFrame = toeOffFrame + 5;
+        // 次の検索は離地フレームの直後から（5→3に短縮）
+        searchStartFrame = toeOffFrame + 3;
         console.log(`➡️ 次の検索開始: ${searchStartFrame}`);
       } else {
         console.warn(`⚠️ ループ ${loopCount}: 離地が検出できませんでした（接地=${contactFrame}）`);
@@ -744,18 +744,18 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       const toeY = calculateMovingAverage(i, 5);
       if (toeY === null) continue;
       
-      // より緩い極大値検出：前後の平均より下にあればOK
-      const beforeAvg = [1, 2, 3].map(j => calculateMovingAverage(i - j, 5)).filter(y => y !== null);
-      const afterAvg = [1, 2, 3].map(j => calculateMovingAverage(i + j, 5)).filter(y => y !== null);
+      // 超緩い極大値検出：前後2フレームの平均より「わずかでも」下にあればOK
+      const beforeAvg = [1, 2].map(j => calculateMovingAverage(i - j, 5)).filter(y => y !== null);
+      const afterAvg = [1, 2].map(j => calculateMovingAverage(i + j, 5)).filter(y => y !== null);
       
       if (beforeAvg.length === 0 || afterAvg.length === 0) continue;
       
       const beforeMean = beforeAvg.reduce((sum, y) => sum + y!, 0) / beforeAvg.length;
       const afterMean = afterAvg.reduce((sum, y) => sum + y!, 0) / afterAvg.length;
       
-      // 現在が前後の平均より下（Y座標が大きい）にあればOK
-      const isLowerThanBefore = toeY > beforeMean;
-      const isLowerThanAfter = toeY > afterMean;
+      // 現在が前後の平均より下（Y座標が大きい）にあればOK（閾値なし！）
+      const isLowerThanBefore = toeY >= beforeMean;
+      const isLowerThanAfter = toeY >= afterMean;
       
       if (isLowerThanBefore && isLowerThanAfter) {
         // 極大値候補を発見
@@ -790,14 +790,14 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       const toeY = calculateMovingAverage(i, 5);
       if (toeY === null) continue;
       
-      // シンプルな上昇検出：接地より一定以上上にあり、さらに上昇中
+      // 超シンプルな上昇検出：接地よりわずかでも上にあればOK
       const liftAmount = contactY - toeY; // 正なら上昇
       
-      if (liftAmount > 0.005) { // 0.5%以上上昇していればOK（以前は1%）
-        // 後続フレームも上昇しているか確認（3フレーム後まで）
-        const nextY = calculateMovingAverage(i + 3, 5);
-        if (nextY !== null && nextY < toeY) {
-          // さらに上昇している
+      if (liftAmount > 0.002) { // 0.2%以上上昇していればOK（0.5%から大幅緩和）
+        // 後続フレームも上昇しているか確認（2フレーム後まで）
+        const nextY = calculateMovingAverage(i + 2, 5);
+        if (nextY !== null && nextY <= toeY) {
+          // さらに上昇またはほぼ同じ高さ（継続判定を緩和）
           console.log(`✅ 離地検出: フレーム ${i} (つま先Y=${toeY.toFixed(4)}, 接地Y=${contactY.toFixed(4)}, 上昇幅=${liftAmount.toFixed(4)})`);
           return i;
         } else {
