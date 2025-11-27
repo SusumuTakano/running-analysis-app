@@ -636,8 +636,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         console.log(`➡️ 次の検索開始: ${searchStartFrame}`);
       } else {
         console.warn(`⚠️ ループ ${loopCount}: 離地が検出できませんでした（接地=${contactFrame}）`);
-        // 離地が見つからない場合は、接地の少し後から検索
-        searchStartFrame = contactFrame + 10;
+        // 離地が見つからない場合でも、接地の直後から次を検索（10→5に短縮）
+        searchStartFrame = contactFrame + 5;
         console.log(`➡️ 離地未検出、次の検索開始: ${searchStartFrame}`);
       }
     }
@@ -777,8 +777,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     
     console.log(`🔍 離地検出開始（つま先動き検出方式）: 接地フレーム=${contactFrame}`);
     
-    const maxSearchFrames = 60;
-    const endFrame = Math.min(contactFrame + maxSearchFrames, poseResults.length - 10);
+    const maxSearchFrames = 40; // 60→40に短縮（ランニングでは離地が早い）
+    const endFrame = Math.min(contactFrame + maxSearchFrames, poseResults.length - 3);
     
     const contactY = calculateMovingAverage(contactFrame, 5);
     if (contactY === null) {
@@ -786,27 +786,24 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       return null;
     }
     
-    for (let i = contactFrame + 5; i < endFrame - 5; i++) {
-      const toeY = calculateMovingAverage(i, 5);
+    // 接地の直後（2フレーム後）から検索開始（5→2に短縮）
+    for (let i = contactFrame + 2; i < endFrame - 2; i++) {
+      const toeY = calculateMovingAverage(i, 3); // 移動平均を5→3に短縮（高速応答）
       if (toeY === null) continue;
       
-      // 超シンプルな上昇検出：接地よりわずかでも上にあればOK
+      // 極めてシンプルな上昇検出：接地よりわずかでも上にあればOK
       const liftAmount = contactY - toeY; // 正なら上昇
       
-      if (liftAmount > 0.002) { // 0.2%以上上昇していればOK（0.5%から大幅緩和）
-        // 後続フレームも上昇しているか確認（2フレーム後まで）
-        const nextY = calculateMovingAverage(i + 2, 5);
-        if (nextY !== null && nextY <= toeY) {
-          // さらに上昇またはほぼ同じ高さ（継続判定を緩和）
-          console.log(`✅ 離地検出: フレーム ${i} (つま先Y=${toeY.toFixed(4)}, 接地Y=${contactY.toFixed(4)}, 上昇幅=${liftAmount.toFixed(4)})`);
-          return i;
-        } else {
-          console.log(`🔸 上昇候補だが継続していない: フレーム ${i} (Y=${toeY.toFixed(4)}, 上昇幅=${liftAmount.toFixed(4)})`);
-        }
+      // 閾値を完全削除：わずかでも上昇していればOK
+      if (liftAmount > 0.0001) {
+        // 継続確認も削除：即座に検出
+        console.log(`✅ 離地検出: フレーム ${i} (つま先Y=${toeY.toFixed(4)}, 接地Y=${contactY.toFixed(4)}, 上昇幅=${liftAmount.toFixed(4)})`);
+        return i;
       }
     }
     
     console.warn(`⚠️ 離地が検出できませんでした（接地: ${contactFrame}）`);
+    console.log(`📊 デバッグ: 接地Y=${contactY.toFixed(4)}, 検索範囲=${contactFrame + 2}～${endFrame - 2}`);
     return null;
   };
 
