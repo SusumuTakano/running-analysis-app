@@ -2210,17 +2210,17 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     let preferredFps: number;
     
     if (isIOS) {
-      // iOS（iPhone/iPad）: 姿勢推定精度を優先して解像度を上げる
-      MAX_FRAMES = 400; // 通常の1000から大幅削減
-      MAX_WIDTH = 720;  // 姿勢推定のために720pxに引き上げ（旧: 480px）
-      preferredFps = 60; // 通常の120から半分に削減
-      console.log('⚠️ iOS detected: Using conservative memory limits with higher resolution for pose detection');
+      // iOS（iPhone/iPad）: 姿勢推定精度を優先して解像度とFPSを高める（メモリに注意）
+      MAX_FRAMES = 600; // 120fps × 5秒まで対応
+      MAX_WIDTH = 960;  // 720px → 960pxに拡大（精度向上）
+      preferredFps = 120; // 60fps → 120fps に戻す
+      console.log('⚠️ iOS detected: Using high-accuracy settings (960px, 120fps, max 600 frames)');
     } else if (isMobile) {
-      // その他のモバイル（Android等）
-      MAX_FRAMES = 600;
-      MAX_WIDTH = 720;  // 姿勢推定のために720pxに引き上げ（旧: 640px）
-      preferredFps = 90;
-      console.log('⚠️ Mobile detected: Using reduced memory limits with higher resolution for pose detection');
+      // その他のモバイル（Android等）: 120fps対応 + わずかに解像度向上
+      MAX_FRAMES = 720;
+      MAX_WIDTH = 960;
+      preferredFps = 120;
+      console.log('⚠️ Mobile detected: Using enhanced settings (960px, 120fps, max 720 frames)');
     } else {
       // デスクトップ: 高性能対応
       MAX_FRAMES = 3000;  // 240fps × 12秒程度対応
