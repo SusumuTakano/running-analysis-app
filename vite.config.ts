@@ -9,7 +9,7 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
-    port: 3000,
+    port: 5173,
     strictPort: true,
     hmr: false,
     allowedHosts: [
@@ -19,7 +19,7 @@ export default defineConfig({
   },
   preview: {
     host: '0.0.0.0',
-    port: 3000,
+    port: 5173,
     strictPort: true,
     allowedHosts: [
       '3000-iutfhg38ul7w1p11026dx-cc2fbc16.sandbox.novita.ai',

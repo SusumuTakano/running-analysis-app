@@ -808,199 +808,295 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     };
   };
 
-  // 【新方式】つま先のY座標の動きを検出して接地・離地を判定
-  // 接地：つま先の下降が停止した瞬間（極小値/谷）
+   // 【新方式】つま先のY座標の動きを検出して接地・離地を判定
+  // 接地：つま先の下降が停止した瞬間（谷＋プラトー）
   // 離地：つま先が上昇を始めた瞬間
-  
+
   // 移動平均でY座標のトレンドを計算（ノイズ除去）
   const calculateMovingAverage = (frame: number, windowSize: number = 3): number | null => {
     if (!poseResults[frame]) return null;
-    
+
     const start = Math.max(0, frame - Math.floor(windowSize / 2));
     const end = Math.min(poseResults.length - 1, frame + Math.floor(windowSize / 2));
-    
+
     let sum = 0;
     let count = 0;
-    
+
     for (let i = start; i <= end; i++) {
-      // 🎥 パン撮影モード: 腰からの相対位置を使用
-      const toeValue = isPanMode 
-        ? getRelativeToeHeight(poseResults[i]) 
+      const toeValue = isPanMode
+        ? getRelativeToeHeight(poseResults[i])
         : getToeY(poseResults[i]);
       if (toeValue !== null) {
         sum += toeValue;
         count++;
       }
     }
-    
+
     return count > 0 ? sum / count : null;
   };
-  
+
   // つま先のY座標の速度を計算（フレーム間の変化量）
   const calculateToeVelocity = (frame: number, windowSize: number = 5): number | null => {
     if (frame < windowSize || frame >= poseResults.length - windowSize) return null;
-    
+
     const beforeY = calculateMovingAverage(frame - windowSize, 3);
     const afterY = calculateMovingAverage(frame + windowSize, 3);
-    
+
     if (beforeY === null || afterY === null) return null;
-    
+
     // Y座標の変化量（正：下降、負：上昇）※Y軸は下向きが正
     return (afterY - beforeY) / (windowSize * 2);
   };
-  
-  // 🎓 NEW: 多関節統合検出（高精度）
-  const detectNextContactFrameAdvanced = (startFrame: number, endFrame: number): number | null => {
+
+  // 🎓 NEW: 多関節統合検出（高精度・シンプル版）
+  // 「つま先が下がってきて → いちばん下でほぼ止まる」最初のポイントを接地とみなす
+  const detectNextContactFrameAdvanced = (
+    startFrame: number,
+    endFrame: number
+  ): number | null => {
     if (!poseResults.length) return null;
-    
-    console.log(`🎓 高度な接地検出開始: 検索範囲=${startFrame}～${endFrame}`);
-    
-    // ✅ つま先のY座標の実際の値を配列化（谷検出用）
-    const toeYArray: { frame: number; toeY: number }[] = [];
-    for (let i = startFrame; i < endFrame; i++) {
-      const features = getMultiJointFeatures(poseResults[i]);
-      if (features) {
-        toeYArray.push({ frame: i, toeY: features.relativeToeHeight });
-      }
+
+    const from = Math.max(0, startFrame);
+    const to = Math.min(endFrame, poseResults.length - 1);
+
+    console.log(`🎓 高度な接地検出(シンプル版): 検索範囲=${from}～${to}`);
+
+    type ToePoint = { frame: number; y: number };
+
+    const toePoints: ToePoint[] = [];
+    for (let f = from; f <= to; f++) {
+      const features = getMultiJointFeatures(poseResults[f]);
+      if (!features) continue;
+      // relativeToeHeight: 値が大きいほど つま先が下（地面側）
+      toePoints.push({ frame: f, y: features.relativeToeHeight });
     }
-    
-    if (toeYArray.length < 10) {
-      console.warn(`⚠️ データ不足: ${toeYArray.length}フレーム`);
+
+    if (toePoints.length < 5) {
+      console.warn(`⚠️ データ不足（toePoints=${toePoints.length}）`);
       return null;
     }
-    
-    // ✅ 谷検出: つま先が「最も下がって止まった位置」= 局所的な最大値
-    const windowSize = 7;  // 前後7フレーム（合計15フレーム）を確認
-    let bestContact: { frame: number; toeY: number; valleyDepth: number } | null = null;
-    
-    for (let idx = windowSize; idx < toeYArray.length - windowSize; idx++) {
-      const curr = toeYArray[idx];
-      
-      // 前方の平均
-      let beforeSum = 0;
-      for (let j = 1; j <= windowSize; j++) {
-        beforeSum += toeYArray[idx - j].toeY;
-      }
-      const beforeAvg = beforeSum / windowSize;
-      
-      // 後方の平均
-      let afterSum = 0;
-      for (let j = 1; j <= windowSize; j++) {
-        afterSum += toeYArray[idx + j].toeY;
-      }
-      const afterAvg = afterSum / windowSize;
-      
-      // ✅ 谷の条件: 現在のつま先が前後の平均より「下」（Y座標が大きい）
-      if (curr.toeY > beforeAvg && curr.toeY > afterAvg) {
-        const valleyDepth = (curr.toeY - beforeAvg) + (curr.toeY - afterAvg);
-        
-        // ベストな谷を更新
-        if (!bestContact || valleyDepth > bestContact.valleyDepth) {
-          bestContact = { frame: curr.frame, toeY: curr.toeY, valleyDepth };
-          console.log(`  📍 谷候補 Frame ${curr.frame}: toeY=${curr.toeY.toFixed(4)}, 谷深さ=${valleyDepth.toFixed(4)}`);
-        }
+
+    const N = toePoints.length;
+
+    // 3点移動平均で Y を平滑化
+    const smoothY = new Array<number>(N);
+    for (let i = 0; i < N; i++) {
+      if (i === 0 || i === N - 1) {
+        smoothY[i] = toePoints[i].y;
+      } else {
+        smoothY[i] =
+          (toePoints[i - 1].y + toePoints[i].y + toePoints[i + 1].y) / 3;
       }
     }
-    
-    if (bestContact && bestContact.valleyDepth > 0.001) {  // 最小谷深さ: 0.1%
-      console.log(`✅ 高度な接地検出: フレーム ${bestContact.frame} (toeY=${bestContact.toeY.toFixed(4)}, 谷深さ=${bestContact.valleyDepth.toFixed(4)})`);
-      return bestContact.frame;
+
+    // 速度（フレーム間差分）
+    const vel = new Array<number>(N).fill(0);
+    for (let i = 1; i < N; i++) {
+      vel[i] = smoothY[i] - smoothY[i - 1]; // 正: 下降, 負: 上昇（Yは下向きが正）
     }
-    
-    console.warn(`⚠️ 高度な接地検出失敗（開始: ${startFrame}, 谷が見つからない）`);
+
+    // 動きのレンジから動的に閾値を決める（動画によってスケールが違うため）
+    let minY = smoothY[0];
+    let maxY = smoothY[0];
+    for (let i = 1; i < N; i++) {
+      if (smoothY[i] < minY) minY = smoothY[i];
+      if (smoothY[i] > maxY) maxY = smoothY[i];
+    }
+    const range = maxY - minY;
+    if (range < 1e-4) {
+      console.warn(
+        `⚠️ つま先の上下動がほとんどありません（range=${range.toExponential(2)}）`
+      );
+      return null;
+    }
+
+    // 「しっかり下降している」「その直後ほぼ止まっている」を判定するしきい値
+    const minDesc = range * 0.005; // これ以上なら「下降している」
+    const flatEps = range * 0.002; // これ以内なら「ほぼ止まっている」
+
+    // ★ 最初に条件を満たした地点を、そのまま接地として採用
+    for (let i = 2; i < N - 2; i++) {
+      // 直前2フレーム平均の下降量
+      const prevAvg = (vel[i - 1] + vel[i - 2]) / 2;
+      // このフレーム→次フレームの速度（ここでほぼ0になることを期待）
+      const vNow = vel[i];
+
+      if (prevAvg > minDesc && Math.abs(vNow) <= flatEps) {
+        const contactFrame = toePoints[i].frame;
+        console.log(
+          `✅ シンプル接地検出: Frame=${contactFrame} (idx=${i}, prevAvg=${prevAvg.toFixed(
+            5
+          )}, vNow=${vNow.toFixed(5)}, range=${range.toFixed(5)})`
+        );
+        return contactFrame;
+      }
+    }
+
+    console.warn(
+      "⚠️ シンプル接地検出に失敗（条件を満たす下降→停止パターンが見つからない）"
+    );
     return null;
   };
 
-  // 次の接地フレームを検出：つま先が最も下にある瞬間（極大値 = Y座標が最大）
-  const detectNextContactFrame = (startFrame: number, endFrame: number): number | null => {
-    // 🎓 まず高度な検出を試す
-    const advanced = detectNextContactFrameAdvanced(startFrame, endFrame);
-    if (advanced !== null) return advanced;
-    
-    // フォールバック: 従来の方法
+  // 次の接地フレームを検出：
+  // まず高度な検出を試し、それでもダメなときだけ単純なフォールバック
+  const detectNextContactFrame = (
+    startFrame: number,
+    endFrame: number
+  ): number | null => {
     if (!poseResults.length) return null;
-    
-    console.log(`🔍 接地検出開始（つま先動き検出方式）: 検索範囲=${startFrame}～${endFrame}`);
-    
-    const windowSize = 5;
-    
-    for (let i = startFrame + windowSize; i < endFrame - windowSize; i++) {
-      const toeY = calculateMovingAverage(i, 5);
-      if (toeY === null) continue;
-      
-      // バランスの取れた極大値検出：前後3フレームの平均より明確に下にある
-      const beforeAvg = [1, 2, 3].map(j => calculateMovingAverage(i - j, 5)).filter(y => y !== null);
-      const afterAvg = [1, 2, 3].map(j => calculateMovingAverage(i + j, 5)).filter(y => y !== null);
-      
-      if (beforeAvg.length === 0 || afterAvg.length === 0) continue;
-      
-      const beforeMean = beforeAvg.reduce((sum, y) => sum + y!, 0) / beforeAvg.length;
-      const afterMean = afterAvg.reduce((sum, y) => sum + y!, 0) / afterAvg.length;
-      
-      // 現在が前後の平均より0.001以上下（Y座標が大きい）にあればOK
-      const threshold = 0.001; // 適度な閾値
-      const isLowerThanBefore = toeY - beforeMean > threshold;
-      const isLowerThanAfter = toeY - afterMean > threshold;
-      
-      if (isLowerThanBefore && isLowerThanAfter) {
-        // 極大値候補を発見
-        console.log(`🔸 極大値候補: フレーム ${i} (Y=${toeY.toFixed(4)}, 前平均=${beforeMean.toFixed(4)}, 後平均=${afterMean.toFixed(4)}, 差=${((toeY - beforeMean) + (toeY - afterMean)) / 2})`);
-        
-        // 明確な極大値として検出
-        console.log(`✅ 接地検出: フレーム ${i} (つま先Y=${toeY.toFixed(4)})`);
-        return i;
+
+    // 🔒 前の接地から「最大○フレーム先」までだけを見る（飛び歩き防止）
+    const maxSearchFrames = 90; // 120fpsなら ≒0.75秒分
+    const from = Math.max(0, startFrame);
+    const to = Math.min(
+      poseResults.length - 1,
+      endFrame,
+      startFrame + maxSearchFrames
+    );
+
+    console.log(
+      `🔍 接地検出: 検索範囲=${from}～${to}（maxSearchFrames=${maxSearchFrames}）`
+    );
+
+    // 1) シンプル版の高度検出
+    const advanced = detectNextContactFrameAdvanced(from, to);
+    if (advanced !== null) return advanced;
+
+    // 2) フォールバック：この区間で一番下がったところを使う
+    type ToePoint = { frame: number; y: number };
+    const toePoints: ToePoint[] = [];
+    for (let f = from; f <= to; f++) {
+      const features = getMultiJointFeatures(poseResults[f]);
+      if (!features) continue;
+      toePoints.push({ frame: f, y: features.relativeToeHeight });
+    }
+
+    if (toePoints.length < 3) {
+      console.warn(`⚠️ フォールバック用データ不足（toePoints=${toePoints.length}）`);
+      return null;
+    }
+
+    let bestIdx = 0;
+    let bestY = toePoints[0].y;
+    for (let i = 1; i < toePoints.length; i++) {
+      if (toePoints[i].y > bestY) {
+        bestY = toePoints[i].y;
+        bestIdx = i;
       }
     }
-    
-    console.warn(`⚠️ 接地が検出できませんでした（開始: ${startFrame}）`);
-    return null;
+
+    const contactFrame = toePoints[bestIdx].frame;
+    console.log(
+      `✅ 接地検出（フォールバック）: Frame=${contactFrame}, toeY=${bestY.toFixed(
+        4
+      )}`
+    );
+    return contactFrame;
   };
 
-  // 離地検出：つま先が上昇を始めた瞬間を検出（Y座標が減少 = 上に移動）
+  // 離地検出：
+  // 「接地してしばらくほぼ止まって → そこから上昇し始めた瞬間」を toe の速度から検出
   const detectToeOffFrame = (contactFrame: number): number | null => {
     if (!poseResults.length) return null;
-    
-    console.log(`🔍 離地検出開始（改良版：つま先上昇検出）: 接地フレーム=${contactFrame}`);
-    
-    // 接地後、少なくとも8フレーム（約0.067秒@120fps）は接地していると仮定
-    const minContactDuration = 8;
-    const searchStart = contactFrame + minContactDuration;
-    const searchEnd = Math.min(contactFrame + 50, poseResults.length - 3); // 最大50フレーム（約0.42秒）
-    console.log(`  📊 検索範囲: ${searchStart}～${searchEnd}`);
-    
-    const contactFeatures = getMultiJointFeatures(poseResults[contactFrame]);
-    if (!contactFeatures) {
-      console.warn(`⚠️ 接地フレーム ${contactFrame} の姿勢データなし`);
+
+    console.log(`🔍 離地検出開始（改訂版）: 接地フレーム=${contactFrame}`);
+
+    const minContactDuration = 8; // 少なくともこれだけは接地していると仮定
+    const searchStart = contactFrame; // プラトー判定のため接地直後から見る
+    const searchEnd = Math.min(contactFrame + 60, poseResults.length - 1); // 最大 ≒0.5秒@120fps
+
+    type ToePoint = { frame: number; y: number };
+    const toePoints: ToePoint[] = [];
+
+    for (let f = searchStart; f <= searchEnd; f++) {
+      const features = getMultiJointFeatures(poseResults[f]);
+      if (!features) continue;
+      toePoints.push({ frame: f, y: features.relativeToeHeight });
+    }
+
+    if (toePoints.length < minContactDuration + 3) {
+      console.warn(`⚠️ 離地検出用データ不足（${toePoints.length}フレーム）`);
       return null;
     }
-    
-    // 接地時のつま先高さを基準値とする
-    const contactToeY = contactFeatures.relativeToeHeight;
-    console.log(`  📌 接地時つま先Y: ${contactToeY.toFixed(4)}`);
-    
-    // ✅ つま先が「上昇を始めた瞬間」を検出
-    // 条件: 接地時より0.5%以上低くなった（Y座標が減少 = 上昇）
-    for (let i = searchStart; i < searchEnd; i++) {
-      const curr = getMultiJointFeatures(poseResults[i]);
-      if (!curr) continue;
-      
-      const currToeY = curr.relativeToeHeight;
-      const diff = contactToeY - currToeY;  // 正なら上昇
-      
-      if (diff > 0.005) {  // 閾値: 0.5%以上の上昇
-        // ✅ 前フレームと比較して上昇継続を確認
-        const prev = getMultiJointFeatures(poseResults[i - 2]);
-        if (prev) {
-          const prevDiff = contactToeY - prev.relativeToeHeight;
-          if (diff > prevDiff) {  // 上昇加速中
-            console.log(`✅ 離地検出: Frame ${i} (接地比+${(diff * 100).toFixed(2)}%, 前フレーム比+${((diff - prevDiff) * 100).toFixed(2)}%)`);
-            return i;
-          }
-        }
+
+    const N = toePoints.length;
+
+    // 平滑化と速度
+    const smoothY = new Array<number>(N);
+    for (let i = 0; i < N; i++) {
+      if (i === 0 || i === N - 1) {
+        smoothY[i] = toePoints[i].y;
+      } else {
+        smoothY[i] =
+          (toePoints[i - 1].y + toePoints[i].y + toePoints[i + 1].y) / 3;
       }
     }
-    
-    console.warn(`⚠️ 離地が検出できませんでした（接地=${contactFrame}, 基準toeY=${contactToeY.toFixed(4)}）`);
+
+    const vel = new Array<number>(N).fill(0);
+    for (let i = 1; i < N; i++) {
+      vel[i] = smoothY[i] - smoothY[i - 1]; // 正: 下降, 負: 上昇
+    }
+
+    // 動的閾値
+    let minY = smoothY[0];
+    let maxY = smoothY[0];
+    for (let i = 1; i < N; i++) {
+      if (smoothY[i] < minY) minY = smoothY[i];
+      if (smoothY[i] > maxY) maxY = smoothY[i];
+    }
+    const range = maxY - minY;
+    if (range < 1e-4) {
+      console.warn(
+        `⚠️ 離地検出: つま先の上下動がほとんどありません（range=${range.toExponential(
+          2
+        )}）`
+      );
+      return null;
+    }
+
+    const velPlateau = range * 0.02; // プラトーとみなす速度
+    const velUp = range * 0.03; // 「上昇開始」とみなす速度
+
+    // ① contactFrame に対応するインデックスを探す
+    let contactIdx = toePoints.findIndex((p) => p.frame === contactFrame);
+    if (contactIdx < 0) {
+      contactIdx = 0;
+    }
+
+    // ② 接地プラトーを推定
+    let plateauEnd = contactIdx;
+    const plateauMinIdx = Math.min(contactIdx + minContactDuration, N - 1);
+    for (let i = contactIdx + 1; i < N; i++) {
+      if (i < plateauMinIdx || Math.abs(vel[i]) <= velPlateau) {
+        plateauEnd = i;
+      } else {
+        break;
+      }
+    }
+
+    console.log(
+      `  📊 接地プラトー推定: インデックス=${contactIdx}～${plateauEnd} (総フレーム=${N})`
+    );
+
+    // ③ プラトーが終わったあと、「明確に上昇し始めた瞬間」を離地とする
+    for (let i = plateauEnd + 1; i < N - 1; i++) {
+      const vNow = vel[i]; // このフレームの速度
+      const vNext = vel[i + 1]; // 次フレームの速度
+
+      // vNow が十分マイナス（上昇）かつ、次フレームもあまり下降していない
+      if (vNow < -velUp && vNext <= 0) {
+        const toeOffFrame = toePoints[i].frame;
+        console.log(
+          `✅ 離地検出: Frame ${toeOffFrame} (idx=${i}, vNow=${vNow.toFixed(
+            5
+          )}, vNext=${vNext.toFixed(5)}, range=${range.toFixed(5)})`
+        );
+        return toeOffFrame;
+      }
+    }
+
+    console.warn(`⚠️ 離地が検出できませんでした（接地Frame=${contactFrame}）`);
     return null;
   };
 
