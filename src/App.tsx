@@ -2153,97 +2153,125 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
       });
 
-      // 🚀 最高精度設定（固定カメラの検出率向上）
+      // 🚀 デバイスに応じた設定（メモリ効率を考慮）
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
       
+      // 🔧 モバイルではメモリ節約のため精度を調整
+      const modelComplexity = isMobile ? 1 : 2; // モバイルは中精度、デスクトップは高精度
+      
       pose.setOptions({
-        modelComplexity: 2, // 🔥 最高精度モデル（0 < 1 < 2）
+        modelComplexity: modelComplexity,
         smoothLandmarks: true,
         enableSegmentation: false,
         smoothSegmentation: false,
-        minDetectionConfidence: 0.05, // 🔥🔥🔥 検出閾値を極限まで下げる（0.05 = 絶対最低）
-        minTrackingConfidence: 0.05, // 🔥🔥🔥 トラッキング閾値も極限まで下げる
+        minDetectionConfidence: 0.1, // 検出閾値（メモリ効率のため少し上げる）
+        minTrackingConfidence: 0.1,
       });
       
-      console.log(`🚀🔥🔥 Pose estimation config: EXTREME SENSITIVITY - mobile=${isMobile}, iOS=${isIOS}, modelComplexity=2, confidence=0.05 (ABSOLUTE MINIMUM)`);
+      console.log(`🚀 Pose estimation config: mobile=${isMobile}, iOS=${isIOS}, modelComplexity=${modelComplexity}`);
 
       const results: (FramePoseData | null)[] = [];
+      const totalFrames = framesRef.current.length;
+      
+      // 🔧 メモリ効率のため、再利用可能なcanvasを作成
+      const tempCanvas = document.createElement("canvas");
+      const firstFrame = framesRef.current[0];
+      tempCanvas.width = firstFrame.width;
+      tempCanvas.height = firstFrame.height;
+      const tempCtx = tempCanvas.getContext("2d", { willReadFrequently: true });
+      
+      if (!tempCtx) {
+        throw new Error("Canvas context の作成に失敗しました");
+      }
 
-      for (let i = 0; i < framesRef.current.length; i++) {
+      // 🔧 バッチ処理のサイズ（メモリ解放のタイミング）
+      const batchSize = isMobile ? 5 : 20; // モバイルは5フレームごと、デスクトップは20フレームごと
+      const timeoutDuration = isMobile ? 10000 : 5000; // モバイルは10秒、デスクトップは5秒
+
+      for (let i = 0; i < totalFrames; i++) {
         const frame = framesRef.current[i];
 
-        const tempCanvas = document.createElement("canvas");
-        tempCanvas.width = frame.width;
-        tempCanvas.height = frame.height;
-        const tempCtx = tempCanvas.getContext("2d");
-        if (!tempCtx) {
-          results.push(null);
-        } else {
-          tempCtx.putImageData(frame, 0, 0);
+        // 🔧 canvasを再利用（毎回作成しない）
+        tempCtx.putImageData(frame, 0, 0);
 
-          try {
-            // デバイスに応じたタイムアウト設定
-            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-            const timeoutDuration = isMobile ? 15000 : 5000; // モバイルは15秒、デスクトップは5秒
-            
-            const result = await new Promise<any>((resolve, reject) => {
-              const timeout = setTimeout(
-                () => reject(new Error("Timeout")),
-                timeoutDuration
-              );
+        try {
+          const result = await new Promise<any>((resolve, reject) => {
+            const timeout = setTimeout(
+              () => reject(new Error("Timeout")),
+              timeoutDuration
+            );
 
-              pose.onResults((r: any) => {
-                clearTimeout(timeout);
-                resolve(r);
-              });
-
-              pose.send({ image: tempCanvas }).catch(reject);
+            pose.onResults((r: any) => {
+              clearTimeout(timeout);
+              resolve(r);
             });
 
-            if (result.poseLandmarks) {
-              results.push({
-                landmarks: result.poseLandmarks.map((lm: any) => ({
-                  x: lm.x,
-                  y: lm.y,
-                  z: lm.z,
-                  visibility: lm.visibility ?? 0,
-                })),
-              });
-              // 最初の10フレームだけ詳細ログ
-              if (i < 10) {
-                console.log(`✅ Frame ${i}: Pose detected (${result.poseLandmarks.length} landmarks)`);
-              }
-            } else {
-              results.push(null);
-              // 失敗したフレームをログ
-              if (i < 10) {
-                console.warn(`❌ Frame ${i}: No pose landmarks detected`);
-              }
+            pose.send({ image: tempCanvas }).catch(reject);
+          });
+
+          if (result.poseLandmarks) {
+            results.push({
+              landmarks: result.poseLandmarks.map((lm: any) => ({
+                x: lm.x,
+                y: lm.y,
+                z: lm.z,
+                visibility: lm.visibility ?? 0,
+              })),
+            });
+            if (i < 5) {
+              console.log(`✅ Frame ${i}: Pose detected`);
             }
-          } catch (e: any) {
-            if (e.message === "Timeout") {
-              console.warn(`⏱️ Frame ${i} timed out`);
-            } else {
-              console.error(`❌ Frame ${i} processing error:`, e.message);
-            }
+          } else {
             results.push(null);
+            if (i < 5) {
+              console.warn(`❌ Frame ${i}: No pose landmarks`);
+            }
           }
+        } catch (e: any) {
+          if (e.message === "Timeout") {
+            console.warn(`⏱️ Frame ${i} timed out`);
+          } else {
+            console.error(`❌ Frame ${i} error:`, e.message);
+          }
+          results.push(null);
         }
         
-        // モバイルではメモリを解放するため、10フレームごとに少し待つ
-        if (i % 10 === 0 && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-          await new Promise(resolve => setTimeout(resolve, 50));
+        // 🔧 バッチごとにメモリ解放とUI更新
+        if ((i + 1) % batchSize === 0) {
+          // ガベージコレクションのヒントを与える
+          await new Promise(resolve => setTimeout(resolve, isMobile ? 100 : 10));
+          
+          // 進捗更新
+          const progress = Math.round(((i + 1) / totalFrames) * 100);
+          setPoseProgress(progress);
+          setStatus(`姿勢推定中... ${i + 1}/${totalFrames} フレーム (${progress}%)`);
+          
+          // 🔧 メモリ監視（可能な場合）
+          if ((window as any).performance?.memory) {
+            const mem = (window as any).performance.memory;
+            const usedMB = Math.round(mem.usedJSHeapSize / 1024 / 1024);
+            const limitMB = Math.round(mem.jsHeapSizeLimit / 1024 / 1024);
+            console.log(`📊 Memory: ${usedMB}MB / ${limitMB}MB (${Math.round(usedMB/limitMB*100)}%)`);
+            
+            // メモリ使用量が80%を超えたら警告
+            if (usedMB / limitMB > 0.8) {
+              console.warn('⚠️ High memory usage detected!');
+              // 少し長めに待ってGCを促す
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          }
+        } else {
+          // バッチ以外でも進捗更新
+          const progress = Math.round(((i + 1) / totalFrames) * 100);
+          setPoseProgress(progress);
+          setStatus(`姿勢推定中... ${i + 1}/${totalFrames} フレーム`);
         }
-
-        const progress = Math.round(
-          ((i + 1) / framesRef.current.length) * 100
-        );
-        setPoseProgress(progress);
-        setStatus(
-          `姿勢推定中... ${i + 1}/${framesRef.current.length} フレーム`
-        );
       }
+
+      // 🔧 tempCanvasの参照をクリア
+      tempCanvas.width = 0;
+      tempCanvas.height = 0;
 
       // MediaPipe Pose インスタンスを明示的にクローズ（メモリ解放）
       try {
@@ -2252,6 +2280,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       } catch (e) {
         console.warn('⚠️ Failed to close Pose instance:', e);
       }
+      
+      // 🔧 GCを促すために少し待つ
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // 欠損フレームの補間処理
       console.log('🔧 欠損フレームを補間中...');
@@ -2292,6 +2323,24 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         setStatus(`✅ 姿勢推定完了！（成功率: ${interpolatedRateStr}%、補間前: ${successRateStr}%）`);
       }
       
+      // 🔧 メモリ解放: 姿勢推定が完了したらフレームデータを圧縮
+      // モバイルデバイスでは積極的にメモリを解放
+      const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if (isMobileDevice && framesRef.current.length > 100) {
+        console.log('🧹 Mobile: Reducing frame data to save memory...');
+        // フレームデータを間引いて保持（表示用に最低限のみ）
+        const reducedFrames: ImageData[] = [];
+        const keepEvery = Math.ceil(framesRef.current.length / 100); // 最大100フレームに削減
+        for (let i = 0; i < framesRef.current.length; i += keepEvery) {
+          reducedFrames.push(framesRef.current[i]);
+        }
+        // 元のフレームデータをクリア
+        framesRef.current.length = 0;
+        // 削減されたフレームを設定
+        framesRef.current = reducedFrames;
+        console.log(`🧹 Reduced frames: ${reducedFrames.length} frames kept`);
+      }
+      
       // 自動で次のステップへ（区間設定）
       setTimeout(() => {
         setWizardStep(5);
@@ -2299,8 +2348,21 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     } catch (e: any) {
       console.error("Pose estimation error:", e);
       setStatus("❌ 姿勢推定でエラーが発生しました: " + e.message);
+      
+      // 🔧 エラー時もメモリ解放を試みる
+      try {
+        if (framesRef.current.length > 50) {
+          console.log('🧹 Error recovery: Clearing frame data...');
+          framesRef.current.length = 0;
+        }
+      } catch (cleanupError) {
+        console.warn('⚠️ Failed to cleanup frames:', cleanupError);
+      }
     } finally {
       setIsPoseProcessing(false);
+      
+      // 🔧 GCを促す
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
   };
 
@@ -2777,29 +2839,29 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
     const duration = video.duration;
     
-    // デバイスに応じたメモリ制限
+    // 🔧 デバイスに応じたメモリ制限（メモリ問題対策で厳しめに設定）
     let MAX_FRAMES: number;
     let MAX_WIDTH: number;
     let preferredFps: number;
     
     if (isIOS) {
-      // iOS（iPhone/iPad）: 60fps標準、120fps対応
-      MAX_FRAMES = 600; // 60fps × 10秒 or 120fps × 5秒
-      MAX_WIDTH = 960;  // HD品質維持
-      preferredFps = selectedFps; // ユーザー選択のFPS（60 or 120）
-      console.log(`📱 iOS detected: ${selectedFps}fps mode (960px, max 600 frames)`);
-    } else if (isMobile) {
-      // その他のモバイル（Android等）: 60fps標準、120fps対応
-      MAX_FRAMES = 720; // 60fps × 12秒 or 120fps × 6秒
-      MAX_WIDTH = 1280; // HD品質
+      // iOS（iPhone/iPad）: メモリ制限が厳しいため、控えめに設定
+      MAX_FRAMES = 300; // 🔧 60fps × 5秒 or 120fps × 2.5秒（メモリ節約）
+      MAX_WIDTH = 640;  // 🔧 SD品質（メモリ節約）
       preferredFps = selectedFps;
-      console.log(`📱 Mobile detected: ${selectedFps}fps mode (1280px, max 720 frames)`);
+      console.log(`📱 iOS detected: ${selectedFps}fps mode (640px, max 300 frames - memory optimized)`);
+    } else if (isMobile) {
+      // その他のモバイル（Android等）: やや厳しめに設定
+      MAX_FRAMES = 400; // 🔧 60fps × 6.7秒 or 120fps × 3.3秒
+      MAX_WIDTH = 720;  // 🔧 HD品質（メモリ節約）
+      preferredFps = selectedFps;
+      console.log(`📱 Mobile detected: ${selectedFps}fps mode (720px, max 400 frames - memory optimized)`);
     } else {
-      // デスクトップ: 60fps標準、120fps高精度モード対応
-      MAX_FRAMES = 1200;  // 60fps × 20秒 or 120fps × 10秒
-      MAX_WIDTH = 1920;   // フルHD対応
-      preferredFps = selectedFps; // ユーザー選択のFPS（60 or 120）
-      console.log(`💻 Desktop detected: ${selectedFps}fps mode (1920px, max 1200 frames)`);
+      // デスクトップ: 比較的余裕があるが、大きな動画には注意
+      MAX_FRAMES = 600;   // 🔧 60fps × 10秒 or 120fps × 5秒
+      MAX_WIDTH = 1280;   // 🔧 HD品質
+      preferredFps = selectedFps;
+      console.log(`💻 Desktop detected: ${selectedFps}fps mode (1280px, max 600 frames)`);
     }
     
     // ユーザーが選択したFPSを使用
