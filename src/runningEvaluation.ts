@@ -42,18 +42,27 @@ type AthleteInfo = {
   gender?: 'male' | 'female' | 'other' | null;
 };
 
+// 走行タイプ: dash=スタートダッシュ（静止スタート）, accel=加速走（フライングスタート）
+type RunType = 'dash' | 'accel';
+
 export function generateRunningEvaluation(
   stepMetrics: any[],
   phaseAngles: PhaseAngles[],
   stepSummary: StepSummary,
   analysisType: 'acceleration' | 'topSpeed' = 'topSpeed',
-  athleteInfo?: AthleteInfo
+  athleteInfo?: AthleteInfo,
+  runType?: RunType // 🆕 走行タイプを追加
 ): RunningEvaluation | null {
   if (!stepMetrics.length || !phaseAngles.length) return null;
 
   const evaluations: EvaluationItem[] = [];
   const heightCm = athleteInfo?.heightCm;
   const gender = athleteInfo?.gender;
+  
+  // スタートダッシュか加速走かを判定
+  const isStartDash = runType === 'dash';
+  const isAccelRun = runType === 'accel';
+  const phaseLabel = isStartDash ? 'スタートダッシュ' : isAccelRun ? '加速走' : '加速局面';
 
   // 1. 姿勢評価（体幹角度）- シチュエーション別評価基準
   const avgTrunkAngle = phaseAngles.reduce((sum, p) => {
@@ -82,44 +91,75 @@ export function generateRunningEvaluation(
       const lastStepAngle = validStepAngles[validStepAngles.length - 1];
       const totalAngleChange = lastStepAngle - firstStepAngle;
       
-      // 1歩目の姿勢評価（45°前後が理想）
+      // 1歩目の姿勢評価 - スタートダッシュと加速走で異なる基準
       let firstStepEval: 'excellent' | 'good' | 'fair' | 'poor';
       let firstStepMessage = '';
       let firstStepAdvice = '';
       
-      if (firstStepAngle >= 40 && firstStepAngle <= 50) {
-        firstStepEval = 'excellent';
-        firstStepMessage = `1歩目の体幹角度: ${firstStepAngle.toFixed(1)}° - 理想的（目標:45°）`;
-        firstStepAdvice = '1歩目の前傾角度が理想的です。重心を前方に位置させ、強い水平推進力を生み出せる姿勢です。';
-      } else if (firstStepAngle >= 35 && firstStepAngle < 40) {
-        firstStepEval = 'good';
-        firstStepMessage = `1歩目の体幹角度: ${firstStepAngle.toFixed(1)}° - やや前傾が強い（目標:45°）`;
-        firstStepAdvice = '1歩目の前傾がやや強いです。バランスを崩さないよう注意しながら、40-50°の範囲を目指しましょう。';
-      } else if (firstStepAngle > 50 && firstStepAngle <= 60) {
-        firstStepEval = 'good';
-        firstStepMessage = `1歩目の体幹角度: ${firstStepAngle.toFixed(1)}° - やや前傾が浅い（目標:45°）`;
-        firstStepAdvice = '1歩目の前傾がやや浅いです。ブロッククリアランス直後は45°前後の強い前傾を維持し、水平推進力を最大化しましょう。';
-      } else if (firstStepAngle > 60) {
-        firstStepEval = 'fair';
-        firstStepMessage = `1歩目の体幹角度: ${firstStepAngle.toFixed(1)}° - 前傾不足（目標:45°）`;
-        firstStepAdvice = '1歩目から体幹が起きすぎています。スタート直後は頭部から足首まで一直線に保ち、身体全体で前方へ倒れ込むイメージを持ちましょう。';
+      if (isStartDash) {
+        // === スタートダッシュ（静止スタート）の評価基準 ===
+        // ブロッククリアランス直後は45°前後の強い前傾が必要
+        if (firstStepAngle >= 40 && firstStepAngle <= 50) {
+          firstStepEval = 'excellent';
+          firstStepMessage = `1歩目の体幹角度: ${firstStepAngle.toFixed(1)}° - 理想的（目標:45°）`;
+          firstStepAdvice = '【スタートダッシュ】ブロッククリアランス直後の前傾角度が理想的です。重心を前方に位置させ、身体が自然に前方へ倒れ込むことで強い水平推進力を生み出せています。';
+        } else if (firstStepAngle >= 35 && firstStepAngle < 40) {
+          firstStepEval = 'good';
+          firstStepMessage = `1歩目の体幹角度: ${firstStepAngle.toFixed(1)}° - やや前傾が強い（目標:45°）`;
+          firstStepAdvice = '【スタートダッシュ】1歩目の前傾がやや強いです。ブロックを押し切る際のバランスに注意し、40-50°の範囲を目指しましょう。';
+        } else if (firstStepAngle > 50 && firstStepAngle <= 60) {
+          firstStepEval = 'good';
+          firstStepMessage = `1歩目の体幹角度: ${firstStepAngle.toFixed(1)}° - やや前傾が浅い（目標:45°）`;
+          firstStepAdvice = '【スタートダッシュ】ブロッククリアランス直後の前傾がやや浅いです。ブロックを押し切った後、45°前後の強い前傾を維持し、水平推進力を最大化しましょう。「低く出る」意識を持ってください。';
+        } else if (firstStepAngle > 60) {
+          firstStepEval = 'fair';
+          firstStepMessage = `1歩目の体幹角度: ${firstStepAngle.toFixed(1)}° - 前傾不足（目標:45°）`;
+          firstStepAdvice = '【スタートダッシュ】ブロックスタート直後から体幹が起きすぎています。「セット」の姿勢から頭部から足首まで一直線を保ち、身体全体で前方へ倒れ込むイメージを持ちましょう。早期起き上がりは加速を阻害します。';
+        } else {
+          firstStepEval = 'fair';
+          firstStepMessage = `1歩目の体幹角度: ${firstStepAngle.toFixed(1)}° - 過度な前傾（目標:45°）`;
+          firstStepAdvice = '【スタートダッシュ】1歩目の前傾が強すぎます。ブロックを押し切る際にバランスを崩す可能性があります。40-50°の範囲を目指しましょう。';
+        }
       } else {
-        firstStepEval = 'fair';
-        firstStepMessage = `1歩目の体幹角度: ${firstStepAngle.toFixed(1)}° - 過度な前傾（目標:45°）`;
-        firstStepAdvice = '1歩目の前傾が強すぎます。バランスを崩さないよう、40-50°の範囲を目指しましょう。';
+        // === 加速走（フライングスタート）の評価基準 ===
+        // 助走がある分、スタートダッシュより角度は大きめ（50-60°）でも良い
+        if (firstStepAngle >= 45 && firstStepAngle <= 60) {
+          firstStepEval = 'excellent';
+          firstStepMessage = `1歩目の体幹角度: ${firstStepAngle.toFixed(1)}° - 理想的（目標:50-60°）`;
+          firstStepAdvice = '【加速走】助走からの1歩目の前傾角度が理想的です。助走の勢いを活かしながら、効率的に加速局面へ移行できています。';
+        } else if (firstStepAngle >= 40 && firstStepAngle < 45) {
+          firstStepEval = 'good';
+          firstStepMessage = `1歩目の体幹角度: ${firstStepAngle.toFixed(1)}° - やや前傾が強い（目標:50-60°）`;
+          firstStepAdvice = '【加速走】前傾がやや強いです。加速走では助走があるため、スタートダッシュほど深い前傾は必要ありません。バランスを保ちながら50-60°を目指しましょう。';
+        } else if (firstStepAngle > 60 && firstStepAngle <= 70) {
+          firstStepEval = 'good';
+          firstStepMessage = `1歩目の体幹角度: ${firstStepAngle.toFixed(1)}° - やや前傾が浅い（目標:50-60°）`;
+          firstStepAdvice = '【加速走】助走からの1歩目の前傾がやや浅いです。助走スピードを活かすため、もう少し前傾を深くして水平推進力を高めましょう。';
+        } else if (firstStepAngle > 70) {
+          firstStepEval = 'fair';
+          firstStepMessage = `1歩目の体幹角度: ${firstStepAngle.toFixed(1)}° - 前傾不足（目標:50-60°）`;
+          firstStepAdvice = '【加速走】体幹が起きすぎています。加速走でも前傾姿勢は重要です。助走の勢いを活かすため、50-60°の前傾を意識しましょう。';
+        } else {
+          firstStepEval = 'fair';
+          firstStepMessage = `1歩目の体幹角度: ${firstStepAngle.toFixed(1)}° - 過度な前傾（目標:50-60°）`;
+          firstStepAdvice = '【加速走】前傾が強すぎます。加速走では助走があるため、スタートダッシュほど深い前傾は必要ありません。バランスを崩さないよう50-60°を目指しましょう。';
+        }
       }
       
       evaluations.push({
-        category: '1歩目の姿勢',
+        category: `1歩目の姿勢（${phaseLabel}）`,
         score: firstStepEval,
         icon: firstStepEval === 'excellent' ? '✅' : firstStepEval === 'good' ? '✅' : '⚠️',
         message: firstStepMessage,
         advice: firstStepAdvice
       });
       
-      // 段階的な起き上がりの評価
-      // 理想: 1歩ごとに約3-5°ずつ起こしていく（8歩で約30°の変化）
-      const expectedAngleChange = Math.min(validStepAngles.length - 1, 8) * 4; // 1歩あたり4°の変化を期待
+      // 段階的な起き上がりの評価 - スタートダッシュと加速走で異なる基準
+      // スタートダッシュ: 45°から8歩で75°まで（30°変化）
+      // 加速走: 55°から6歩で75°まで（20°変化）
+      const expectedAngleChange = isStartDash 
+        ? Math.min(validStepAngles.length - 1, 8) * 4 // スタートダッシュ: 1歩あたり4°
+        : Math.min(validStepAngles.length - 1, 6) * 3; // 加速走: 1歩あたり3°
       
       let progressionEval: 'excellent' | 'good' | 'fair' | 'poor';
       let progressionMessage = '';
@@ -129,38 +169,58 @@ export function generateRunningEvaluation(
       if (totalAngleChange >= expectedAngleChange * 0.7 && totalAngleChange <= expectedAngleChange * 1.5) {
         // 適切な段階的起き上がり
         const avgChangePerStep = totalAngleChange / (validStepAngles.length - 1);
-        if (avgChangePerStep >= 2 && avgChangePerStep <= 6) {
-          progressionEval = 'excellent';
-          progressionMessage = `姿勢の段階的変化: ${firstStepAngle.toFixed(0)}°→${lastStepAngle.toFixed(0)}°（${validStepAngles.length}歩で+${totalAngleChange.toFixed(0)}°）- 理想的`;
-          progressionAdvice = '素晴らしい！1歩ごとに段階的に体幹を起こせています。加速局面の理想的なパターンです。';
+        if (isStartDash) {
+          if (avgChangePerStep >= 2 && avgChangePerStep <= 6) {
+            progressionEval = 'excellent';
+            progressionMessage = `姿勢の段階的変化: ${firstStepAngle.toFixed(0)}°→${lastStepAngle.toFixed(0)}°（${validStepAngles.length}歩で+${totalAngleChange.toFixed(0)}°）- 理想的`;
+            progressionAdvice = '【スタートダッシュ】素晴らしい！ブロッククリアランス後、1歩ごとに段階的に体幹を起こせています。8歩目までに75°程度に到達する理想的なパターンです。';
+          } else {
+            progressionEval = 'good';
+            progressionMessage = `姿勢の段階的変化: ${firstStepAngle.toFixed(0)}°→${lastStepAngle.toFixed(0)}°（${validStepAngles.length}歩で+${totalAngleChange.toFixed(0)}°）- 良好`;
+            progressionAdvice = '【スタートダッシュ】概ね良好な段階的起き上がりです。1歩あたり3-5°の変化を目指すと、より効率的な加速が可能です。';
+          }
         } else {
-          progressionEval = 'good';
-          progressionMessage = `姿勢の段階的変化: ${firstStepAngle.toFixed(0)}°→${lastStepAngle.toFixed(0)}°（${validStepAngles.length}歩で+${totalAngleChange.toFixed(0)}°）- 良好`;
-          progressionAdvice = '概ね良好な段階的起き上がりです。1歩あたり3-5°の変化を目指すと、より効率的な加速が可能です。';
+          if (avgChangePerStep >= 2 && avgChangePerStep <= 5) {
+            progressionEval = 'excellent';
+            progressionMessage = `姿勢の段階的変化: ${firstStepAngle.toFixed(0)}°→${lastStepAngle.toFixed(0)}°（${validStepAngles.length}歩で+${totalAngleChange.toFixed(0)}°）- 理想的`;
+            progressionAdvice = '【加速走】素晴らしい！助走からスムーズに加速局面へ移行し、段階的に体幹を起こせています。効率的にトップスピードへ移行できるパターンです。';
+          } else {
+            progressionEval = 'good';
+            progressionMessage = `姿勢の段階的変化: ${firstStepAngle.toFixed(0)}°→${lastStepAngle.toFixed(0)}°（${validStepAngles.length}歩で+${totalAngleChange.toFixed(0)}°）- 良好`;
+            progressionAdvice = '【加速走】概ね良好な段階的起き上がりです。加速走は助走があるため、スタートダッシュより早くトップスピード姿勢へ移行できます。';
+          }
         }
       } else if (totalAngleChange < expectedAngleChange * 0.3) {
         // 起き上がりが不十分（前傾を維持しすぎ）
         progressionEval = 'fair';
         progressionMessage = `姿勢の段階的変化: ${firstStepAngle.toFixed(0)}°→${lastStepAngle.toFixed(0)}°（${validStepAngles.length}歩で+${totalAngleChange.toFixed(0)}°）- 起き上がり不足`;
-        progressionAdvice = '前傾姿勢を維持しすぎています。8歩目までに75°程度まで段階的に起こすことで、トップスピードへの移行がスムーズになります。';
+        if (isStartDash) {
+          progressionAdvice = '【スタートダッシュ】前傾姿勢を維持しすぎています。8歩目までに75°程度まで段階的に起こすことで、トップスピードへの移行がスムーズになります。';
+        } else {
+          progressionAdvice = '【加速走】前傾姿勢を維持しすぎています。加速走では助走の勢いがあるため、6歩程度でトップスピード姿勢（75-80°）へ移行しましょう。';
+        }
       } else if (totalAngleChange > expectedAngleChange * 2) {
         // 急激な起き上がり
         progressionEval = 'fair';
         progressionMessage = `姿勢の段階的変化: ${firstStepAngle.toFixed(0)}°→${lastStepAngle.toFixed(0)}°（${validStepAngles.length}歩で+${totalAngleChange.toFixed(0)}°）- 急激な起き上がり`;
-        progressionAdvice = '体幹の起き上がりが急すぎます。加速力が十分に発揮される前に起き上がると、水平推進力が低下します。8歩程度かけて段階的に起こしましょう。';
+        if (isStartDash) {
+          progressionAdvice = '【スタートダッシュ】体幹の起き上がりが急すぎます。ブロッククリアランス後、加速力が十分に発揮される前に起き上がると、水平推進力が低下します。8歩程度かけて段階的に起こしましょう。';
+        } else {
+          progressionAdvice = '【加速走】体幹の起き上がりが急すぎます。助走の勢いを活かすため、急に起き上がらず6歩程度で段階的に移行しましょう。';
+        }
       } else if (totalAngleChange < 0) {
         // 逆に前傾が強くなっている（まれ）
         progressionEval = 'poor';
         progressionMessage = `姿勢の段階的変化: ${firstStepAngle.toFixed(0)}°→${lastStepAngle.toFixed(0)}°（${validStepAngles.length}歩で${totalAngleChange.toFixed(0)}°）- 不適切なパターン`;
-        progressionAdvice = '加速中に前傾が強くなっています。これは自然な動作パターンではありません。1歩目から段階的に体幹を起こしていく意識を持ちましょう。';
+        progressionAdvice = `【${phaseLabel}】加速中に前傾が強くなっています。これは自然な動作パターンではありません。1歩目から段階的に体幹を起こしていく意識を持ちましょう。`;
       } else {
         progressionEval = 'good';
         progressionMessage = `姿勢の段階的変化: ${firstStepAngle.toFixed(0)}°→${lastStepAngle.toFixed(0)}°（${validStepAngles.length}歩で+${totalAngleChange.toFixed(0)}°）- 概ね適切`;
-        progressionAdvice = '段階的な起き上がりは概ね適切です。より滑らかな変化を目指しましょう。';
+        progressionAdvice = `【${phaseLabel}】段階的な起き上がりは概ね適切です。より滑らかな変化を目指しましょう。`;
       }
       
       evaluations.push({
-        category: '姿勢の段階的変化',
+        category: `姿勢の段階的変化（${phaseLabel}）`,
         score: progressionEval,
         icon: progressionEval === 'excellent' ? '✅' : progressionEval === 'good' ? '✅' : progressionEval === 'fair' ? '⚠️' : '❌',
         message: progressionMessage,
@@ -204,53 +264,76 @@ export function generateRunningEvaluation(
       }
     }
     
-    // === 2. 膝関節の固定・引きつけ評価（加速局面専用） ===
+    // === 2. 膝関節の固定・引きつけ評価 - スタートダッシュと加速走で異なる基準 ===
     if (validKneeAngles.length >= 2) {
       const firstStepKnee = validKneeAngles[0];
       const secondStepKnee = validKneeAngles.length > 1 ? validKneeAngles[1] : null;
       const thirdStepKnee = validKneeAngles.length > 2 ? validKneeAngles[2] : null;
       
-      // 最初の2-3歩の膝角度の変化を分析
-      // 理想: 1歩目は150-160°（膝を固定）、徐々に屈曲を増やしていく
       let kneeEval: 'excellent' | 'good' | 'fair' | 'poor';
       let kneeMessage = '';
       let kneeAdvice = '';
       
-      if (firstStepKnee >= 145 && firstStepKnee <= 170) {
-        // 1歩目の膝角度が理想的（固定されている）
-        kneeEval = 'excellent';
-        kneeMessage = `1歩目の膝角度: ${firstStepKnee.toFixed(0)}° - 理想的な固定（目標:150-160°）`;
-        kneeAdvice = '1歩目で膝関節を適切に固定できています。股関節伸展主導で地面を後方へ押し、効率的に水平推進力を得ています。';
-        
-        // 段階的な引きつけの評価
-        if (secondStepKnee != null && thirdStepKnee != null) {
-          const kneeFlexionProgress = firstStepKnee - thirdStepKnee; // 膝の屈曲増加量
-          if (kneeFlexionProgress >= 5 && kneeFlexionProgress <= 25) {
-            kneeAdvice += ' その後、段階的に膝の引きつけを増やせています。';
-          } else if (kneeFlexionProgress < 5) {
-            kneeAdvice += ' ただし、3歩目以降はより積極的に膝を引きつけていくと、ピッチが向上します。';
+      if (isStartDash) {
+        // === スタートダッシュの膝関節評価 ===
+        // ブロッククリアランス直後は膝を固定（150-160°）し、股関節伸展主導で推進
+        if (firstStepKnee >= 145 && firstStepKnee <= 170) {
+          kneeEval = 'excellent';
+          kneeMessage = `1歩目の膝角度: ${firstStepKnee.toFixed(0)}° - 理想的な固定（目標:150-160°）`;
+          kneeAdvice = '【スタートダッシュ】ブロッククリアランス直後、膝関節を適切に固定できています。股関節伸展主導で地面を後方へ押し、効率的に水平推進力を得ています。「膝関節の伸展タイミングを遅らせる」という科学的知見を実践できています。';
+          
+          if (secondStepKnee != null && thirdStepKnee != null) {
+            const kneeFlexionProgress = firstStepKnee - thirdStepKnee;
+            if (kneeFlexionProgress >= 5 && kneeFlexionProgress <= 25) {
+              kneeAdvice += ' その後、段階的に膝の引きつけを増やせており、ピッチの向上につながっています。';
+            } else if (kneeFlexionProgress < 5) {
+              kneeAdvice += ' ただし、3歩目以降はより積極的に膝を引きつけていくと、ピッチが向上します。';
+            }
           }
+        } else if (firstStepKnee >= 130 && firstStepKnee < 145) {
+          kneeEval = 'good';
+          kneeMessage = `1歩目の膝角度: ${firstStepKnee.toFixed(0)}° - やや屈曲気味（目標:150-160°）`;
+          kneeAdvice = '【スタートダッシュ】ブロッククリアランス直後から膝がやや曲がっています。最初の1-2歩は膝を150-160°程度に固定し、股関節伸展のみで推進力を得ましょう。';
+        } else if (firstStepKnee > 170) {
+          kneeEval = 'good';
+          kneeMessage = `1歩目の膝角度: ${firstStepKnee.toFixed(0)}° - 膝が伸びすぎ（目標:150-160°）`;
+          kneeAdvice = '【スタートダッシュ】膝が伸びすぎています。完全伸展ではなく、わずかに曲げた状態（150-160°）で固定すると、力の伝達効率が向上します。';
+        } else {
+          kneeEval = 'fair';
+          kneeMessage = `1歩目の膝角度: ${firstStepKnee.toFixed(0)}° - 膝の屈曲が早い（目標:150-160°）`;
+          kneeAdvice = '【スタートダッシュ】ブロッククリアランス直後から膝が曲がりすぎています。最初の2-3歩は膝を固定したまま、股関節の伸展動作のみでストライドを獲得してください。研究によると「膝関節の伸展タイミングを遅らせる」ことが加速に重要です。';
         }
-      } else if (firstStepKnee >= 130 && firstStepKnee < 145) {
-        kneeEval = 'good';
-        kneeMessage = `1歩目の膝角度: ${firstStepKnee.toFixed(0)}° - やや屈曲気味（目標:150-160°）`;
-        kneeAdvice = '1歩目で膝がやや曲がっています。スタート直後の1-2歩は膝を150-160°程度に固定し、股関節伸展で推進力を得ましょう。';
-      } else if (firstStepKnee > 170) {
-        kneeEval = 'good';
-        kneeMessage = `1歩目の膝角度: ${firstStepKnee.toFixed(0)}° - 膝が伸びすぎ（目標:150-160°）`;
-        kneeAdvice = '1歩目の膝が伸びすぎています。完全伸展ではなく、わずかに曲げた状態（150-160°）で固定すると、力の伝達効率が向上します。';
-      } else if (firstStepKnee < 130) {
-        kneeEval = 'fair';
-        kneeMessage = `1歩目の膝角度: ${firstStepKnee.toFixed(0)}° - 膝の屈曲が早い（目標:150-160°）`;
-        kneeAdvice = 'スタート1歩目から膝が曲がりすぎています。最初の2-3歩は膝を固定したまま、股関節の伸展動作のみでストライドを獲得してください。膝を引き上げる動作は3歩目以降から徐々に行いましょう。';
       } else {
-        kneeEval = 'fair';
-        kneeMessage = `1歩目の膝角度: ${firstStepKnee.toFixed(0)}°`;
-        kneeAdvice = '膝角度のデータを確認してください。';
+        // === 加速走（フライングスタート）の膝関節評価 ===
+        // 助走があるため、スタートダッシュほど厳密な膝固定は不要だが、基本は同じ
+        if (firstStepKnee >= 140 && firstStepKnee <= 165) {
+          kneeEval = 'excellent';
+          kneeMessage = `1歩目の膝角度: ${firstStepKnee.toFixed(0)}° - 理想的（目標:140-165°）`;
+          kneeAdvice = '【加速走】助走からの1歩目で膝角度が適切です。助走の勢いを活かしながら、股関節伸展主導で加速できています。';
+          
+          if (secondStepKnee != null && thirdStepKnee != null) {
+            const kneeFlexionProgress = firstStepKnee - thirdStepKnee;
+            if (kneeFlexionProgress >= 5 && kneeFlexionProgress <= 25) {
+              kneeAdvice += ' その後、段階的に膝の引きつけを増やせています。';
+            }
+          }
+        } else if (firstStepKnee >= 125 && firstStepKnee < 140) {
+          kneeEval = 'good';
+          kneeMessage = `1歩目の膝角度: ${firstStepKnee.toFixed(0)}° - やや屈曲気味（目標:140-165°）`;
+          kneeAdvice = '【加速走】膝がやや曲がっていますが、加速走では助走の勢いがあるため許容範囲です。股関節伸展を意識すると、より効率的な加速が可能です。';
+        } else if (firstStepKnee > 165) {
+          kneeEval = 'good';
+          kneeMessage = `1歩目の膝角度: ${firstStepKnee.toFixed(0)}° - 膝が伸びすぎ（目標:140-165°）`;
+          kneeAdvice = '【加速走】膝がやや伸びすぎています。わずかに曲げた状態で股関節伸展を強調すると、より効率的です。';
+        } else {
+          kneeEval = 'fair';
+          kneeMessage = `1歩目の膝角度: ${firstStepKnee.toFixed(0)}° - 膝の屈曲が早い（目標:140-165°）`;
+          kneeAdvice = '【加速走】1歩目から膝が曲がりすぎています。加速走でも最初の数歩は膝を比較的固定し、股関節伸展で推進力を得ましょう。';
+        }
       }
       
       evaluations.push({
-        category: '膝関節の使い方',
+        category: `膝関節の使い方（${phaseLabel}）`,
         score: kneeEval,
         icon: kneeEval === 'excellent' ? '✅' : kneeEval === 'good' ? '✅' : '⚠️',
         message: kneeMessage,

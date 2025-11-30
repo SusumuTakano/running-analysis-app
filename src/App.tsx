@@ -476,7 +476,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   }, []);
 
   const [wizardStep, setWizardStep] = useState<WizardStep>(0);
-  const [selectedFps, setSelectedFps] = useState<60 | 120>(60); // FPS選択: 60 or 120
+  const [selectedFps, setSelectedFps] = useState<60 | 120>(120); // FPS選択: 60 or 120（デフォルト120fps）
   
   // ------------ 測定者情報 -----------------
   const [athleteInfo, setAthleteInfo] = useState<AthleteInfo>({
@@ -3816,7 +3816,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     }, analysisType, {
       heightCm: athleteInfo.height_cm,
       gender: athleteInfo.gender
-    });
+    }, runType);
   }, [stepMetrics, threePhaseAngles, stepSummary, athleteInfo.height_cm, athleteInfo.gender, runType]);
 
   // 研究データベース（目標記録に対する最適なピッチとストライド）
