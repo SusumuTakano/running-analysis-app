@@ -3800,12 +3800,12 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
   // AI評価機能
   // 🔥 runType に基づいて analysisType を決定
-  // - 'dash' (スタートダッシュ) → 'acceleration' (加速局面評価)
-  // - 'accel' (加速走) → 'acceleration' (加速局面評価)
-  // どちらも加速過程なので acceleration として評価
+  // - 'dash' (スタートダッシュ) → 'acceleration' (静止状態からの加速評価)
+  // - 'accel' (加速走) → 'topSpeed' (すでにスピードに乗った状態の評価)
+  // 加速走は助走があるため、トップスピード維持に近い評価基準を適用
   const runningEvaluation: RunningEvaluation | null = useMemo(() => {
-    // スタートダッシュと加速走はどちらも加速局面として評価
-    const analysisType: 'acceleration' | 'topSpeed' = (runType === 'dash' || runType === 'accel') ? 'acceleration' : 'topSpeed';
+    // スタートダッシュは加速局面、加速走はトップスピード評価
+    const analysisType: 'acceleration' | 'topSpeed' = runType === 'dash' ? 'acceleration' : 'topSpeed';
     
     return generateRunningEvaluation(stepMetrics, threePhaseAngles, {
       avgContact: stepSummary.avgContact ?? 0,

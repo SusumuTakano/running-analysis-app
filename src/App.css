@@ -1764,3 +1764,276 @@ body {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   }
 }
+
+/* ========== iPhone/iPad 最適化 ========== */
+
+/* iPhone向け最適化 (max-width: 428px) */
+@media (max-width: 428px) {
+  /* AI評価セクションの最適化 */
+  .result-card {
+    padding: 12px !important;
+    margin: 8px 0 !important;
+    border-radius: 10px !important;
+  }
+
+  .result-card-title {
+    font-size: 1rem !important;
+    margin-bottom: 12px !important;
+  }
+
+  /* 総合評価のタイトルサイズ調整 */
+  .result-card > div:first-of-type > div:first-child {
+    font-size: 1.2rem !important;
+  }
+
+  /* 総合評価のメッセージサイズ調整 */
+  .result-card > div:first-of-type > div:nth-child(2) {
+    font-size: 0.85rem !important;
+    line-height: 1.5 !important;
+  }
+
+  /* スコアバー調整 */
+  .result-card > div:first-of-type > div:last-child > div {
+    width: 30px !important;
+    height: 6px !important;
+  }
+
+  /* 個別評価項目のパディング */
+  .result-card > div > div {
+    padding: 12px !important;
+  }
+
+  /* カテゴリ名のサイズ */
+  .result-card > div > div > div:first-child > div:first-child {
+    font-size: 0.9rem !important;
+  }
+
+  /* メッセージのサイズ */
+  .result-card > div > div > div:first-child > div:last-child {
+    font-size: 0.75rem !important;
+  }
+
+  /* アドバイスのサイズ */
+  .result-card > div > div > div:last-child {
+    font-size: 0.75rem !important;
+    padding-left: 24px !important;
+  }
+
+  /* アイコンサイズ */
+  .result-card > div > div > div:first-child > span {
+    font-size: 1.2rem !important;
+  }
+
+  /* 結果レイアウトを縦並びに */
+  .results-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  /* グラフセクションの最適化 */
+  .chart-container {
+    height: 200px !important;
+    margin-bottom: 12px !important;
+  }
+
+  /* テーブルの文字サイズ調整 */
+  table {
+    font-size: 0.7rem !important;
+  }
+
+  table th,
+  table td {
+    padding: 6px 4px !important;
+  }
+
+  /* セクション設定の最適化 */
+  .section-settings {
+    padding: 12px !important;
+  }
+
+  .section-settings label {
+    font-size: 0.85rem !important;
+  }
+
+  .section-settings input,
+  .section-settings select {
+    font-size: 0.85rem !important;
+    padding: 8px !important;
+  }
+
+  /* ウィザードタイトル */
+  .wizard-step-title {
+    font-size: 1.1rem !important;
+  }
+
+  .wizard-step-description {
+    font-size: 0.8rem !important;
+  }
+
+  /* ボタンサイズ調整 */
+  .btn-primary-large,
+  .btn-ghost {
+    padding: 10px 16px !important;
+    font-size: 0.85rem !important;
+  }
+
+  /* フレームコントロール（スライダー） */
+  .frame-control {
+    padding: 4px 8px !important;
+  }
+
+  .frame-control input[type="range"] {
+    height: 28px !important;
+  }
+
+  /* マーキングコントロール */
+  .mobile-marking-controls button {
+    padding: 8px 10px !important;
+    font-size: 0.7rem !important;
+    min-width: 50px !important;
+  }
+}
+
+/* iPad向け最適化 (min-width: 429px) and (max-width: 1024px) */
+@media (min-width: 429px) and (max-width: 1024px) {
+  /* AI評価セクションの最適化 */
+  .result-card {
+    padding: 16px !important;
+    margin: 12px 0 !important;
+    border-radius: 12px !important;
+  }
+
+  .result-card-title {
+    font-size: 1.15rem !important;
+    margin-bottom: 16px !important;
+  }
+
+  /* 総合評価のタイトルサイズ調整 */
+  .result-card > div:first-of-type > div:first-child {
+    font-size: 1.4rem !important;
+  }
+
+  /* 総合評価のメッセージサイズ調整 */
+  .result-card > div:first-of-type > div:nth-child(2) {
+    font-size: 0.9rem !important;
+    line-height: 1.6 !important;
+  }
+
+  /* 結果レイアウトを縦並びに（iPadでも） */
+  .results-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 16px !important;
+  }
+
+  /* グラフセクションの最適化 */
+  .chart-container {
+    height: 250px !important;
+    margin-bottom: 16px !important;
+  }
+
+  /* テーブルの文字サイズ調整 */
+  table {
+    font-size: 0.8rem !important;
+  }
+
+  table th,
+  table td {
+    padding: 8px 6px !important;
+  }
+
+  /* セクション設定の最適化 */
+  .section-settings {
+    padding: 16px !important;
+  }
+
+  /* ウィザードタイトル */
+  .wizard-step-title {
+    font-size: 1.25rem !important;
+  }
+
+  /* ボタンサイズ調整 */
+  .btn-primary-large,
+  .btn-ghost {
+    padding: 12px 20px !important;
+    font-size: 0.9rem !important;
+  }
+
+  /* ステップ8の詳細結果を見やすく */
+  .metrics-summary {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+}
+
+/* セーフエリア対応（ノッチ付きiPhone） */
+@supports (padding: max(0px)) {
+  @media (max-width: 768px) {
+    .app-container {
+      padding-left: max(12px, env(safe-area-inset-left));
+      padding-right: max(12px, env(safe-area-inset-right));
+      padding-bottom: max(20px, env(safe-area-inset-bottom));
+    }
+
+    .canvas-area {
+      padding-top: env(safe-area-inset-top) !important;
+    }
+
+    .wizard-actions {
+      padding-bottom: max(16px, env(safe-area-inset-bottom));
+    }
+
+    .mobile-marking-controls {
+      padding-left: max(8px, env(safe-area-inset-left));
+      padding-right: max(8px, env(safe-area-inset-right));
+    }
+  }
+}
+
+/* タッチ操作の最適化 */
+@media (pointer: coarse) {
+  /* タッチターゲットを大きく */
+  button, 
+  input[type="button"],
+  input[type="submit"],
+  .btn-primary-large,
+  .btn-ghost {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+
+  /* スライダーのタッチ領域拡大 */
+  input[type="range"] {
+    height: 44px;
+    cursor: pointer;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    width: 28px;
+    height: 28px;
+  }
+
+  /* チェックボックス・ラジオボタンのタッチ領域 */
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 24px;
+    height: 24px;
+    margin: 4px;
+  }
+
+  /* セレクトボックスの最適化 */
+  select {
+    min-height: 44px;
+    font-size: 16px; /* iOS でズームを防ぐ */
+  }
+
+  /* テキスト入力の最適化 */
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  textarea {
+    font-size: 16px; /* iOS でズームを防ぐ */
+    min-height: 44px;
+  }
+}
