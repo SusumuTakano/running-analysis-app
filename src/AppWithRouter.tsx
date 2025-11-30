@@ -227,7 +227,7 @@ const MainApp: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-100">
       {user && <Navigation viewMode={viewMode} setViewMode={setViewMode} onAdminLogout={handleAdminLogout} />}
-      <App userProfile={null} />
+      <App />
     </div>
   );
 };
