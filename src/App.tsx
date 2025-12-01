@@ -3291,48 +3291,22 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     canvas.width = w;
     canvas.height = h;
     
-    // 🔥 スケルトンズレ修正 v2: キャンバスの表示サイズを内部サイズに比例させる
-    // キャンバスは内部ピクセルサイズ (canvas.width/height) と
-    // CSS表示サイズ (style.width/height) が別々に管理される
-    // 両者の比率が異なるとスケルトン描画座標がズレる
-    const canvasArea = canvas.parentElement;
-    if (canvasArea) {
-      const containerWidth = canvasArea.clientWidth;
-      const containerHeight = canvasArea.clientHeight;
-      const aspectRatio = w / h;
-      
-      // モバイルかどうかを検出
-      const isMobile = window.innerWidth <= 768;
-      
-      // 最大高さの制限
-      const maxHeight = isMobile 
-        ? Math.min(window.innerHeight * 0.45, containerHeight || window.innerHeight * 0.45)
-        : window.innerHeight * 0.8;
-      
-      let displayWidth: number;
-      let displayHeight: number;
-      
-      // コンテナ幅に合わせた高さを計算
-      const heightBasedOnWidth = containerWidth / aspectRatio;
-      
-      if (heightBasedOnWidth > maxHeight) {
-        // 高さが最大を超える場合は高さ基準でサイズを計算
-        displayHeight = maxHeight;
-        displayWidth = maxHeight * aspectRatio;
-      } else {
-        // コンテナ幅基準
-        displayWidth = containerWidth;
-        displayHeight = heightBasedOnWidth;
-      }
-      
-      // 🔥 setProperty で確実にスタイルを適用（CSSの!importantを上書き）
-      canvas.style.setProperty('width', `${displayWidth}px`, 'important');
-      canvas.style.setProperty('height', `${displayHeight}px`, 'important');
-      
-      // デバッグ用ログ（本番では削除可能）
-      if (currentFrame === 0) {
-        console.log(`🎨 Canvas sizing: internal=${w}x${h}, display=${displayWidth.toFixed(0)}x${displayHeight.toFixed(0)}, container=${containerWidth}x${containerHeight || 'auto'}`);
-      }
+    // 🔥 スケルトンズレ修正 v3: CSSに任せてJSでのサイズ制御を最小限に
+    // CSSで width: 100% と height: auto を設定しているため、
+    // キャンバスの内部サイズ(canvas.width/height)を正しく設定すれば
+    // ブラウザが自動的にアスペクト比を維持してスケールする
+    // 
+    // 重要: canvas要素では内部サイズと表示サイズの比率が同じなら
+    // スケルトン座標は正しく表示される
+    
+    // JSでのスタイル設定をクリア（CSSに任せる）
+    canvas.style.removeProperty('width');
+    canvas.style.removeProperty('height');
+    
+    // デバッグ用ログ
+    if (currentFrame === 0) {
+      const displayRect = canvas.getBoundingClientRect();
+      console.log(`🎨 Canvas: internal=${w}x${h}, display=${displayRect.width.toFixed(0)}x${displayRect.height.toFixed(0)}, ratio=${(displayRect.width/w).toFixed(3)}`);
     }
 
     if (!footZoomEnabled) {

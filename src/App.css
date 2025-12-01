@@ -1348,25 +1348,18 @@ body {
     z-index: 1000 !important;
     margin: 0 !important;
     border-radius: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    /* 🔥 スケルトンズレ修正: flex中央配置を削除 - キャンバスを左上基準に */
+    display: block;
     background: #000;
+    overflow: hidden;
   }
 
   .preview-canvas {
-    /* 🔥 スケルトンズレ修正: JSでサイズを制御するため!importantを削除 */
-    /* キャンバスの内部サイズと表示サイズを一致させるために必須 */
+    /* 🔥 スケルトンズレ修正: キャンバスを親要素いっぱいに広げる */
     display: block;
-    margin: 0 auto;
-    max-width: 100%;
-  }
-  
-  /* ステップ6でのキャンバスはコンテナに合わせてスケール */
-  .wizard-content.step-6 .preview-canvas {
-    /* JSがサイズを制御 */
-    display: block;
-    margin: 0 auto;
+    width: 100% !important;
+    height: auto !important;
+    max-height: 45vh;
     max-width: 100%;
     max-height: 45vh;
   }
