@@ -403,7 +403,8 @@ body {
   width: 100%;
   height: auto;
   max-height: 80vh; /* PC版で画面の80%まで（より大きく） */
-  object-fit: contain;
+  /* object-fit: contain を削除 - キャンバスは内部サイズと表示サイズを一致させる必要がある */
+  /* スケルトン描画座標がズレないようにアスペクト比はJSで管理 */
 }
 
 /* ========== フレームコントロール ========== */
@@ -1225,26 +1226,31 @@ body {
     left: 0 !important;
     right: 0 !important;
     width: 100vw !important;
-    height: 56.25vw !important;
-    max-height: 50vh !important;
+    height: auto !important;
+    max-height: 45vh !important;
     z-index: 1000 !important;
     margin: 0 !important;
     border-radius: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
   }
 
   .preview-canvas {
     width: 100% !important;
     height: auto !important;
-    aspect-ratio: 16 / 9;
-    object-fit: contain;
+    /* object-fit なし - キャンバスの内部サイズがそのまま表示される */
     display: block;
-    margin: 0;
+    margin: 0 auto;
   }
   
-  /* ステップ6でのキャンバスは高さ100% */
+  /* ステップ6でのキャンバスはコンテナに合わせてスケール */
   .wizard-content.step-6 .preview-canvas {
-    height: 100% !important;
-    aspect-ratio: auto;
+    width: 100% !important;
+    height: auto !important;
+    max-height: 100% !important;
+    margin: 0 auto;
   }
 
   /* フレームコントロール（スライダー）：通常はドキュメントフロー内 */
@@ -1265,7 +1271,7 @@ body {
   /* ステップ6（マーキング時）でのフレームコントロールは固定 */
   .wizard-content.step-6 .frame-control {
     position: fixed !important;
-    top: calc(42px + min(56.25vw, 50vh)) !important;
+    top: calc(42px + 45vh) !important;
     left: 0 !important;
     right: 0 !important;
     z-index: 999 !important;
@@ -1356,7 +1362,7 @@ body {
   /* ステップ6（マーキング時）でのマーキングコントロールは固定 */
   .wizard-content.step-6 .mobile-marking-controls {
     position: fixed !important;
-    top: calc(42px + min(56.25vw, 50vh) + 28px) !important;
+    top: calc(42px + 45vh + 32px) !important;
     left: 0 !important;
     right: 0 !important;
     z-index: 998 !important;

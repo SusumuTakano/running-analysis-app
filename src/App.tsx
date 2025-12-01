@@ -3287,10 +3287,34 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     if (!offCtx) return;
     offCtx.putImageData(frame, 0, 0);
 
-    // キャンバスサイズを動画サイズに設定（CSSでレスポンシブに表示）
+    // キャンバスサイズを動画サイズに設定
     canvas.width = w;
     canvas.height = h;
-    // canvas.style.widthとcanvas.style.heightは削除（CSSに任せる）
+    
+    // 🔥 スケルトンズレ修正: キャンバスの表示サイズを内部サイズに比例させる
+    // object-fit: contain はキャンバスでは正しく動作しないため、
+    // 親コンテナのサイズに基づいてアスペクト比を維持しながら表示サイズを計算
+    const canvasArea = canvas.parentElement;
+    if (canvasArea) {
+      const containerWidth = canvasArea.clientWidth;
+      const aspectRatio = w / h;
+      
+      // コンテナ幅に合わせた高さを計算
+      const displayHeight = containerWidth / aspectRatio;
+      
+      // 最大高さの制限（80vh）を適用
+      const maxHeight = window.innerHeight * 0.8;
+      
+      if (displayHeight > maxHeight) {
+        // 高さが最大を超える場合は高さ基準でサイズを計算
+        canvas.style.height = `${maxHeight}px`;
+        canvas.style.width = `${maxHeight * aspectRatio}px`;
+      } else {
+        // コンテナ幅基準
+        canvas.style.width = `${containerWidth}px`;
+        canvas.style.height = `${displayHeight}px`;
+      }
+    }
 
     if (!footZoomEnabled) {
       ctx.drawImage(offscreen, 0, 0, w, h, 0, 0, w, h);
