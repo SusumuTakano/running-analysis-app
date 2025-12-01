@@ -101,25 +101,17 @@ body {
     display: none !important;
   }
   
-  /* キャンバスをヘッダーの下に配置 */
-  .canvas-area {
-    top: 42px !important; /* ヘッダー高さ分下げる */
+  /* ステップ6（マーキング時）のみヘッダー考慮が必要 */
+  .wizard-content.step-6 .canvas-area {
+    top: 42px !important;
   }
   
-  .frame-control {
-    top: calc(42px + min(56.25vw, 50vh)) !important;
+  .wizard-content.step-6 .section-settings {
+    margin-top: calc(42px + min(56.25vw, 50vh) + 80px) !important;
   }
   
-  .mobile-marking-controls {
-    top: calc(42px + min(56.25vw, 50vh) + 24px) !important;
-  }
-  
-  .wizard-content .section-settings {
-    margin-top: calc(42px + min(56.25vw, 50vh) + 28px) !important;
-  }
-  
-  .wizard-content .marker-controls {
-    margin-top: calc(42px + min(56.25vw, 50vh) + 60px) !important;
+  .wizard-content.step-6 .marker-controls {
+    margin-top: calc(42px + min(56.25vw, 50vh) + 110px) !important;
   }
 }
 
@@ -1211,41 +1203,75 @@ body {
 
   /* ========== モバイル最適化：キャンバスを最大化、コントロールを最小化 ========== */
   
-  /* キャンバスエリア：16:9固定 */
+  /* キャンバスエリア：デフォルト（ステップ5, 6以外では固定） */
   .canvas-area {
+    position: relative !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    z-index: 1 !important;
+    background: #000;
+    padding: 0 !important;
+    margin: 0 0 12px 0 !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  
+  /* ステップ6（マーキング）でのキャンバスは固定表示 */
+  .wizard-content.step-6 .canvas-area {
     position: fixed !important;
-    top: 0 !important;
+    top: 42px !important;
     left: 0 !important;
     right: 0 !important;
     width: 100vw !important;
-    height: 56.25vw !important; /* 16:9比率 */
+    height: 56.25vw !important;
     max-height: 50vh !important;
     z-index: 1000 !important;
-    background: #000;
-    padding: 0 !important;
     margin: 0 !important;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    border-radius: 0;
   }
 
   .preview-canvas {
     width: 100% !important;
-    height: 100% !important;
-    object-fit: contain; /* 動画全体を表示（黒帯あり） */
+    height: auto !important;
+    aspect-ratio: 16 / 9;
+    object-fit: contain;
     display: block;
     margin: 0;
   }
+  
+  /* ステップ6でのキャンバスは高さ100% */
+  .wizard-content.step-6 .preview-canvas {
+    height: 100% !important;
+    aspect-ratio: auto;
+  }
 
-  /* フレームコントロール（スライダー）：極限まで小さく */
+  /* フレームコントロール（スライダー）：通常はドキュメントフロー内 */
   .frame-control {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    z-index: 1 !important;
+    background: rgba(255, 255, 255, 0.98);
+    padding: 8px 12px !important;
+    margin: 0 0 12px 0 !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    border: 1px solid var(--gray-200);
+  }
+  
+  /* ステップ6（マーキング時）でのフレームコントロールは固定 */
+  .wizard-content.step-6 .frame-control {
     position: fixed !important;
-    top: min(56.25vw, 50vh) !important;
+    top: calc(42px + min(56.25vw, 50vh)) !important;
     left: 0 !important;
     right: 0 !important;
     z-index: 999 !important;
-    background: rgba(255, 255, 255, 0.98);
-    padding: 2px 6px !important;
     margin: 0 !important;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    border-radius: 0;
+    border: none;
     border-bottom: 1px solid var(--gray-300);
   }
 
@@ -1309,21 +1335,34 @@ body {
     display: none;
   }
 
-  /* モバイル用のマーキングコントロール（Step 5用） */
+  /* モバイル用のマーキングコントロール（Step 6マーキング時のみ固定） */
   .mobile-marking-controls {
     display: flex !important;
     flex-direction: column;
     gap: 4px;
-    margin-bottom: 0;
-    padding: 4px 6px;
+    margin-bottom: 12px;
+    padding: 8px 12px;
     background: rgba(255, 255, 255, 0.98);
-    border-radius: 0;
+    border-radius: 8px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    z-index: 1 !important;
+    border: 1px solid var(--gray-200);
+  }
+  
+  /* ステップ6（マーキング時）でのマーキングコントロールは固定 */
+  .wizard-content.step-6 .mobile-marking-controls {
     position: fixed !important;
-    top: calc(42px + min(56.25vw, 50vh) + 24px) !important;
+    top: calc(42px + min(56.25vw, 50vh) + 28px) !important;
     left: 0 !important;
     right: 0 !important;
     z-index: 998 !important;
+    margin: 0 !important;
+    border-radius: 0;
+    border: none;
     border-bottom: 1px solid var(--gray-300);
   }
 

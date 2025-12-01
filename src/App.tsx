@@ -5642,7 +5642,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
       case 6:
         return (
-          <div className="wizard-content">
+          <div className={`wizard-content ${calibrationType ? 'step-6' : ''}`}>
             <div className="wizard-step-header">
               <h2 className="wizard-step-title">ステップ 6: {calibrationType ? '接地・離地マーク' : '検出モード選択'}</h2>
               
