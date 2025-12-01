@@ -128,12 +128,36 @@ body {
     top: 42px !important;
   }
   
+  /* セクション設定：固定コントロールの下に配置 */
   .wizard-content.step-6 .section-settings {
-    margin-top: calc(42px + min(56.25vw, 50vh) + 80px) !important;
+    margin-top: calc(44px + 40vh + 180px) !important;
   }
   
+  /* オプションボタン（足元拡大/スケルトン）：コマ送りの下 */
   .wizard-content.step-6 .marker-controls {
-    margin-top: calc(42px + min(56.25vw, 50vh) + 110px) !important;
+    position: fixed !important;
+    top: calc(44px + 40vh + 130px) !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 996 !important;
+    margin: 0 !important;
+    padding: 6px 12px !important;
+    background: #f8fafc !important;
+    border-bottom: 1px solid var(--gray-200);
+    border-radius: 0 !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+    justify-content: center !important;
+  }
+
+  .wizard-content.step-6 .marker-controls button,
+  .wizard-content.step-6 .marker-controls .toggle-btn {
+    flex: 1 !important;
+    max-width: 120px !important;
+    padding: 8px 4px !important;
+    font-size: 0.75rem !important;
+    min-height: 36px !important;
   }
 }
 
@@ -1392,24 +1416,25 @@ body {
     object-fit: contain;
   }
 
-  /* ステップ6（マーキング）でのキャンバスは固定表示 */
+  /* ========== ステップ6（マーキング）専用レイアウト ========== */
+  /* 動画エリア：上部に固定、画面の40%程度 */
   .wizard-content.step-6 .canvas-area {
     position: fixed !important;
-    top: 42px !important;
+    top: 44px !important;
     left: 0 !important;
     right: 0 !important;
     width: 100vw !important;
-    /* height/max-height はコメントアウトのまま */
-    /* height: 56.25vw !important; */
-    /* max-height: 50vh !important; */
+    height: 40vh !important;
+    max-height: 40vh !important;
     z-index: 1000 !important;
     margin: 0 !important;
     border-radius: 0;
+    background: #000;
   }
 
   .wizard-content.step-6 .canvas-area.focus-mode {
-    height: calc(100vh - 160px) !important;
-    max-height: calc(100vh - 160px) !important;
+    height: calc(100vh - 120px) !important;
+    max-height: calc(100vh - 120px) !important;
   }
 
   .preview-canvas {
@@ -1435,17 +1460,19 @@ body {
     border: 1px solid var(--gray-200);
   }
   
-  /* ステップ6（マーキング時）でのフレームコントロールは固定 */
+  /* フレームスライダー：動画直下に固定 */
   .wizard-content.step-6 .frame-control {
     position: fixed !important;
-    top: calc(42px + 45vh) !important;
+    top: calc(44px + 40vh) !important;
     left: 0 !important;
     right: 0 !important;
     z-index: 999 !important;
     margin: 0 !important;
+    padding: 8px 16px !important;
     border-radius: 0;
     border: none;
-    border-bottom: 1px solid var(--gray-300);
+    border-bottom: 1px solid var(--gray-200);
+    background: white !important;
   }
 
   .wizard-content.step-6 .frame-control.focus-mode {
@@ -1456,20 +1483,9 @@ body {
     border-top: 1px solid var(--gray-300);
   }
 
+  /* 集中モードボタン：非表示（シンプル化のため削除） */
   .mobile-focus-toggle {
-    width: 100%;
-    margin: 12px 0;
-    padding: 10px 16px;
-    border-radius: 12px;
-    border: 1px solid var(--primary);
-    background: white;
-    color: var(--primary);
-    font-weight: 600;
-    font-size: 0.9rem;
-    text-align: center;
-    box-shadow: 0 2px 6px rgba(59, 130, 246, 0.2);
-    position: relative;
-    z-index: 1002;
+    display: none !important;
   }
 
   .mobile-focus-toggle.active {
@@ -1618,17 +1634,19 @@ body {
     border: 1px solid var(--gray-200);
   }
   
-  /* ステップ6（マーキング時）でのマーキングコントロールは固定 */
+  /* マーキングコントロール：フレームスライダー直下 */
   .wizard-content.step-6 .mobile-marking-controls {
     position: fixed !important;
-    top: calc(42px + 45vh + 32px) !important;
+    top: calc(44px + 40vh + 56px) !important;
     left: 0 !important;
     right: 0 !important;
-    z-index: 998 !important;
+    z-index: 997 !important;
     margin: 0 !important;
+    padding: 8px 12px !important;
     border-radius: 0;
     border: none;
-    border-bottom: 1px solid var(--gray-300);
+    border-bottom: 1px solid var(--gray-200);
+    background: white !important;
   }
 
   /* マーキングボタン */
@@ -1658,25 +1676,32 @@ body {
     cursor: not-allowed;
   }
 
-  /* フレーム移動ボタン：4つ（±1と±10） */
+  /* フレーム移動ボタン：4つ（±1と±10） - 横並びで大きく */
   .mobile-frame-nav {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 4px;
+    gap: 6px;
+    width: 100%;
   }
 
   .btn-nav-arrow {
-    padding: 6px 2px;
-    font-size: 0.75rem;
-    font-weight: 600;
+    padding: 12px 2px;
+    font-size: 0.85rem;
+    font-weight: 700;
     background: white;
     color: var(--primary);
     border: 2px solid var(--primary);
-    border-radius: 6px;
+    border-radius: 8px;
     cursor: pointer;
     transition: var(--transition);
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
+    min-height: 44px;
+  }
+
+  .btn-nav-arrow:active {
+    background: var(--primary);
+    color: white;
   }
 
   .btn-nav-arrow:active {
@@ -2201,11 +2226,26 @@ body {
 
   /* フレームコントロール（スライダー） */
   .frame-control {
-    padding: 4px 8px !important;
+    padding: 10px 16px !important;
   }
 
   .frame-control input[type="range"] {
-    height: 28px !important;
+    height: 36px !important;
+    -webkit-appearance: none;
+    appearance: none;
+    background: linear-gradient(to right, var(--primary) 0%, var(--primary) 50%, #e5e7eb 50%, #e5e7eb 100%);
+    border-radius: 8px;
+  }
+
+  .frame-control input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 28px;
+    height: 28px;
+    background: var(--primary);
+    border-radius: 50%;
+    border: 3px solid white;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    cursor: pointer;
   }
 
   /* マーキングコントロール */
@@ -2356,5 +2396,472 @@ body {
   textarea {
     font-size: 16px; /* iOS でズームを防ぐ */
     min-height: 44px;
+  }
+}
+
+/* ========== iPhone Step 6 専用レイアウト ========== */
+@media (max-width: 768px) {
+  /* Step 6 モバイル専用コンテナ */
+  .mobile-step6-layout {
+    position: fixed;
+    top: 44px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    background: #f8fafc;
+    z-index: 100;
+  }
+
+  /* 動画エリア */
+  .mobile-video-area {
+    width: 100%;
+    height: 35vh;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .mobile-video-area .preview-canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  /* 固定コントロールエリア */
+  .mobile-controls-fixed {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 16px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0));
+    overflow-y: auto;
+    background: white;
+  }
+
+  /* フレーム情報 */
+  .mobile-frame-info {
+    text-align: center;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #374151;
+    padding: 4px 0;
+  }
+
+  /* フレームスライダー */
+  .mobile-frame-slider {
+    width: 100%;
+    height: 40px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #e5e7eb;
+    border-radius: 8px;
+    outline: none;
+  }
+
+  .mobile-frame-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 32px;
+    height: 32px;
+    background: #3b82f6;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 3px solid white;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  }
+
+  /* コマ送りボタン */
+  .mobile-nav-buttons {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+
+  .mobile-nav-buttons button {
+    padding: 16px 8px;
+    font-size: 1rem;
+    font-weight: 700;
+    background: white;
+    color: #3b82f6;
+    border: 2px solid #3b82f6;
+    border-radius: 10px;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-nav-buttons button:active {
+    background: #3b82f6;
+    color: white;
+  }
+
+  .mobile-nav-buttons button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* マークボタン */
+  .mobile-mark-button {
+    width: 100%;
+    padding: 18px;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: white;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  }
+
+  .mobile-mark-button:active {
+    transform: scale(0.98);
+  }
+
+  .mobile-mark-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* オプションボタン（小さく） */
+  .mobile-options {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+  }
+
+  .mobile-options button {
+    flex: 1;
+    max-width: 100px;
+    padding: 10px 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    background: #f3f4f6;
+    color: #374151;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .mobile-options button.active {
+    background: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+  }
+
+  /* Step 6 既存CSSを上書き */
+  .wizard-content.step-6 .canvas-area,
+  .wizard-content.step-6 .frame-control,
+  .wizard-content.step-6 .marker-controls,
+  .wizard-content.step-6 .mobile-marking-controls,
+  .wizard-content.step-6 .mobile-marker-display,
+  .wizard-content.step-6 .mobile-view-options,
+  .wizard-content.step-6 .mobile-focus-toggle {
+    display: none !important;
+  }
+}
+
+/* ========== iPhone Step 6 マーカー一覧と終了ボタン ========== */
+@media (max-width: 768px) {
+  /* マーカー一覧 */
+  .mobile-marker-list {
+    background: #f8fafc;
+    border-radius: 10px;
+    padding: 10px;
+    border: 1px solid #e2e8f0;
+  }
+
+  .mobile-marker-list-header {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-bottom: 8px;
+    text-align: center;
+  }
+
+  .mobile-marker-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+  }
+
+  .mobile-marker-step {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: white;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+  }
+
+  .mobile-marker-step .step-label {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    min-width: 24px;
+  }
+
+  .mobile-marker-step .marker-frame {
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .mobile-marker-step .marker-frame.contact {
+    background: #dcfce7;
+    color: #16a34a;
+  }
+
+  .mobile-marker-step .marker-frame.toeoff {
+    background: #fee2e2;
+    color: #dc2626;
+  }
+
+  /* マーク終了ボタン */
+  .mobile-finish-button {
+    width: 100%;
+    padding: 16px;
+    font-size: 1.1rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    touch-action: manipulation;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    margin-top: 8px;
+  }
+
+  .mobile-finish-button:active {
+    transform: scale(0.98);
+  }
+
+  .mobile-finish-button:disabled {
+    background: #94a3b8;
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+}
+
+/* ========== iPhone 足元拡大率スライダー ========== */
+@media (max-width: 768px) {
+  .mobile-zoom-slider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #f0f9ff;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid #bae6fd;
+  }
+
+  .mobile-zoom-slider span {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #0369a1;
+    white-space: nowrap;
+  }
+
+  .mobile-zoom-slider input[type="range"] {
+    flex: 1;
+    height: 32px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #e0f2fe;
+    border-radius: 6px;
+    outline: none;
+  }
+
+  .mobile-zoom-slider input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 26px;
+    height: 26px;
+    background: #0284c7;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 3px solid white;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  }
+
+  .mobile-zoom-slider .zoom-value {
+    min-width: 40px;
+    text-align: center;
+    font-weight: 700;
+    color: #0284c7;
+  }
+}
+
+/* ========== iPhone Step 9 専用レイアウト ========== */
+@media (max-width: 768px) {
+  /* Step 9 の前半・後半比較グリッド - 2列に制限 */
+  .step9-comparison-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+
+  .step9-comparison-item {
+    background: rgba(255, 255, 255, 0.15) !important;
+    padding: 10px !important;
+    border-radius: 8px !important;
+    text-align: center !important;
+  }
+
+  .step9-comparison-item .label {
+    font-size: 0.65rem !important;
+    opacity: 0.9 !important;
+    margin-bottom: 4px !important;
+  }
+
+  .step9-comparison-item .value {
+    font-size: 1rem !important;
+    font-weight: bold !important;
+  }
+
+  /* ステップメトリクステーブル - モバイル最適化 */
+  .metrics-table-mobile {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 0.7rem !important;
+  }
+
+  .metrics-table-mobile th,
+  .metrics-table-mobile td {
+    padding: 6px 4px !important;
+    text-align: center !important;
+    border-bottom: 1px solid #e5e7eb !important;
+    white-space: nowrap !important;
+  }
+
+  .metrics-table-mobile th {
+    background: #f3f4f6 !important;
+    font-weight: 600 !important;
+    font-size: 0.6rem !important;
+    position: sticky !important;
+    top: 0 !important;
+  }
+
+  .metrics-table-mobile input[type="number"] {
+    width: 45px !important;
+    padding: 2px !important;
+    font-size: 0.7rem !important;
+    border: 1px solid #d1d5db !important;
+    border-radius: 4px !important;
+  }
+
+  /* テーブルスクロールエリア */
+  .table-scroll-mobile {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    margin: 12px 0 !important;
+    max-height: 300px !important;
+    overflow-y: auto !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important;
+  }
+
+  /* Step 9 セクションタイトル */
+  .step9-section-title {
+    font-size: 0.9rem !important;
+    font-weight: 600 !important;
+    margin: 16px 0 8px !important;
+    padding: 8px 12px !important;
+    background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%) !important;
+    border-radius: 8px !important;
+    color: #374151 !important;
+  }
+
+  /* 平均値サマリー - 2列グリッド */
+  .step9-summary-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    margin: 12px 0 !important;
+  }
+
+  .step9-summary-item {
+    background: white !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important;
+    padding: 10px !important;
+    text-align: center !important;
+  }
+
+  .step9-summary-item .label {
+    font-size: 0.7rem !important;
+    color: #6b7280 !important;
+  }
+
+  .step9-summary-item .value {
+    font-size: 1.1rem !important;
+    font-weight: bold !important;
+    color: #111827 !important;
+  }
+
+  /* Step 9 アクションボタン */
+  .step9-action-btn {
+    width: 100% !important;
+    padding: 12px !important;
+    margin: 4px 0 !important;
+    font-size: 0.85rem !important;
+    border-radius: 8px !important;
+    border: none !important;
+    cursor: pointer !important;
+    font-weight: 500 !important;
+  }
+
+  .step9-action-btn.primary {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+    color: white !important;
+  }
+
+  .step9-action-btn.secondary {
+    background: #f3f4f6 !important;
+    color: #374151 !important;
+    border: 1px solid #d1d5db !important;
+  }
+
+  /* 10mタイム表示 - モバイル最適化 */
+  .step9-time-card {
+    background: linear-gradient(135deg, #fef3c7 0%, #fef9e7 100%) !important;
+    border-radius: 10px !important;
+    padding: 12px !important;
+    margin: 12px 0 !important;
+  }
+
+  .step9-time-card .time-label {
+    font-size: 0.75rem !important;
+    color: #b45309 !important;
+  }
+
+  .step9-time-card .time-value {
+    font-size: 1.4rem !important;
+    font-weight: bold !important;
+    color: #78350f !important;
+  }
+
+  .step9-time-card .speed-value {
+    font-size: 1.2rem !important;
+    font-weight: bold !important;
+    color: #78350f !important;
+    margin-top: 4px !important;
+  }
+
+  /* ベータ版案内カード縮小 */
+  .step9-beta-notice {
+    padding: 10px !important;
+    font-size: 0.8rem !important;
+    border-radius: 10px !important;
+    margin-bottom: 12px !important;
   }
 }

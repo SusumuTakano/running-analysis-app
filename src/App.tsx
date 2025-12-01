@@ -2359,7 +2359,17 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           framesRef.current = reducedFrames;
           finalPoseResults = reducedPoseResults;
 
-          console.log(`🧹 Mobile: Reduced frames & poses (step=${keepEvery}) → kept ${reducedFrames.length}/${originalFrameCount}`);
+          // 🔧 フレーム間引きに合わせてFPSも調整（時間計算を正確に保つ）
+          // 例: 120fps で 2フレームおき → 実効60fps
+          // usedTargetFps は extractFrames で既に設定されている
+          if (usedTargetFps) {
+            const adjustedFps = usedTargetFps / keepEvery;
+            setUsedTargetFps(adjustedFps);
+            console.log(`🧹 Mobile: Reduced frames & poses (step=${keepEvery}) → kept ${reducedFrames.length}/${originalFrameCount}`);
+            console.log(`📊 Adjusted FPS: ${usedTargetFps} → ${adjustedFps} (keepEvery=${keepEvery})`);
+          } else {
+            console.log(`🧹 Mobile: Reduced frames & poses (step=${keepEvery}) → kept ${reducedFrames.length}/${originalFrameCount}`);
+          }
         }
       }
 
@@ -2398,7 +2408,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     ctx: CanvasRenderingContext2D,
     landmarks: FramePoseData["landmarks"],
     width: number,
-    height: number
+    height: number,
+    hideLabels: boolean = false // モバイルStep6では数値ラベルを非表示
   ) => {
     // 🔥 信頼度のしきい値を下げて姿勢推定率を向上
     const CONFIDENCE_THRESHOLD = 0.1; // 🔥 姿勢認識率向上のため低めに設定
@@ -2530,11 +2541,13 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       ctx.arc(hipCenterX, hipCenterY, 8, 0, 2 * Math.PI);
       ctx.fill();
       
-      // 「大転子」ラベル
-      ctx.fillStyle = "#dc2626";
-      ctx.font = "bold 14px sans-serif";
-      ctx.textAlign = "left";
-      ctx.fillText("大転子", hipCenterX + 12, hipCenterY - 5);
+      // 「大転子」ラベル - hideLabels時は非表示
+      if (!hideLabels) {
+        ctx.fillStyle = "#dc2626";
+        ctx.font = "bold 14px sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillText("大転子", hipCenterX + 12, hipCenterY - 5);
+      }
       
       // 左つま先までの距離を表示（cm単位）
       if (leftToe.visibility > CONFIDENCE_THRESHOLD) {
@@ -2562,22 +2575,24 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         ctx.arc(leftToeX, leftToeY, 6, 0, 2 * Math.PI);
         ctx.fill();
         
-        // 距離ラベル（左、cm単位）
-        const leftDistLabel = leftDistCm < 0 
-          ? `L: ${Math.abs(leftDistCm).toFixed(1)}cm前` 
-          : `L: ${leftDistCm.toFixed(1)}cm後`;
-        
-        // 背景付きラベル
-        ctx.font = "bold 14px sans-serif";
-        const textWidth = ctx.measureText(leftDistLabel).width;
-        const labelX = (hipCenterX + leftToeX) / 2 - textWidth / 2;
-        const labelY = leftToeY - 8;
-        
-        ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-        ctx.fillRect(labelX - 4, labelY - 14, textWidth + 8, 18);
-        ctx.fillStyle = "#16a34a";
-        ctx.textAlign = "left";
-        ctx.fillText(leftDistLabel, labelX, labelY);
+        // 距離ラベル（左、cm単位）- hideLabels時は非表示
+        if (!hideLabels) {
+          const leftDistLabel = leftDistCm < 0 
+            ? `L: ${Math.abs(leftDistCm).toFixed(1)}cm前` 
+            : `L: ${leftDistCm.toFixed(1)}cm後`;
+          
+          // 背景付きラベル
+          ctx.font = "bold 14px sans-serif";
+          const textWidth = ctx.measureText(leftDistLabel).width;
+          const labelX = (hipCenterX + leftToeX) / 2 - textWidth / 2;
+          const labelY = leftToeY - 8;
+          
+          ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+          ctx.fillRect(labelX - 4, labelY - 14, textWidth + 8, 18);
+          ctx.fillStyle = "#16a34a";
+          ctx.textAlign = "left";
+          ctx.fillText(leftDistLabel, labelX, labelY);
+        }
       }
       
       // 右つま先までの距離を表示（cm単位）
@@ -2606,22 +2621,24 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         ctx.arc(rightToeX, rightToeY, 6, 0, 2 * Math.PI);
         ctx.fill();
         
-        // 距離ラベル（右、cm単位）
-        const rightDistLabel = rightDistCm < 0 
-          ? `R: ${Math.abs(rightDistCm).toFixed(1)}cm前` 
-          : `R: ${rightDistCm.toFixed(1)}cm後`;
-        
-        // 背景付きラベル
-        ctx.font = "bold 14px sans-serif";
-        const textWidth = ctx.measureText(rightDistLabel).width;
-        const labelX = (hipCenterX + rightToeX) / 2 - textWidth / 2;
-        const labelY = rightToeY - 8;
-        
-        ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-        ctx.fillRect(labelX - 4, labelY - 14, textWidth + 8, 18);
-        ctx.fillStyle = "#2563eb";
-        ctx.textAlign = "left";
-        ctx.fillText(rightDistLabel, labelX, labelY);
+        // 距離ラベル（右、cm単位）- hideLabels時は非表示
+        if (!hideLabels) {
+          const rightDistLabel = rightDistCm < 0 
+            ? `R: ${Math.abs(rightDistCm).toFixed(1)}cm前` 
+            : `R: ${rightDistCm.toFixed(1)}cm後`;
+          
+          // 背景付きラベル
+          ctx.font = "bold 14px sans-serif";
+          const textWidth = ctx.measureText(rightDistLabel).width;
+          const labelX = (hipCenterX + rightToeX) / 2 - textWidth / 2;
+          const labelY = rightToeY - 8;
+          
+          ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+          ctx.fillRect(labelX - 4, labelY - 14, textWidth + 8, 18);
+          ctx.fillStyle = "#2563eb";
+          ctx.textAlign = "left";
+          ctx.fillText(rightDistLabel, labelX, labelY);
+        }
       }
     }
   };
@@ -3412,7 +3429,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       ctx.drawImage(offscreen, 0, 0, sourceWidth, sourceHeight, 0, 0, displayWidth, displayHeight);
 
       if (shouldShowSkeleton && poseResults[idx]?.landmarks) {
-        drawSkeleton(ctx, poseResults[idx]!.landmarks, displayWidth, displayHeight);
+        // iPhoneでは常に数値ラベルを非表示（画面が小さく見にくいため）
+        const hideLabels = isMobile;
+        drawSkeleton(ctx, poseResults[idx]!.landmarks, displayWidth, displayHeight, hideLabels);
       }
       
       // 区間マーカー線を描画
@@ -3603,11 +3622,13 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           ctx.arc(hipCenterTrans.x, hipCenterTrans.y, 10, 0, 2 * Math.PI);
           ctx.fill();
           
-          // 「大転子」ラベル
-          ctx.fillStyle = "#dc2626";
-          ctx.font = "bold 16px sans-serif";
-          ctx.textAlign = "left";
-          ctx.fillText("大転子", hipCenterTrans.x + 15, hipCenterTrans.y - 5);
+          // 「大転子」ラベル - iPhoneでは非表示
+          if (!isMobile) {
+            ctx.fillStyle = "#dc2626";
+            ctx.font = "bold 16px sans-serif";
+            ctx.textAlign = "left";
+            ctx.fillText("大転子", hipCenterTrans.x + 15, hipCenterTrans.y - 5);
+          }
           
           // 左つま先までの距離を表示（cm単位）
           if (leftToe.visibility > POINT_CONFIDENCE_THRESHOLD) {
@@ -3634,22 +3655,24 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             ctx.arc(leftToeTrans.x, leftToeTrans.y, 8, 0, 2 * Math.PI);
             ctx.fill();
             
-            // 距離ラベル（左、cm単位）
-            const leftDistLabel = leftDistCm < 0 
-              ? `L: ${Math.abs(leftDistCm).toFixed(1)}cm前` 
-              : `L: ${leftDistCm.toFixed(1)}cm後`;
-            
-            // 背景付きラベル
-            ctx.font = "bold 16px sans-serif";
-            const textWidth = ctx.measureText(leftDistLabel).width;
-            const labelX = (hipCenterTrans.x + leftToeTrans.x) / 2 - textWidth / 2;
-            const labelY = leftToeTrans.y - 10;
-            
-            ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-            ctx.fillRect(labelX - 6, labelY - 16, textWidth + 12, 22);
-            ctx.fillStyle = "#16a34a";
-            ctx.textAlign = "left";
-            ctx.fillText(leftDistLabel, labelX, labelY);
+            // 距離ラベル（左、cm単位）- iPhoneでは非表示
+            if (!isMobile) {
+              const leftDistLabel = leftDistCm < 0 
+                ? `L: ${Math.abs(leftDistCm).toFixed(1)}cm前` 
+                : `L: ${leftDistCm.toFixed(1)}cm後`;
+              
+              // 背景付きラベル
+              ctx.font = "bold 16px sans-serif";
+              const textWidth = ctx.measureText(leftDistLabel).width;
+              const labelX = (hipCenterTrans.x + leftToeTrans.x) / 2 - textWidth / 2;
+              const labelY = leftToeTrans.y - 10;
+              
+              ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+              ctx.fillRect(labelX - 6, labelY - 16, textWidth + 12, 22);
+              ctx.fillStyle = "#16a34a";
+              ctx.textAlign = "left";
+              ctx.fillText(leftDistLabel, labelX, labelY);
+            }
           }
           
           // 右つま先までの距離を表示（cm単位）
@@ -3677,22 +3700,24 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             ctx.arc(rightToeTrans.x, rightToeTrans.y, 8, 0, 2 * Math.PI);
             ctx.fill();
             
-            // 距離ラベル（右、cm単位）
-            const rightDistLabel = rightDistCm < 0 
-              ? `R: ${Math.abs(rightDistCm).toFixed(1)}cm前` 
-              : `R: ${rightDistCm.toFixed(1)}cm後`;
-            
-            // 背景付きラベル
-            ctx.font = "bold 16px sans-serif";
-            const textWidth = ctx.measureText(rightDistLabel).width;
-            const labelX = (hipCenterTrans.x + rightToeTrans.x) / 2 - textWidth / 2;
-            const labelY = rightToeTrans.y - 10;
-            
-            ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-            ctx.fillRect(labelX - 6, labelY - 16, textWidth + 12, 22);
-            ctx.fillStyle = "#2563eb";
-            ctx.textAlign = "left";
-            ctx.fillText(rightDistLabel, labelX, labelY);
+            // 距離ラベル（右、cm単位）- iPhoneでは非表示
+            if (!isMobile) {
+              const rightDistLabel = rightDistCm < 0 
+                ? `R: ${Math.abs(rightDistCm).toFixed(1)}cm前` 
+                : `R: ${rightDistCm.toFixed(1)}cm後`;
+              
+              // 背景付きラベル
+              ctx.font = "bold 16px sans-serif";
+              const textWidth = ctx.measureText(rightDistLabel).width;
+              const labelX = (hipCenterTrans.x + rightToeTrans.x) / 2 - textWidth / 2;
+              const labelY = rightToeTrans.y - 10;
+              
+              ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+              ctx.fillRect(labelX - 6, labelY - 16, textWidth + 12, 22);
+              ctx.fillStyle = "#2563eb";
+              ctx.textAlign = "left";
+              ctx.fillText(rightDistLabel, labelX, labelY);
+            }
           }
         }
       }
@@ -6033,62 +6058,198 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             {/* モード選択後のみマーク関連UIを表示 */}
             {calibrationType && (
             <>
-              {isMobile && (
-                <button
-                  className={`mobile-focus-toggle ${isMarkerFocus ? "active" : ""}`}
-                  onClick={() => setMobileMarkerFocus((v) => !v)}
-                >
-                  {isMarkerFocus ? "通常表示に戻す" : "映像に集中モード"}
-                </button>
-              )}
+              {/* ========== iPhone専用シンプルレイアウト ========== */}
+              {isMobile ? (
+                <div className="mobile-step6-layout">
+                  {/* 動画エリア */}
+                  <div className="mobile-video-area">
+                    <canvas ref={displayCanvasRef} className="preview-canvas" />
+                  </div>
 
-              {!isMarkerFocus && (
-                <div className="marker-controls">
-                  <button
-                    className={
-                      footZoomEnabled ? "toggle-btn active" : "toggle-btn"
-                    }
-                    onClick={() => setFootZoomEnabled((v) => !v)}
-                  >
-                    足元拡大 {footZoomEnabled ? "ON" : "OFF"}
-                  </button>
-                  {footZoomEnabled && (
-                    <label className="zoom-control">
-                      倍率:
-                      <input
-                        type="range"
-                        min={1}
-                        max={5}
-                        step={0.5}
-                        value={zoomScale}
-                        onChange={(e) => setZoomScale(Number(e.target.value))}
-                      />
-                      {zoomScale.toFixed(1)}x
-                    </label>
-                  )}
-                  <button
-                    className={showSkeleton ? "toggle-btn active" : "toggle-btn"}
-                    onClick={() => setShowSkeleton((v) => !v)}
-                    disabled={!poseResults.length}
-                  >
-                    スケルトン {showSkeleton ? "ON" : "OFF"}
-                  </button>
-                  <button className="btn-ghost-small" onClick={handleClearMarkers}>
-                    マーカークリア
-                  </button>
+                  {/* 固定コントロールエリア */}
+                  <div className="mobile-controls-fixed">
+                    {/* フレーム情報 */}
+                    <div className="mobile-frame-info">
+                      フレーム: {currentLabel} / {maxLabel} | マーカー: {contactFrames.length}
+                    </div>
+
+                    {/* フレームスライダー */}
+                    <input
+                      type="range"
+                      min={0}
+                      max={Math.max(ready ? framesCount - 1 : 0, 0)}
+                      step={1}
+                      value={ready ? currentFrame : 0}
+                      onChange={handleSliderChange}
+                      disabled={!ready}
+                      className="mobile-frame-slider"
+                    />
+
+                    {/* コマ送りボタン（大きく） */}
+                    <div className="mobile-nav-buttons">
+                      <button onClick={() => changeFrame(-10)} disabled={!ready}>-10</button>
+                      <button onClick={() => changeFrame(-1)} disabled={!ready}>-1</button>
+                      <button onClick={() => changeFrame(1)} disabled={!ready}>+1</button>
+                      <button onClick={() => changeFrame(10)} disabled={!ready}>+10</button>
+                    </div>
+
+                    {/* マークボタン */}
+                    <button 
+                      className="mobile-mark-button"
+                      onClick={() => {
+                        if (!ready) return;
+                        if (calibrationType === 2) {
+                          const newContactFrames = [...manualContactFrames, currentFrame];
+                          setManualContactFrames(newContactFrames);
+                          const toeOffFrame = detectToeOffFrame(currentFrame);
+                          if (toeOffFrame !== null) {
+                            setAutoToeOffFrames([...autoToeOffFrames, toeOffFrame]);
+                          }
+                        } else if (calibrationType === 3) {
+                          if (manualContactFrames.length === manualToeOffFrames.length) {
+                            setManualContactFrames([...manualContactFrames, currentFrame]);
+                          } else {
+                            const lastContact = manualContactFrames[manualContactFrames.length - 1];
+                            if (currentFrame <= lastContact) {
+                              alert('離地は接地より後に');
+                              return;
+                            }
+                            setManualToeOffFrames([...manualToeOffFrames, currentFrame]);
+                          }
+                        }
+                      }}
+                      disabled={!ready}
+                      style={{
+                        background: calibrationType === 3 && manualContactFrames.length !== manualToeOffFrames.length
+                          ? '#ef4444' : '#10b981'
+                      }}
+                    >
+                      {calibrationType === 2 
+                        ? '📍 接地マーク（離地自動）'
+                        : (manualContactFrames.length === manualToeOffFrames.length ? '📍 接地マーク' : '📍 離地マーク')}
+                    </button>
+
+                    {/* オプション（小さく） */}
+                    <div className="mobile-options">
+                      <button 
+                        className={showSkeleton ? 'active' : ''} 
+                        onClick={() => setShowSkeleton(v => !v)}
+                      >
+                        骨格{showSkeleton ? 'ON' : 'OFF'}
+                      </button>
+                      <button 
+                        className={footZoomEnabled ? 'active' : ''} 
+                        onClick={() => setFootZoomEnabled(v => !v)}
+                      >
+                        拡大{footZoomEnabled ? 'ON' : 'OFF'}
+                      </button>
+                      <button onClick={handleClearMarkers}>クリア</button>
+                    </div>
+
+                    {/* 足元拡大率スライダー */}
+                    {footZoomEnabled && (
+                      <div className="mobile-zoom-slider">
+                        <span>拡大率</span>
+                        <input
+                          type="range"
+                          min={1.5}
+                          max={5}
+                          step={0.5}
+                          value={zoomScale}
+                          onChange={(e) => setZoomScale(Number(e.target.value))}
+                        />
+                        <span className="zoom-value">{zoomScale.toFixed(1)}x</span>
+                      </div>
+                    )}
+
+                    {/* マーカー一覧と調整 */}
+                    {contactFrames.length > 0 && (
+                      <div className="mobile-marker-list">
+                        <div className="mobile-marker-list-header">
+                          マーカー一覧（タップで移動、長押しで削除）
+                        </div>
+                        <div className="mobile-marker-items">
+                          {Array.from({ length: Math.ceil(contactFrames.length / 2) }).map((_, stepIdx) => {
+                            const contactIdx = stepIdx * 2;
+                            const toeOffIdx = stepIdx * 2 + 1;
+                            const contactFrame = contactFrames[contactIdx];
+                            const toeOffFrame = contactFrames[toeOffIdx];
+                            return (
+                              <div key={stepIdx} className="mobile-marker-step">
+                                <span className="step-label">{stepIdx + 1}歩</span>
+                                <button 
+                                  className="marker-frame contact"
+                                  onClick={() => setCurrentFrame(contactFrame)}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    if (confirm(`接地 #${stepIdx + 1} を削除しますか？`)) {
+                                      if (calibrationType === 2) {
+                                        setManualContactFrames(manualContactFrames.filter((_, i) => i !== stepIdx));
+                                        setAutoToeOffFrames(autoToeOffFrames.filter((_, i) => i !== stepIdx));
+                                      } else {
+                                        setManualContactFrames(manualContactFrames.filter((_, i) => i !== stepIdx));
+                                        setManualToeOffFrames(manualToeOffFrames.filter((_, i) => i !== stepIdx));
+                                      }
+                                    }
+                                  }}
+                                >
+                                  接{contactFrame}
+                                </button>
+                                {toeOffFrame !== undefined && (
+                                  <button 
+                                    className="marker-frame toeoff"
+                                    onClick={() => setCurrentFrame(toeOffFrame)}
+                                  >
+                                    離{toeOffFrame}
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* マーク終了ボタン */}
+                    <button 
+                      className="mobile-finish-button"
+                      onClick={() => {
+                        if (contactFrames.length < 2) {
+                          alert('最低2つ以上のマーカーが必要です');
+                          return;
+                        }
+                        setWizardStep(7);
+                      }}
+                      disabled={contactFrames.length < 2}
+                    >
+                      ✅ マーク終了 → 次へ進む
+                    </button>
+                  </div>
                 </div>
-              )}
-
-            <div className={`canvas-area ${isMarkerFocus ? "focus-mode" : ""}`}>
-              {isMarkerFocus && (
-                <div className="focus-overlay">
-                  <button
-                    className="focus-toggle-btn"
-                    onClick={() => setMobileMarkerFocus(false)}
-                  >
-                    ↩ 通常表示へ
-                  </button>
-                  <div className="focus-toggle-group">
+              ) : (
+                /* ========== PC用レイアウト ========== */
+                <>
+                  <div className="marker-controls">
+                    <button
+                      className={footZoomEnabled ? "toggle-btn active" : "toggle-btn"}
+                      onClick={() => setFootZoomEnabled((v) => !v)}
+                    >
+                      足元拡大 {footZoomEnabled ? "ON" : "OFF"}
+                    </button>
+                    {footZoomEnabled && (
+                      <label className="zoom-control">
+                        倍率:
+                        <input
+                          type="range"
+                          min={1}
+                          max={5}
+                          step={0.5}
+                          value={zoomScale}
+                          onChange={(e) => setZoomScale(Number(e.target.value))}
+                        />
+                        {zoomScale.toFixed(1)}x
+                      </label>
+                    )}
                     <button
                       className={showSkeleton ? "toggle-btn active" : "toggle-btn"}
                       onClick={() => setShowSkeleton((v) => !v)}
@@ -6096,160 +6257,17 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     >
                       スケルトン {showSkeleton ? "ON" : "OFF"}
                     </button>
-                    <button
-                      className={footZoomEnabled ? "toggle-btn active" : "toggle-btn"}
-                      onClick={() => setFootZoomEnabled((v) => !v)}
-                    >
-                      足元拡大 {footZoomEnabled ? "ON" : "OFF"}
+                    <button className="btn-ghost-small" onClick={handleClearMarkers}>
+                      マーカークリア
                     </button>
                   </div>
-                  {footZoomEnabled && (
-                    <label className="focus-zoom-slider">
-                      <span>倍率</span>
-                      <input
-                        type="range"
-                        min={1}
-                        max={5}
-                        step={0.5}
-                        value={zoomScale}
-                        onChange={(e) => setZoomScale(Number(e.target.value))}
-                      />
-                      <span>{zoomScale.toFixed(1)}x</span>
-                    </label>
-                  )}
-                </div>
-              )}
-              <canvas ref={displayCanvasRef} className="preview-canvas" />
-            </div>
 
-            {/* モバイル用：フレーム移動ボタン */}
-            {isMobile && !isMarkerFocus && (
-            <div className="mobile-marking-controls">
-              <div className="mobile-frame-nav">
-                <button 
-                  className="btn-nav-arrow" 
-                  onClick={() => changeFrame(-10)} 
-                  disabled={!ready}
-                >
-                  ◀◀ -10
-                </button>
-                <button 
-                  className="btn-nav-arrow" 
-                  onClick={() => changeFrame(-1)} 
-                  disabled={!ready}
-                >
-                  ◀ -1
-                </button>
-                <button 
-                  className="btn-nav-arrow" 
-                  onClick={() => changeFrame(1)} 
-                  disabled={!ready}
-                >
-                  +1 ▶
-                </button>
-                <button 
-                  className="btn-nav-arrow" 
-                  onClick={() => changeFrame(10)} 
-                  disabled={!ready}
-                >
-                  +10 ▶▶
-                </button>
-              </div>
-            </div>
-            )}
-
-            {/* マーカー表示エリア - コントロールの下に配置 */}
-            {isMobile && !isMarkerFocus && (
-            <div className="mobile-marker-display">
-              {contactFrames.map((markerFrame, index) => {
-                if (markerFrame === currentFrame) {
-                  const isContact = index % 2 === 0;
-                  const color = isContact ? "#10b981" : "#ef4444";
-                  const label = isContact ? "接地" : "離地";
-                  const isAuto = !isContact && calibrationType === 2; // 半自動設定では離地が自動
-                  
-                  return (
-                    <div 
-                      key={index}
-                      className="marker-indicator"
-                      style={{
-                        backgroundColor: color,
-                        color: "white",
-                        padding: "20px",
-                        borderRadius: "12px",
-                        fontSize: "28px",
-                        fontWeight: "bold",
-                        textAlign: "center",
-                        boxShadow: "0 4px 8px rgba(0,0,0,0.3)"
-                      }}
-                    >
-                      {label} #{Math.floor(index / 2) + 1}
-                      {isAuto && <div style={{ fontSize: '14px', marginTop: '4px' }}>（自動判定）</div>}
-                    </div>
-                  );
-                }
-                return null;
-              })}
-              {contactFrames.every(f => f !== currentFrame) && (
-                <button 
-                  className="btn-mark-contact-large"
-                  onClick={() => {
-                    if (!ready) return;
-                    
-                    // 検出モードに応じてマーク（1歩目から直接マーク可能）
-                    if (calibrationType === 2) {
-                      // 半自動設定: 接地のみ手動、離地は自動
-                      const newContactFrames = [...manualContactFrames, currentFrame];
-                      setManualContactFrames(newContactFrames);
-                      console.log(`📍 接地マーク: フレーム ${currentFrame}`);
-                      
-                      const toeOffFrame = detectToeOffFrame(currentFrame);
-                      if (toeOffFrame !== null) {
-                        setAutoToeOffFrames([...autoToeOffFrames, toeOffFrame]);
-                      } else {
-                        console.warn(`⚠️ 離地が検出できませんでした（接地: ${currentFrame}）`);
-                      }
-                    } else if (calibrationType === 3) {
-                      // 手動マーク設定: すべて手動
-                      if (manualContactFrames.length === manualToeOffFrames.length) {
-                        setManualContactFrames([...manualContactFrames, currentFrame]);
-                        console.log(`📍 接地マーク: フレーム ${currentFrame}`);
-                      } else {
-                        const lastContact = manualContactFrames[manualContactFrames.length - 1];
-                        if (currentFrame <= lastContact) {
-                          alert('離地フレームは接地フレームより後にしてください。');
-                          return;
-                        }
-                        setManualToeOffFrames([...manualToeOffFrames, currentFrame]);
-                        console.log(`📍 離地マーク: フレーム ${currentFrame}`);
-                      }
-                    }
-                  }}
-                  disabled={!ready}
-                  style={{
-                    width: "100%",
-                    padding: "20px",
-                    fontSize: "18px",
-                    fontWeight: "bold",
-                    background: calibrationType === 3 && manualContactFrames.length !== manualToeOffFrames.length
-                      ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
-                      : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "12px",
-                    cursor: "pointer",
-                    boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
-                    touchAction: "manipulation"
-                  }}
-                >
-                  {calibrationType === 2 
-                    ? '📍 接地マーク（離地自動）'
-                    : (manualContactFrames.length === manualToeOffFrames.length ? '📍 接地マーク' : '📍 離地マーク')}
-                </button>
+                  <div className="canvas-area">
+                    <canvas ref={displayCanvasRef} className="preview-canvas" />
+                  </div>
+                </>
               )}
-            </div>
-            )}
-            
+
             {/* PC用：キーボード操作の説明 */}
             {!isMobile && (
               <div style={{
@@ -6270,74 +6288,30 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               </div>
             )}
 
-            {/* 表示オプションボタン - マーカーの下に配置 */}
-            {isMobile && !isMarkerFocus && (
-            <div className="mobile-view-options">
-              <button
-                className={footZoomEnabled ? "toggle-btn active" : "toggle-btn"}
-                onClick={() => setFootZoomEnabled((v) => !v)}
-              >
-                足元拡大 {footZoomEnabled ? "ON" : "OFF"}
-              </button>
-              {footZoomEnabled && (
-                <div className="zoom-slider-compact">
-                  <span style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}>倍率:</span>
-                  <input
-                    type="range"
-                    min={1}
-                    max={5}
-                    step={0.5}
-                    value={zoomScale}
-                    onChange={(e) => setZoomScale(Number(e.target.value))}
-                    style={{ flex: 1, minWidth: '80px' }}
-                  />
-                  <span style={{ fontSize: '0.85rem', fontWeight: 'bold', minWidth: '35px', textAlign: 'center' }}>
-                    {zoomScale.toFixed(1)}x
-                  </span>
+            {/* PC用：フレームコントロール */}
+            {!isMobile && (
+              <div className="frame-control">
+                <div className="frame-info">
+                  フレーム: {currentLabel} / {maxLabel} | マーカー数: {contactFrames.length}
                 </div>
-              )}
-              <button
-                className={showSkeleton ? "toggle-btn active" : "toggle-btn"}
-                onClick={() => setShowSkeleton((v) => !v)}
-                disabled={!poseResults.length}
-              >
-                スケルトン {showSkeleton ? "ON" : "OFF"}
-              </button>
-            </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(ready ? framesCount - 1 : 0, 0)}
+                  step={1}
+                  value={ready ? currentFrame : 0}
+                  onChange={handleSliderChange}
+                  disabled={!ready}
+                  className="frame-range"
+                />
+                <div className="frame-buttons-compact">
+                  <button onClick={() => changeFrame(-10)} disabled={!ready}>-10</button>
+                  <button onClick={() => changeFrame(-1)} disabled={!ready}>-1</button>
+                  <button onClick={() => changeFrame(1)} disabled={!ready}>+1</button>
+                  <button onClick={() => changeFrame(10)} disabled={!ready}>+10</button>
+                </div>
+              </div>
             )}
-
-            <div className={`frame-control ${isMarkerFocus ? "focus-mode" : ""}`}>
-              <div className="frame-info">
-                フレーム: {currentLabel} / {maxLabel} | マーカー数:{" "}
-                {contactFrames.length}
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={Math.max(ready ? framesCount - 1 : 0, 0)}
-                step={1}
-                value={ready ? currentFrame : 0}
-                onChange={handleSliderChange}
-                disabled={!ready}
-                className="frame-range"
-              />
-              <div className="frame-buttons-compact">
-                <button onClick={() => changeFrame(-10)} disabled={!ready}>
-                  -10
-                </button>
-                <button onClick={() => changeFrame(-1)} disabled={!ready}>
-                  -1
-                </button>
-                <button onClick={() => changeFrame(1)} disabled={!ready}>
-                  +1
-                </button>
-                <button onClick={() => changeFrame(10)} disabled={!ready}>
-                  +10
-                </button>
-              </div>
-            </div>
-
-            {isMarkerFocus && <div style={{ height: '160px' }} />}
 
 {/* PC用：マーカーリスト表示 */}
             {!isMobile && contactFrames.length > 0 && (
@@ -7328,71 +7302,75 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                           };
                           
                           return (
-                            <div style={{ 
+                            <div className="step9-comparison-grid" style={{ 
                               display: 'grid', 
-                              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', 
-                              gap: '12px' 
+                              gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fit, minmax(140px, 1fr))', 
+                              gap: isMobile ? '8px' : '12px' 
                             }}>
-                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
-                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>前半 接地時間</div>
-                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px' }}>
+                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '8px' : '12px', borderRadius: '8px' }}>
+                                <div className="label" style={{ fontSize: isMobile ? '0.6rem' : '0.75rem', opacity: 0.9 }}>前半 接地</div>
+                                <div className="value" style={{ fontSize: isMobile ? '0.95rem' : '1.3rem', fontWeight: 'bold', marginTop: '2px' }}>
                                   {firstHalfAvg.contact?.toFixed(3) ?? 'ー'}s
                                 </div>
                               </div>
-                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
-                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>後半 接地時間</div>
-                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px' }}>
+                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '8px' : '12px', borderRadius: '8px' }}>
+                                <div className="label" style={{ fontSize: isMobile ? '0.6rem' : '0.75rem', opacity: 0.9 }}>後半 接地</div>
+                                <div className="value" style={{ fontSize: isMobile ? '0.95rem' : '1.3rem', fontWeight: 'bold', marginTop: '2px' }}>
                                   {secondHalfAvg.contact?.toFixed(3) ?? 'ー'}s
                                 </div>
                               </div>
-                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
-                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>前半 ピッチ</div>
-                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px' }}>
-                                  {firstHalfAvg.pitch?.toFixed(2) ?? 'ー'}歩/s
+                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '8px' : '12px', borderRadius: '8px' }}>
+                                <div className="label" style={{ fontSize: isMobile ? '0.6rem' : '0.75rem', opacity: 0.9 }}>前半 ピッチ</div>
+                                <div className="value" style={{ fontSize: isMobile ? '0.95rem' : '1.3rem', fontWeight: 'bold', marginTop: '2px' }}>
+                                  {firstHalfAvg.pitch?.toFixed(2) ?? 'ー'}
                                 </div>
                               </div>
-                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
-                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>後半 ピッチ</div>
-                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px' }}>
-                                  {secondHalfAvg.pitch?.toFixed(2) ?? 'ー'}歩/s
+                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '8px' : '12px', borderRadius: '8px' }}>
+                                <div className="label" style={{ fontSize: isMobile ? '0.6rem' : '0.75rem', opacity: 0.9 }}>後半 ピッチ</div>
+                                <div className="value" style={{ fontSize: isMobile ? '0.95rem' : '1.3rem', fontWeight: 'bold', marginTop: '2px' }}>
+                                  {secondHalfAvg.pitch?.toFixed(2) ?? 'ー'}
                                 </div>
                               </div>
-                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
-                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>前半 ストライド</div>
-                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px' }}>
+                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '8px' : '12px', borderRadius: '8px' }}>
+                                <div className="label" style={{ fontSize: isMobile ? '0.6rem' : '0.75rem', opacity: 0.9 }}>前半 ストライド</div>
+                                <div className="value" style={{ fontSize: isMobile ? '0.95rem' : '1.3rem', fontWeight: 'bold', marginTop: '2px' }}>
                                   {firstHalfAvg.stride?.toFixed(2) ?? 'ー'}m
                                 </div>
                               </div>
-                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
-                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>後半 ストライド</div>
-                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px' }}>
+                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '8px' : '12px', borderRadius: '8px' }}>
+                                <div className="label" style={{ fontSize: isMobile ? '0.6rem' : '0.75rem', opacity: 0.9 }}>後半 ストライド</div>
+                                <div className="value" style={{ fontSize: isMobile ? '0.95rem' : '1.3rem', fontWeight: 'bold', marginTop: '2px' }}>
                                   {secondHalfAvg.stride?.toFixed(2) ?? 'ー'}m
                                 </div>
                               </div>
-                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
-                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>前半 スピード</div>
-                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px' }}>
+                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '8px' : '12px', borderRadius: '8px' }}>
+                                <div className="label" style={{ fontSize: isMobile ? '0.6rem' : '0.75rem', opacity: 0.9 }}>前半 速度</div>
+                                <div className="value" style={{ fontSize: isMobile ? '0.95rem' : '1.3rem', fontWeight: 'bold', marginTop: '2px' }}>
                                   {firstHalfAvg.speed?.toFixed(2) ?? 'ー'}m/s
                                 </div>
                               </div>
-                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
-                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>後半 スピード</div>
-                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px' }}>
+                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '8px' : '12px', borderRadius: '8px' }}>
+                                <div className="label" style={{ fontSize: isMobile ? '0.6rem' : '0.75rem', opacity: 0.9 }}>後半 速度</div>
+                                <div className="value" style={{ fontSize: isMobile ? '0.95rem' : '1.3rem', fontWeight: 'bold', marginTop: '2px' }}>
                                   {secondHalfAvg.speed?.toFixed(2) ?? 'ー'}m/s
                                 </div>
                               </div>
-                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
-                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>前半 加速度</div>
-                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px', color: firstHalfAvg.acceleration != null && firstHalfAvg.acceleration > 0 ? '#10b981' : firstHalfAvg.acceleration != null && firstHalfAvg.acceleration < 0 ? '#ef4444' : 'white' }}>
-                                  {firstHalfAvg.acceleration != null ? `${firstHalfAvg.acceleration > 0 ? '+' : ''}${firstHalfAvg.acceleration.toFixed(2)}` : 'ー'}m/s²
-                                </div>
-                              </div>
-                              <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
-                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>後半 加速度</div>
-                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px', color: secondHalfAvg.acceleration != null && secondHalfAvg.acceleration > 0 ? '#10b981' : secondHalfAvg.acceleration != null && secondHalfAvg.acceleration < 0 ? '#ef4444' : 'white' }}>
-                                  {secondHalfAvg.acceleration != null ? `${secondHalfAvg.acceleration > 0 ? '+' : ''}${secondHalfAvg.acceleration.toFixed(2)}` : 'ー'}m/s²
-                                </div>
-                              </div>
+                              {!isMobile && (
+                                <>
+                                  <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
+                                    <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>前半 加速度</div>
+                                    <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px', color: firstHalfAvg.acceleration != null && firstHalfAvg.acceleration > 0 ? '#10b981' : firstHalfAvg.acceleration != null && firstHalfAvg.acceleration < 0 ? '#ef4444' : 'white' }}>
+                                      {firstHalfAvg.acceleration != null ? `${firstHalfAvg.acceleration > 0 ? '+' : ''}${firstHalfAvg.acceleration.toFixed(2)}` : 'ー'}m/s²
+                                    </div>
+                                  </div>
+                                  <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px', borderRadius: '8px' }}>
+                                    <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>後半 加速度</div>
+                                    <div style={{ fontSize: '1.3rem', fontWeight: 'bold', marginTop: '4px', color: secondHalfAvg.acceleration != null && secondHalfAvg.acceleration > 0 ? '#10b981' : secondHalfAvg.acceleration != null && secondHalfAvg.acceleration < 0 ? '#ef4444' : 'white' }}>
+                                      {secondHalfAvg.acceleration != null ? `${secondHalfAvg.acceleration > 0 ? '+' : ''}${secondHalfAvg.acceleration.toFixed(2)}` : 'ー'}m/s²
+                                    </div>
+                                  </div>
+                                </>
+                              )}
                             </div>
                           );
                         })()}
@@ -7500,122 +7478,180 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                       数値をクリックして修正し、Enterキーで確定してください。
                     </div>
 
-                    <div className="table-scroll">
-                      <table className="metrics-table">
-                        <thead>
-                          <tr>
-                            <th>#</th>
-                            <th>接地 ✏️</th>
-                            <th>離地 ✏️</th>
-                            <th>接地時間</th>
-                            <th>滞空時間</th>
-                            <th>ピッチ</th>
-                            <th>ストライド{runType === 'dash' ? ' (0m→)' : ''}</th>
-                            <th>区間内貢献</th>
-                            <th>接地位置</th>
-                            <th>スピード</th>
-                            <th>加速度</th>
-                            <th>減速率 / 推進率</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {stepMetrics.map((s, idx) => (
-                            <tr 
-                              key={s.index}
-                              style={{
-                                // 🆕 quality による行の色分け
-                                background: s.quality === 'warning' ? '#fefce8' : s.quality === 'bad' ? '#fef2f2' : 'inherit',
-                                color: s.quality === 'bad' ? '#9ca3af' : 'inherit'
-                              }}
-                            >
-                              <td>{s.index}</td>
-                              <td>
-                                <input
-                                  type="number"
-                                  value={calibrationType === 2 ? (manualContactFrames[idx] ?? s.contactFrame) : (manualContactFrames[idx * 2] ?? s.contactFrame)}
-                                  onChange={(e) => {
-                                    const newValue = parseInt(e.target.value);
-                                    if (!isNaN(newValue)) {
-                                      const updated = [...manualContactFrames];
-                                      if (calibrationType === 2) {
-                                        updated[idx] = newValue;
-                                      } else {
-                                        updated[idx * 2] = newValue;
-                                      }
-                                      setManualContactFrames(updated);
-                                    }
-                                  }}
-                                  style={{
-                                    width: '60px',
-                                    padding: '4px',
-                                    border: '1px solid #d1d5db',
-                                    borderRadius: '4px',
-                                    fontSize: '0.9rem'
-                                  }}
-                                />
-                              </td>
-                              <td>
-                                <input
-                                  type="number"
-                                  value={autoToeOffFrames[idx] ?? s.toeOffFrame}
-                                  onChange={(e) => {
-                                    const newValue = parseInt(e.target.value);
-                                    if (!isNaN(newValue)) {
-                                      const updated = [...autoToeOffFrames];
-                                      updated[idx] = newValue;
-                                      setAutoToeOffFrames(updated);
-                                    }
-                                  }}
-                                  style={{
-                                    width: '60px',
-                                    padding: '4px',
-                                    border: '1px solid #d1d5db',
-                                    borderRadius: '4px',
-                                    fontSize: '0.9rem'
-                                  }}
-                                />
-                              </td>
-                              <td>{s.contactTime?.toFixed(3) ?? "ー"}</td>
-                              <td>{s.flightTime?.toFixed(3) ?? "ー"}</td>
-                              <td>{s.stepPitch?.toFixed(2) ?? "ー"}</td>
-                              <td style={{ 
-                                background: s.isFirstStepFromStart ? '#fef3c7' : 'inherit',
-                                fontWeight: s.isFirstStepFromStart ? 'bold' : 'normal'
-                              }}>
-                                {s.fullStride?.toFixed(2) ?? s.stride?.toFixed(2) ?? "ー"}
-                                {s.isFirstStepFromStart && <span style={{ fontSize: '0.7rem', color: '#d97706' }}> 🚀</span>}
-                              </td>
-                              <td style={{ fontSize: '0.85rem', color: '#6b7280' }}>
-                                {s.sectionStride?.toFixed(2) ?? "ー"}
-                              </td>
-                              <td style={{ fontSize: '0.85rem', color: '#6b7280' }}>
-                                {s.distanceAtContact?.toFixed(2) ?? "ー"}m
-                              </td>
-                              <td>{s.speedMps?.toFixed(2) ?? "ー"}</td>
-                              <td style={{ color: s.acceleration != null && s.acceleration > 0 ? '#10b981' : s.acceleration != null && s.acceleration < 0 ? '#ef4444' : 'inherit' }}>
-                                {s.acceleration != null ? `${s.acceleration > 0 ? '+' : ''}${s.acceleration.toFixed(2)}` : "ー"} {s.acceleration != null && 'm/s²'}
-                              </td>
-                              <td style={{ fontSize: '0.9rem' }}>
-                                {s.brakeImpulseRatio != null && s.kickImpulseRatio != null ? (
-                                  <span>
-                                    <span style={{ 
-                                      color: s.brakeImpulseRatio > 0.5 ? '#dc2626' : '#555',
-                                      fontWeight: s.brakeImpulseRatio > 0.5 ? 'bold' : 'normal'
-                                    }}>
-                                      {(s.brakeImpulseRatio * 100).toFixed(0)}%
-                                    </span>
-                                    {' / '}
-                                    <span style={{ color: '#1a7f37' }}>
-                                      {(s.kickImpulseRatio * 100).toFixed(0)}%
-                                    </span>
-                                  </span>
-                                ) : "ー"}
-                              </td>
+                    {/* モバイル用シンプルテーブル */}
+                    {isMobile ? (
+                      <div className="table-scroll-mobile" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', margin: '12px 0', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
+                        <table className="metrics-table-mobile" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.7rem' }}>
+                          <thead>
+                            <tr style={{ background: '#f3f4f6' }}>
+                              <th style={{ padding: '6px 4px', fontWeight: 600, fontSize: '0.6rem', position: 'sticky', top: 0, background: '#f3f4f6' }}>#</th>
+                              <th style={{ padding: '6px 4px', fontWeight: 600, fontSize: '0.6rem', position: 'sticky', top: 0, background: '#f3f4f6' }}>接地</th>
+                              <th style={{ padding: '6px 4px', fontWeight: 600, fontSize: '0.6rem', position: 'sticky', top: 0, background: '#f3f4f6' }}>離地</th>
+                              <th style={{ padding: '6px 4px', fontWeight: 600, fontSize: '0.6rem', position: 'sticky', top: 0, background: '#f3f4f6' }}>接地(s)</th>
+                              <th style={{ padding: '6px 4px', fontWeight: 600, fontSize: '0.6rem', position: 'sticky', top: 0, background: '#f3f4f6' }}>ピッチ</th>
+                              <th style={{ padding: '6px 4px', fontWeight: 600, fontSize: '0.6rem', position: 'sticky', top: 0, background: '#f3f4f6' }}>速度</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                          </thead>
+                          <tbody>
+                            {stepMetrics.map((s, idx) => (
+                              <tr key={s.index} style={{ background: s.quality === 'warning' ? '#fefce8' : s.quality === 'bad' ? '#fef2f2' : 'white' }}>
+                                <td style={{ padding: '6px 4px', textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>{s.index}</td>
+                                <td style={{ padding: '6px 2px', textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>
+                                  <input
+                                    type="number"
+                                    value={calibrationType === 2 ? (manualContactFrames[idx] ?? s.contactFrame) : (manualContactFrames[idx * 2] ?? s.contactFrame)}
+                                    onChange={(e) => {
+                                      const newValue = parseInt(e.target.value);
+                                      if (!isNaN(newValue)) {
+                                        const updated = [...manualContactFrames];
+                                        if (calibrationType === 2) { updated[idx] = newValue; } else { updated[idx * 2] = newValue; }
+                                        setManualContactFrames(updated);
+                                      }
+                                    }}
+                                    style={{ width: '40px', padding: '2px', fontSize: '0.7rem', border: '1px solid #d1d5db', borderRadius: '4px' }}
+                                  />
+                                </td>
+                                <td style={{ padding: '6px 2px', textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>
+                                  <input
+                                    type="number"
+                                    value={autoToeOffFrames[idx] ?? s.toeOffFrame}
+                                    onChange={(e) => {
+                                      const newValue = parseInt(e.target.value);
+                                      if (!isNaN(newValue)) {
+                                        const updated = [...autoToeOffFrames];
+                                        updated[idx] = newValue;
+                                        setAutoToeOffFrames(updated);
+                                      }
+                                    }}
+                                    style={{ width: '40px', padding: '2px', fontSize: '0.7rem', border: '1px solid #d1d5db', borderRadius: '4px' }}
+                                  />
+                                </td>
+                                <td style={{ padding: '6px 4px', textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>{s.contactTime?.toFixed(3) ?? "ー"}</td>
+                                <td style={{ padding: '6px 4px', textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>{s.stepPitch?.toFixed(1) ?? "ー"}</td>
+                                <td style={{ padding: '6px 4px', textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>{s.speedMps?.toFixed(1) ?? "ー"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      /* PC用フルテーブル */
+                      <div className="table-scroll">
+                        <table className="metrics-table">
+                          <thead>
+                            <tr>
+                              <th>#</th>
+                              <th>接地 ✏️</th>
+                              <th>離地 ✏️</th>
+                              <th>接地時間</th>
+                              <th>滞空時間</th>
+                              <th>ピッチ</th>
+                              <th>ストライド{runType === 'dash' ? ' (0m→)' : ''}</th>
+                              <th>区間内貢献</th>
+                              <th>接地位置</th>
+                              <th>スピード</th>
+                              <th>加速度</th>
+                              <th>減速率 / 推進率</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {stepMetrics.map((s, idx) => (
+                              <tr 
+                                key={s.index}
+                                style={{
+                                  background: s.quality === 'warning' ? '#fefce8' : s.quality === 'bad' ? '#fef2f2' : 'inherit',
+                                  color: s.quality === 'bad' ? '#9ca3af' : 'inherit'
+                                }}
+                              >
+                                <td>{s.index}</td>
+                                <td>
+                                  <input
+                                    type="number"
+                                    value={calibrationType === 2 ? (manualContactFrames[idx] ?? s.contactFrame) : (manualContactFrames[idx * 2] ?? s.contactFrame)}
+                                    onChange={(e) => {
+                                      const newValue = parseInt(e.target.value);
+                                      if (!isNaN(newValue)) {
+                                        const updated = [...manualContactFrames];
+                                        if (calibrationType === 2) {
+                                          updated[idx] = newValue;
+                                        } else {
+                                          updated[idx * 2] = newValue;
+                                        }
+                                        setManualContactFrames(updated);
+                                      }
+                                    }}
+                                    style={{
+                                      width: '60px',
+                                      padding: '4px',
+                                      border: '1px solid #d1d5db',
+                                      borderRadius: '4px',
+                                      fontSize: '0.9rem'
+                                    }}
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    type="number"
+                                    value={autoToeOffFrames[idx] ?? s.toeOffFrame}
+                                    onChange={(e) => {
+                                      const newValue = parseInt(e.target.value);
+                                      if (!isNaN(newValue)) {
+                                        const updated = [...autoToeOffFrames];
+                                        updated[idx] = newValue;
+                                        setAutoToeOffFrames(updated);
+                                      }
+                                    }}
+                                    style={{
+                                      width: '60px',
+                                      padding: '4px',
+                                      border: '1px solid #d1d5db',
+                                      borderRadius: '4px',
+                                      fontSize: '0.9rem'
+                                    }}
+                                  />
+                                </td>
+                                <td>{s.contactTime?.toFixed(3) ?? "ー"}</td>
+                                <td>{s.flightTime?.toFixed(3) ?? "ー"}</td>
+                                <td>{s.stepPitch?.toFixed(2) ?? "ー"}</td>
+                                <td style={{ 
+                                  background: s.isFirstStepFromStart ? '#fef3c7' : 'inherit',
+                                  fontWeight: s.isFirstStepFromStart ? 'bold' : 'normal'
+                                }}>
+                                  {s.fullStride?.toFixed(2) ?? s.stride?.toFixed(2) ?? "ー"}
+                                  {s.isFirstStepFromStart && <span style={{ fontSize: '0.7rem', color: '#d97706' }}> 🚀</span>}
+                                </td>
+                                <td style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                                  {s.sectionStride?.toFixed(2) ?? "ー"}
+                                </td>
+                                <td style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                                  {s.distanceAtContact?.toFixed(2) ?? "ー"}m
+                                </td>
+                                <td>{s.speedMps?.toFixed(2) ?? "ー"}</td>
+                                <td style={{ color: s.acceleration != null && s.acceleration > 0 ? '#10b981' : s.acceleration != null && s.acceleration < 0 ? '#ef4444' : 'inherit' }}>
+                                  {s.acceleration != null ? `${s.acceleration > 0 ? '+' : ''}${s.acceleration.toFixed(2)}` : "ー"} {s.acceleration != null && 'm/s²'}
+                                </td>
+                                <td style={{ fontSize: '0.9rem' }}>
+                                  {s.brakeImpulseRatio != null && s.kickImpulseRatio != null ? (
+                                    <span>
+                                      <span style={{ 
+                                        color: s.brakeImpulseRatio > 0.5 ? '#dc2626' : '#555',
+                                        fontWeight: s.brakeImpulseRatio > 0.5 ? 'bold' : 'normal'
+                                      }}>
+                                        {(s.brakeImpulseRatio * 100).toFixed(0)}%
+                                      </span>
+                                      {' / '}
+                                      <span style={{ color: '#1a7f37' }}>
+                                        {(s.kickImpulseRatio * 100).toFixed(0)}%
+                                      </span>
+                                    </span>
+                                  ) : "ー"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                     
                     {/* 新しいステップを追加 */}
                     <div style={{ marginTop: '16px', textAlign: 'center' }}>
