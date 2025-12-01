@@ -1343,35 +1343,19 @@ body {
     left: 0 !important;
     right: 0 !important;
     width: 100vw !important;
-    height: auto !important;
-    max-height: 45vh !important;
+    height: 56.25vw !important;
+    max-height: 50vh !important;
     z-index: 1000 !important;
     margin: 0 !important;
     border-radius: 0;
-    /* 🔥 スケルトンズレ修正(iPhone): flex中央配置を削除 */
-    /* flexbox+centerだとキャンバス座標系と表示位置がズレる */
-    display: block !important;
-    overflow: hidden;
-    background: #000;
   }
 
   .preview-canvas {
-    /* 🔥 スケルトンズレ修正(iPhone): JSでサイズを制御 */
-    /* キャンバスの内部サイズと表示サイズを一致させる */
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain;
     display: block;
-    margin: 0 auto;
-    max-width: 100%;
-    /* width/heightはJSが設定するのでここでは指定しない */
-  }
-  
-  /* ステップ6でのキャンバスはコンテナに合わせてスケール */
-  .wizard-content.step-6 .preview-canvas {
-    /* 🔥 スケルトンズレ修正(iPhone): JSがサイズを完全制御 */
-    display: block;
-    margin: 0 auto;
-    max-width: 100%;
-    max-height: 45vh;
-    /* object-fitは使わない - キャンバスは内部解像度と表示サイズが連動する必要がある */
+    margin: 0;
   }
 
   /* フレームコントロール（スライダー）：通常はドキュメントフロー内 */

@@ -3291,49 +3291,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     canvas.width = w;
     canvas.height = h;
     
-    // 🔥 スケルトンズレ修正: キャンバスの表示サイズを内部サイズに比例させる
-    // キャンバスは内部ピクセルサイズ (canvas.width/height) と
-    // CSS表示サイズ (style.width/height) が別々に管理される
-    // 両者の比率が異なるとスケルトン描画座標がズレる
-    const canvasArea = canvas.parentElement;
-    if (canvasArea) {
-      // 🔥 iPhone対応: containerWidthが0の場合のフォールバック
-      const containerWidth = canvasArea.clientWidth || window.innerWidth;
-      const aspectRatio = w / h;
-      
-      // モバイルかどうかを検出
-      const isMobile = window.innerWidth <= 768;
-      
-      // 最大高さの制限（モバイルは45vh、PCは80vh）
-      const maxHeight = isMobile 
-        ? window.innerHeight * 0.45
-        : window.innerHeight * 0.8;
-      
-      let displayWidth: number;
-      let displayHeight: number;
-      
-      // コンテナ幅に合わせた高さを計算
-      const heightBasedOnWidth = containerWidth / aspectRatio;
-      
-      if (heightBasedOnWidth > maxHeight) {
-        // 高さが最大を超える場合は高さ基準でサイズを計算
-        displayHeight = maxHeight;
-        displayWidth = maxHeight * aspectRatio;
-      } else {
-        // コンテナ幅基準
-        displayWidth = containerWidth;
-        displayHeight = heightBasedOnWidth;
-      }
-      
-      // 🔥 iPhone対応: setProperty で確実にスタイルを適用
-      canvas.style.setProperty('width', `${displayWidth}px`, 'important');
-      canvas.style.setProperty('height', `${displayHeight}px`, 'important');
-      
-      // デバッグ用ログ
-      if (currentFrame === 0 && isMobile) {
-        console.log(`📱 iPhone Canvas: internal=${w}x${h}, display=${displayWidth.toFixed(0)}x${displayHeight.toFixed(0)}, container=${containerWidth}`);
-      }
-    }
+    // canvas.style.widthとcanvas.style.heightは削除（CSSに任せる）
 
     if (!footZoomEnabled) {
       ctx.drawImage(offscreen, 0, 0, w, h, 0, 0, w, h);
