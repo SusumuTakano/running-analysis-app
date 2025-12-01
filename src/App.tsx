@@ -280,6 +280,229 @@ const calculateAngles = (
   };
 };
 
+// ============================================================
+// SVGスケルトンオーバーレイコンポーネント（スケルトンズレ完全修正）
+// MediaPipeのランドマークは既に0-1正規化されているため、
+// SVGのviewBox="0 0 1 1"で直接描画できる
+// ============================================================
+
+type SVGSkeletonOverlayProps = {
+  landmarks: FramePoseData["landmarks"] | null;
+  showSkeleton: boolean;
+  // セクションマーカー用（正規化座標 0-1）
+  sectionMarkers?: {
+    startX?: number;
+    midX?: number;
+    endX?: number;
+    showStart?: boolean;
+    showMid?: boolean;
+    showEnd?: boolean;
+  };
+  // 接地/離地マーカー用
+  contactFrames?: number[];
+  toeOffFrames?: number[];
+  currentFrame?: number;
+};
+
+const SVGSkeletonOverlay: React.FC<SVGSkeletonOverlayProps> = ({
+  landmarks,
+  showSkeleton,
+  sectionMarkers,
+  contactFrames = [],
+  toeOffFrames = [],
+  currentFrame,
+}) => {
+  const CONFIDENCE_THRESHOLD = 0.1;
+  
+  // スケルトン接続定義
+  const connections: [number, number][] = [
+    [11, 12], // 肩
+    [11, 13], [13, 15], // 左腕
+    [12, 14], [14, 16], // 右腕
+    [11, 23], [12, 24], // 体幹
+    [23, 24], // 腰
+    [23, 25], [25, 27], [27, 31], // 左脚
+    [24, 26], [26, 28], [28, 32], // 右脚
+  ];
+
+  // 姿勢の妥当性チェック
+  const isValidPose = (lms: FramePoseData["landmarks"]) => {
+    const leftShoulder = lms[11];
+    const rightShoulder = lms[12];
+    const leftHip = lms[23];
+    const rightHip = lms[24];
+    
+    if (
+      leftShoulder.visibility < CONFIDENCE_THRESHOLD ||
+      rightShoulder.visibility < CONFIDENCE_THRESHOLD ||
+      leftHip.visibility < CONFIDENCE_THRESHOLD ||
+      rightHip.visibility < CONFIDENCE_THRESHOLD
+    ) {
+      return false;
+    }
+    
+    const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
+    const hipY = (leftHip.y + rightHip.y) / 2;
+    
+    return shoulderY < hipY;
+  };
+
+  // 2点間の距離チェック（異常な接続を除外）
+  const isConnectionValid = (lms: FramePoseData["landmarks"], a: number, b: number) => {
+    const pointA = lms[a];
+    const pointB = lms[b];
+    if (
+      !pointA || !pointB ||
+      pointA.visibility < CONFIDENCE_THRESHOLD ||
+      pointB.visibility < CONFIDENCE_THRESHOLD
+    ) {
+      return false;
+    }
+    const dx = pointB.x - pointA.x;
+    const dy = pointB.y - pointA.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    return distance < 0.5; // 正規化座標で0.5以上は異常
+  };
+
+  return (
+    <svg
+      className="skeleton-svg"
+      viewBox="0 0 1 1"
+      preserveAspectRatio="none"
+    >
+      {/* セクションマーカー（縦線） */}
+      {sectionMarkers?.showStart && sectionMarkers.startX !== undefined && (
+        <line
+          x1={sectionMarkers.startX}
+          y1={0}
+          x2={sectionMarkers.startX}
+          y2={1}
+          stroke="#10b981"
+          strokeWidth={0.008}
+          strokeDasharray="0.02 0.01"
+        />
+      )}
+      {sectionMarkers?.showMid && sectionMarkers.midX !== undefined && (
+        <line
+          x1={sectionMarkers.midX}
+          y1={0}
+          x2={sectionMarkers.midX}
+          y2={1}
+          stroke="#3b82f6"
+          strokeWidth={0.008}
+          strokeDasharray="0.02 0.01"
+        />
+      )}
+      {sectionMarkers?.showEnd && sectionMarkers.endX !== undefined && (
+        <line
+          x1={sectionMarkers.endX}
+          y1={0}
+          x2={sectionMarkers.endX}
+          y2={1}
+          stroke="#ef4444"
+          strokeWidth={0.008}
+          strokeDasharray="0.02 0.01"
+        />
+      )}
+
+      {/* スケルトン描画 */}
+      {showSkeleton && landmarks && isValidPose(landmarks) && (
+        <g>
+          {/* 接続線 */}
+          {connections.map(([a, b], idx) => {
+            if (!isConnectionValid(landmarks, a, b)) return null;
+            const pointA = landmarks[a];
+            const pointB = landmarks[b];
+            return (
+              <line
+                key={`conn-${idx}`}
+                x1={pointA.x}
+                y1={pointA.y}
+                x2={pointB.x}
+                y2={pointB.y}
+                stroke="#0ea5e9"
+                strokeWidth={0.006}
+                strokeLinecap="round"
+              />
+            );
+          })}
+
+          {/* 関節点 */}
+          {landmarks.map((lm, idx) => {
+            if (lm.visibility < CONFIDENCE_THRESHOLD) return null;
+            return (
+              <circle
+                key={`point-${idx}`}
+                cx={lm.x}
+                cy={lm.y}
+                r={0.008}
+                fill="#f97316"
+              />
+            );
+          })}
+
+          {/* 大転子マーカーと垂直線 */}
+          {(() => {
+            const leftHip = landmarks[23];
+            const rightHip = landmarks[24];
+            if (
+              leftHip.visibility < CONFIDENCE_THRESHOLD ||
+              rightHip.visibility < CONFIDENCE_THRESHOLD
+            ) {
+              return null;
+            }
+            const hipCenterX = (leftHip.x + rightHip.x) / 2;
+            const hipCenterY = (leftHip.y + rightHip.y) / 2;
+            return (
+              <g>
+                <line
+                  x1={hipCenterX}
+                  y1={hipCenterY}
+                  x2={hipCenterX}
+                  y2={1}
+                  stroke="#dc2626"
+                  strokeWidth={0.004}
+                  strokeDasharray="0.02 0.01"
+                />
+                <circle
+                  cx={hipCenterX}
+                  cy={hipCenterY}
+                  r={0.015}
+                  fill="#dc2626"
+                />
+              </g>
+            );
+          })()}
+        </g>
+      )}
+
+      {/* 接地フレームマーカー */}
+      {contactFrames.includes(currentFrame ?? -1) && (
+        <rect
+          x={0}
+          y={0.9}
+          width={1}
+          height={0.02}
+          fill="#22c55e"
+          opacity={0.7}
+        />
+      )}
+
+      {/* 離地フレームマーカー */}
+      {toeOffFrames.includes(currentFrame ?? -1) && (
+        <rect
+          x={0}
+          y={0.9}
+          width={1}
+          height={0.02}
+          fill="#ef4444"
+          opacity={0.7}
+        />
+      )}
+    </svg>
+  );
+};
+
 /** グラフ用の指標キー */
 type GraphMetricKey =
   | "contactTime"
@@ -508,11 +731,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const displayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   
-  // 🔥 スケルトンズレ修正 v5: 画像+オーバーレイ方式
-  const frameWrapperRef = useRef<HTMLDivElement | null>(null);
-  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const frameImageRef = useRef<HTMLImageElement | null>(null);
+  // 🎯 SVGオーバーレイ用: 現在フレームの画像URL
   const [currentFrameUrl, setCurrentFrameUrl] = useState<string | null>(null);
+  const frameUrlRef = useRef<string | null>(null); // メモリリーク防止用
 
   const [usedTargetFps, setUsedTargetFps] = useState<number | null>(null);
 
@@ -3265,331 +3486,52 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     });
   };
 
-  // ------------ 現在フレームの描画 (v5: 画像+オーバーレイ方式) ------------
-  // フレームをBlobURLに変換
+  // ------------ 🎯 SVGオーバーレイ用: 現在フレームのURL生成 ------------
   useEffect(() => {
     const frames = framesRef.current;
-    if (!frames.length) return;
+    if (!frames.length) {
+      setCurrentFrameUrl(null);
+      return;
+    }
 
     const idx = clamp(currentFrame, 0, frames.length - 1);
     const frame = frames[idx];
-
     if (!frame || !frame.width || !frame.height) {
       return;
     }
 
-    // ImageDataをBlobURLに変換
-    const tempCanvas = document.createElement("canvas");
-    tempCanvas.width = frame.width;
-    tempCanvas.height = frame.height;
-    const tempCtx = tempCanvas.getContext("2d");
-    if (!tempCtx) return;
-    tempCtx.putImageData(frame, 0, 0);
+    // ImageData → Canvas → Blob URL
+    const offscreen = document.createElement("canvas");
+    offscreen.width = frame.width;
+    offscreen.height = frame.height;
+    const offCtx = offscreen.getContext("2d");
+    if (!offCtx) return;
+    offCtx.putImageData(frame, 0, 0);
 
-    tempCanvas.toBlob((blob) => {
+    // 古いURLをクリーンアップ
+    if (frameUrlRef.current) {
+      URL.revokeObjectURL(frameUrlRef.current);
+    }
+
+    offscreen.toBlob((blob) => {
       if (blob) {
-        // 前のURLを解放
-        if (currentFrameUrl) {
-          URL.revokeObjectURL(currentFrameUrl);
-        }
         const url = URL.createObjectURL(blob);
+        frameUrlRef.current = url;
         setCurrentFrameUrl(url);
       }
     }, "image/png");
 
     return () => {
-      // クリーンアップ
-      tempCanvas.width = 0;
-      tempCanvas.height = 0;
+      // クリーンアップ時にURLを解放
+      if (frameUrlRef.current) {
+        URL.revokeObjectURL(frameUrlRef.current);
+        frameUrlRef.current = null;
+      }
     };
   }, [currentFrame, framesCount]);
 
-  // オーバーレイキャンバスにスケルトンを描画
+  // ------------ 現在フレームの描画（canvas用・足ズーム対応） ------------
   useEffect(() => {
-    const wrapper = frameWrapperRef.current;
-    const canvas = overlayCanvasRef.current;
-    const img = frameImageRef.current;
-    const frames = framesRef.current;
-    
-    if (!wrapper || !canvas || !img || !frames.length) return;
-
-    const idx = clamp(currentFrame, 0, frames.length - 1);
-    const frame = frames[idx];
-
-    if (!frame || !frame.width || !frame.height) return;
-
-    // 元の動画サイズ
-    const originalWidth = frame.width;
-    const originalHeight = frame.height;
-
-    const resizeAndDraw = () => {
-      const rect = wrapper.getBoundingClientRect();
-      
-      if (rect.width === 0 || rect.height === 0) return;
-
-      // Retina対応
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      canvas.style.width = rect.width + "px";
-      canvas.style.height = rect.height + "px";
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, rect.width, rect.height);
-
-      // ★ここが一番大事★ 座標をスケーリング
-      const scaleX = rect.width / originalWidth;
-      const scaleY = rect.height / originalHeight;
-
-      // デバッグログ
-      if (currentFrame === 0) {
-        console.log(`🎨 Overlay v5: original=${originalWidth}x${originalHeight}, display=${rect.width.toFixed(0)}x${rect.height.toFixed(0)}`);
-        console.log(`📐 Scale: X=${scaleX.toFixed(4)}, Y=${scaleY.toFixed(4)}`);
-      }
-
-      // スケルトン描画
-      if (showSkeleton && poseResults[idx]?.landmarks) {
-        drawSkeletonScaled(ctx, poseResults[idx]!.landmarks, scaleX, scaleY);
-      }
-
-      // 区間マーカー描画
-      drawSectionMarkersScaled(ctx, rect.width, rect.height, currentFrame, scaleX, scaleY, originalWidth);
-
-      // 接地/離地マーカー描画
-      drawContactMarkersScaled(ctx, rect.width, rect.height, currentFrame);
-    };
-
-    // 画像がロードされたら描画
-    if (img.complete) {
-      resizeAndDraw();
-    } else {
-      img.onload = resizeAndDraw;
-    }
-
-    // リサイズ対応
-    window.addEventListener("resize", resizeAndDraw);
-    return () => window.removeEventListener("resize", resizeAndDraw);
-  }, [currentFrame, poseResults, showSkeleton, sectionStartFrame, sectionEndFrame, sectionMidFrame, startLineOffset, endLineOffset, midLineOffset, isPanMode, savedStartHipX, savedEndHipX, savedMidHipX, contactFrames, manualContactFrames, autoToeOffFrames, currentFrameUrl]);
-
-  // スケーリング対応のスケルトン描画関数
-  const drawSkeletonScaled = (
-    ctx: CanvasRenderingContext2D,
-    landmarks: FramePoseData["landmarks"],
-    scaleX: number,
-    scaleY: number
-  ) => {
-    const CONFIDENCE_THRESHOLD = 0.1;
-
-    // 主要な関節の妥当性をチェック
-    const leftShoulder = landmarks[11];
-    const rightShoulder = landmarks[12];
-    const leftHip = landmarks[23];
-    const rightHip = landmarks[24];
-
-    if (
-      leftShoulder.visibility < CONFIDENCE_THRESHOLD ||
-      rightShoulder.visibility < CONFIDENCE_THRESHOLD ||
-      leftHip.visibility < CONFIDENCE_THRESHOLD ||
-      rightHip.visibility < CONFIDENCE_THRESHOLD
-    ) {
-      return;
-    }
-
-    const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
-    const hipY = (leftHip.y + rightHip.y) / 2;
-    if (shoulderY >= hipY) return;
-
-    ctx.strokeStyle = "#0ea5e9";
-    ctx.lineWidth = 4;
-
-    const connections: [number, number][] = [
-      [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
-      [11, 23], [12, 24], [23, 24], [23, 25], [25, 27],
-      [27, 31], [24, 26], [26, 28], [28, 32],
-    ];
-
-    const frames = framesRef.current;
-    const frame = frames[0];
-    const originalWidth = frame?.width || 1;
-    const originalHeight = frame?.height || 1;
-
-    connections.forEach(([a, b]) => {
-      const pointA = landmarks[a];
-      const pointB = landmarks[b];
-      if (
-        pointA?.visibility > CONFIDENCE_THRESHOLD &&
-        pointB?.visibility > CONFIDENCE_THRESHOLD
-      ) {
-        // 元の座標（0-1の正規化座標）をピクセル座標に変換してスケーリング
-        const ax = pointA.x * originalWidth * scaleX;
-        const ay = pointA.y * originalHeight * scaleY;
-        const bx = pointB.x * originalWidth * scaleX;
-        const by = pointB.y * originalHeight * scaleY;
-
-        ctx.beginPath();
-        ctx.moveTo(ax, ay);
-        ctx.lineTo(bx, by);
-        ctx.stroke();
-      }
-    });
-
-    ctx.fillStyle = "#f97316";
-    landmarks.forEach((lm) => {
-      if (lm.visibility > CONFIDENCE_THRESHOLD) {
-        const x = lm.x * originalWidth * scaleX;
-        const y = lm.y * originalHeight * scaleY;
-        ctx.beginPath();
-        ctx.arc(x, y, 4, 0, 2 * Math.PI);
-        ctx.fill();
-      }
-    });
-
-    // 大転子の垂直線とつま先距離
-    if (leftHip.visibility > CONFIDENCE_THRESHOLD && rightHip.visibility > CONFIDENCE_THRESHOLD) {
-      const hipCenterX = ((leftHip.x + rightHip.x) / 2) * originalWidth * scaleX;
-      const hipCenterY = ((leftHip.y + rightHip.y) / 2) * originalHeight * scaleY;
-
-      ctx.strokeStyle = "rgba(255, 255, 0, 0.8)";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([5, 5]);
-      ctx.beginPath();
-      ctx.moveTo(hipCenterX, hipCenterY);
-      ctx.lineTo(hipCenterX, ctx.canvas.height / (window.devicePixelRatio || 1));
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // つま先距離の計算と表示
-      const leftToe = landmarks[31];
-      const rightToe = landmarks[32];
-      const ASSUMED_THIGH_LENGTH_CM = 50;
-      const leftKnee = landmarks[25];
-      const leftThighLength = Math.sqrt(
-        Math.pow(leftKnee.x - leftHip.x, 2) + Math.pow(leftKnee.y - leftHip.y, 2)
-      );
-      const pixelsPerCm = leftThighLength > 0.01 ? (leftThighLength * originalWidth) / ASSUMED_THIGH_LENGTH_CM : 1;
-
-      let yOffset = 0;
-      [{ toe: leftToe, label: "L", color: "#22c55e" }, { toe: rightToe, label: "R", color: "#ef4444" }].forEach(({ toe, label, color }) => {
-        if (toe.visibility > CONFIDENCE_THRESHOLD) {
-          const toeX = toe.x * originalWidth * scaleX;
-          const toeY = toe.y * originalHeight * scaleY;
-          const hipX = ((leftHip.x + rightHip.x) / 2) * originalWidth;
-          const distancePixels = (toe.x * originalWidth) - hipX;
-          const distanceCm = distancePixels / pixelsPerCm;
-          const posLabel = distanceCm >= 0 ? "前" : "後";
-
-          ctx.fillStyle = color;
-          ctx.font = "bold 14px sans-serif";
-          ctx.fillText(`${label}: ${Math.abs(distanceCm).toFixed(1)}cm${posLabel}`, hipCenterX + 10, hipCenterY + 20 + yOffset);
-          yOffset += 18;
-        }
-      });
-
-      // 大転子ラベル
-      ctx.fillStyle = "rgba(255, 255, 0, 0.9)";
-      ctx.font = "bold 12px sans-serif";
-      ctx.fillText("大転子", hipCenterX + 5, hipCenterY - 5);
-    }
-  };
-
-  // スケーリング対応の区間マーカー描画
-  const drawSectionMarkersScaled = (
-    ctx: CanvasRenderingContext2D,
-    displayWidth: number,
-    displayHeight: number,
-    frameIdx: number,
-    scaleX: number,
-    scaleY: number,
-    originalWidth: number
-  ) => {
-    if (sectionStartFrame === null && sectionEndFrame === null && sectionMidFrame === null) return;
-
-    const markers: { frame: number; savedHipX: number | null; offset: number; color: string; label: string }[] = [];
-
-    if (sectionStartFrame !== null) {
-      markers.push({ frame: sectionStartFrame, savedHipX: savedStartHipX, offset: startLineOffset, color: "#22c55e", label: "スタート" });
-    }
-    if (sectionEndFrame !== null) {
-      markers.push({ frame: sectionEndFrame, savedHipX: savedEndHipX, offset: endLineOffset, color: "#ef4444", label: "フィニッシュ" });
-    }
-    if (sectionMidFrame !== null) {
-      markers.push({ frame: sectionMidFrame, savedHipX: savedMidHipX, offset: midLineOffset, color: "#f59e0b", label: "中間" });
-    }
-
-    markers.forEach(({ frame, savedHipX, offset, color, label }) => {
-      let torsoX: number;
-
-      if (isPanMode) {
-        const hipX = calculateHipPosition(frame);
-        if (hipX !== null) {
-          torsoX = hipX * originalWidth * scaleX;
-        } else if (savedHipX !== null) {
-          torsoX = savedHipX * originalWidth * scaleX;
-        } else {
-          torsoX = displayWidth / 2;
-        }
-      } else if (savedHipX !== null) {
-        torsoX = savedHipX * originalWidth * scaleX;
-      } else {
-        torsoX = displayWidth / 2;
-      }
-
-      const finalX = torsoX + offset;
-      const clampedX = Math.max(20, Math.min(displayWidth - 20, finalX));
-
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 8;
-      ctx.setLineDash([15, 8]);
-      ctx.beginPath();
-      ctx.moveTo(clampedX, displayHeight);
-      ctx.lineTo(clampedX, 0);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
-      ctx.font = "bold 18px sans-serif";
-      const textWidth = ctx.measureText(label).width;
-      ctx.fillRect(clampedX - textWidth / 2 - 10, 8, textWidth + 20, 32);
-      ctx.fillStyle = color;
-      ctx.textAlign = "center";
-      ctx.fillText(label, clampedX, 30);
-    });
-  };
-
-  // スケーリング対応の接地/離地マーカー描画
-  const drawContactMarkersScaled = (
-    ctx: CanvasRenderingContext2D,
-    displayWidth: number,
-    displayHeight: number,
-    frameIdx: number
-  ) => {
-    // 簡略化: 現在フレームが接地/離地フレームの場合にインジケーターを表示
-    const allContactFrames = [...(manualContactFrames || []), ...(contactFrames || [])];
-    const allToeOffFrames = [...(autoToeOffFrames || [])];
-
-    if (allContactFrames.includes(frameIdx)) {
-      ctx.fillStyle = "rgba(34, 197, 94, 0.8)";
-      ctx.font = "bold 16px sans-serif";
-      ctx.textAlign = "left";
-      ctx.fillText("👟 接地", 10, displayHeight - 10);
-    }
-
-    if (allToeOffFrames.includes(frameIdx)) {
-      ctx.fillStyle = "rgba(239, 68, 68, 0.8)";
-      ctx.font = "bold 16px sans-serif";
-      ctx.textAlign = "right";
-      ctx.fillText("🦶 離地", displayWidth - 10, displayHeight - 10);
-    }
-  };
-
-  // ========== 旧方式（後方互換性のため残す）==========
-  useEffect(() => {
-    // 新方式(frame-wrapper)が存在する場合はスキップ
-    if (frameWrapperRef.current) return;
-    
     const canvas = displayCanvasRef.current;
     const frames = framesRef.current;
     if (!canvas || !frames.length) return;
@@ -3600,7 +3542,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     const idx = clamp(currentFrame, 0, frames.length - 1);
     const frame = frames[idx];
 
+    // フレームが存在しない場合は描画をスキップ
     if (!frame || !frame.width || !frame.height) {
+      console.warn(`⚠️ フレーム ${idx} が存在しないか無効です`);
       return;
     }
 
@@ -3614,8 +3558,53 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     if (!offCtx) return;
     offCtx.putImageData(frame, 0, 0);
 
+    // キャンバスサイズを動画サイズに設定
     canvas.width = w;
     canvas.height = h;
+    
+    // 🔥 スケルトンズレ修正 v2: キャンバスの表示サイズを内部サイズに比例させる
+    // キャンバスは内部ピクセルサイズ (canvas.width/height) と
+    // CSS表示サイズ (style.width/height) が別々に管理される
+    // 両者の比率が異なるとスケルトン描画座標がズレる
+    const canvasArea = canvas.parentElement;
+    if (canvasArea) {
+      const containerWidth = canvasArea.clientWidth;
+      const containerHeight = canvasArea.clientHeight;
+      const aspectRatio = w / h;
+      
+      // モバイルかどうかを検出
+      const isMobile = window.innerWidth <= 768;
+      
+      // 最大高さの制限
+      const maxHeight = isMobile 
+        ? Math.min(window.innerHeight * 0.45, containerHeight || window.innerHeight * 0.45)
+        : window.innerHeight * 0.8;
+      
+      let displayWidth: number;
+      let displayHeight: number;
+      
+      // コンテナ幅に合わせた高さを計算
+      const heightBasedOnWidth = containerWidth / aspectRatio;
+      
+      if (heightBasedOnWidth > maxHeight) {
+        // 高さが最大を超える場合は高さ基準でサイズを計算
+        displayHeight = maxHeight;
+        displayWidth = maxHeight * aspectRatio;
+      } else {
+        // コンテナ幅基準
+        displayWidth = containerWidth;
+        displayHeight = heightBasedOnWidth;
+      }
+      
+      // 🔥 setProperty で確実にスタイルを適用（CSSの!importantを上書き）
+      canvas.style.setProperty('width', `${displayWidth}px`, 'important');
+      canvas.style.setProperty('height', `${displayHeight}px`, 'important');
+      
+      // デバッグ用ログ（本番では削除可能）
+      if (currentFrame === 0) {
+        console.log(`🎨 Canvas sizing: internal=${w}x${h}, display=${displayWidth.toFixed(0)}x${displayHeight.toFixed(0)}, container=${containerWidth}x${containerHeight || 'auto'}`);
+      }
+    }
 
     if (!footZoomEnabled) {
       ctx.drawImage(offscreen, 0, 0, w, h, 0, 0, w, h);
@@ -3624,7 +3613,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         drawSkeleton(ctx, poseResults[idx]!.landmarks, w, h);
       }
       
+      // 区間マーカー線を描画
       drawSectionMarkers(ctx, w, h, currentFrame);
+      
+      // 接地/離地マーカーを描画
       drawContactMarkers(ctx, w, h, currentFrame);
     } else {
       let footCenterY = 0.75;
@@ -5533,22 +5525,40 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               </p>
             </div>
 
-            {/* キャンバスプレビュー (v5: 画像+オーバーレイ方式) */}
+            {/* 🎯 SVGオーバーレイ方式（スケルトンズレ完全修正） */}
             <div className="canvas-area" style={{ marginBottom: '2rem' }}>
-              <div className="frame-wrapper" ref={frameWrapperRef}>
-                {currentFrameUrl && (
+              {currentFrameUrl && videoWidth && videoHeight ? (
+                <div 
+                  className="frame-wrapper"
+                  style={{ aspectRatio: `${videoWidth} / ${videoHeight}` }}
+                >
                   <img 
-                    ref={frameImageRef}
                     src={currentFrameUrl} 
-                    alt="frame" 
+                    alt="Current frame"
                     className="frame-image"
                   />
-                )}
+                  <SVGSkeletonOverlay
+                    landmarks={poseResults[currentFrame]?.landmarks ?? null}
+                    showSkeleton={showSkeleton}
+                    sectionMarkers={{
+                      startX: savedStartHipX ?? undefined,
+                      midX: savedMidHipX ?? undefined,
+                      endX: savedEndHipX ?? undefined,
+                      showStart: sectionStartFrame !== null,
+                      showMid: sectionMidFrame !== null,
+                      showEnd: sectionEndFrame !== null,
+                    }}
+                    contactFrames={[...contactFrames, ...manualContactFrames]}
+                    toeOffFrames={[...autoToeOffFrames, ...manualToeOffFrames]}
+                    currentFrame={currentFrame}
+                  />
+                </div>
+              ) : (
                 <canvas 
-                  ref={overlayCanvasRef} 
-                  className="overlay-canvas"
+                  ref={displayCanvasRef} 
+                  className="preview-canvas"
                 />
-              </div>
+              )}
             </div>
 
             {/* 3つのスライダーでの区間設定 */}
@@ -6174,22 +6184,37 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               </button>
             </div>
 
-            {/* キャンバス (v5: 画像+オーバーレイ方式) */}
+            {/* 🎯 SVGオーバーレイ方式（スケルトンズレ完全修正） */}
             <div className="canvas-area">
-              <div className="frame-wrapper" ref={frameWrapperRef}>
-                {currentFrameUrl && (
+              {currentFrameUrl && videoWidth && videoHeight && !footZoomEnabled ? (
+                <div 
+                  className="frame-wrapper"
+                  style={{ aspectRatio: `${videoWidth} / ${videoHeight}` }}
+                >
                   <img 
-                    ref={frameImageRef}
                     src={currentFrameUrl} 
-                    alt="frame" 
+                    alt="Current frame"
                     className="frame-image"
                   />
-                )}
-                <canvas 
-                  ref={overlayCanvasRef} 
-                  className="overlay-canvas"
-                />
-              </div>
+                  <SVGSkeletonOverlay
+                    landmarks={poseResults[currentFrame]?.landmarks ?? null}
+                    showSkeleton={showSkeleton}
+                    sectionMarkers={{
+                      startX: savedStartHipX ?? undefined,
+                      midX: savedMidHipX ?? undefined,
+                      endX: savedEndHipX ?? undefined,
+                      showStart: sectionStartFrame !== null,
+                      showMid: sectionMidFrame !== null,
+                      showEnd: sectionEndFrame !== null,
+                    }}
+                    contactFrames={[...contactFrames, ...manualContactFrames]}
+                    toeOffFrames={[...autoToeOffFrames, ...manualToeOffFrames]}
+                    currentFrame={currentFrame}
+                  />
+                </div>
+              ) : (
+                <canvas ref={displayCanvasRef} className="preview-canvas" />
+              )}
             </div>
 
             {/* モバイル用：フレーム移動ボタン */}
@@ -6855,22 +6880,37 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 </button>
               </div>
 
-              {/* キャンバス (v5: 画像+オーバーレイ方式) */}
+              {/* 🎯 SVGオーバーレイ方式（スケルトンズレ完全修正） */}
               <div className="canvas-area">
-                <div className="frame-wrapper" ref={frameWrapperRef}>
-                  {currentFrameUrl && (
+                {currentFrameUrl && videoWidth && videoHeight && !footZoomEnabled ? (
+                  <div 
+                    className="frame-wrapper"
+                    style={{ aspectRatio: `${videoWidth} / ${videoHeight}` }}
+                  >
                     <img 
-                      ref={frameImageRef}
                       src={currentFrameUrl} 
-                      alt="frame" 
+                      alt="Current frame"
                       className="frame-image"
                     />
-                  )}
-                  <canvas 
-                    ref={overlayCanvasRef} 
-                    className="overlay-canvas"
-                  />
-                </div>
+                    <SVGSkeletonOverlay
+                      landmarks={poseResults[currentFrame]?.landmarks ?? null}
+                      showSkeleton={showSkeleton}
+                      sectionMarkers={{
+                        startX: savedStartHipX ?? undefined,
+                        midX: savedMidHipX ?? undefined,
+                        endX: savedEndHipX ?? undefined,
+                        showStart: sectionStartFrame !== null,
+                        showMid: sectionMidFrame !== null,
+                        showEnd: sectionEndFrame !== null,
+                      }}
+                      contactFrames={[...contactFrames, ...manualContactFrames]}
+                      toeOffFrames={[...autoToeOffFrames, ...manualToeOffFrames]}
+                      currentFrame={currentFrame}
+                    />
+                  </div>
+                ) : (
+                  <canvas ref={displayCanvasRef} className="preview-canvas" />
+                )}
               </div>
 
               <div className="frame-control">
@@ -7913,8 +7953,38 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                         </button>
                       </div>
                     </div>
+                    {/* 🎯 SVGオーバーレイ方式（スケルトンズレ完全修正） */}
                     <div className="canvas-area" style={{ maxHeight: '300px', overflow: 'hidden' }}>
-                      <canvas ref={displayCanvasRef} className="preview-canvas" style={{ maxHeight: '280px', objectFit: 'contain' }} />
+                      {currentFrameUrl && videoWidth && videoHeight ? (
+                        <div 
+                          className="frame-wrapper"
+                          style={{ aspectRatio: `${videoWidth} / ${videoHeight}`, maxHeight: '280px' }}
+                        >
+                          <img 
+                            src={currentFrameUrl} 
+                            alt="Current frame"
+                            className="frame-image"
+                            style={{ maxHeight: '280px' }}
+                          />
+                          <SVGSkeletonOverlay
+                            landmarks={poseResults[currentFrame]?.landmarks ?? null}
+                            showSkeleton={showSkeleton}
+                            sectionMarkers={{
+                              startX: savedStartHipX ?? undefined,
+                              midX: savedMidHipX ?? undefined,
+                              endX: savedEndHipX ?? undefined,
+                              showStart: sectionStartFrame !== null,
+                              showMid: sectionMidFrame !== null,
+                              showEnd: sectionEndFrame !== null,
+                            }}
+                            contactFrames={[...contactFrames, ...manualContactFrames]}
+                            toeOffFrames={[...autoToeOffFrames, ...manualToeOffFrames]}
+                            currentFrame={currentFrame}
+                          />
+                        </div>
+                      ) : (
+                        <canvas ref={displayCanvasRef} className="preview-canvas" style={{ maxHeight: '280px', objectFit: 'contain' }} />
+                      )}
                     </div>
                     <div style={{ 
                       display: 'flex', 
