@@ -3291,22 +3291,42 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     canvas.width = w;
     canvas.height = h;
     
-    // 🔥 スケルトンズレ修正 v3: CSSに任せてJSでのサイズ制御を最小限に
-    // CSSで width: 100% と height: auto を設定しているため、
-    // キャンバスの内部サイズ(canvas.width/height)を正しく設定すれば
-    // ブラウザが自動的にアスペクト比を維持してスケールする
-    // 
-    // 重要: canvas要素では内部サイズと表示サイズの比率が同じなら
-    // スケルトン座標は正しく表示される
+    // 🔥 スケルトンズレ修正 v4: アスペクト比を明示的に設定
+    // キャンバス要素は通常の画像と異なり、CSSのwidth:100%+height:autoでは
+    // アスペクト比が自動維持されないことがある
+    // aspect-ratioプロパティを明示的に設定することで確実にアスペクト比を維持
+    const aspectRatio = w / h;
+    canvas.style.aspectRatio = `${w} / ${h}`;
     
-    // JSでのスタイル設定をクリア（CSSに任せる）
-    canvas.style.removeProperty('width');
-    canvas.style.removeProperty('height');
+    // 親コンテナの幅を取得して、適切なサイズを計算
+    const parent = canvas.parentElement;
+    if (parent) {
+      const parentWidth = parent.clientWidth;
+      const maxHeight = window.innerHeight * 0.45; // 45vh
+      const heightFromWidth = parentWidth / aspectRatio;
+      
+      if (heightFromWidth > maxHeight) {
+        // 高さ制限に引っかかる場合
+        const widthFromHeight = maxHeight * aspectRatio;
+        canvas.style.width = `${widthFromHeight}px`;
+        canvas.style.height = `${maxHeight}px`;
+      } else {
+        // 幅いっぱいに表示
+        canvas.style.width = `${parentWidth}px`;
+        canvas.style.height = `${heightFromWidth}px`;
+      }
+    }
     
     // デバッグ用ログ
     if (currentFrame === 0) {
       const displayRect = canvas.getBoundingClientRect();
-      console.log(`🎨 Canvas: internal=${w}x${h}, display=${displayRect.width.toFixed(0)}x${displayRect.height.toFixed(0)}, ratio=${(displayRect.width/w).toFixed(3)}`);
+      const scaleX = displayRect.width / w;
+      const scaleY = displayRect.height / h;
+      console.log(`🎨 Canvas: internal=${w}x${h}, display=${displayRect.width.toFixed(0)}x${displayRect.height.toFixed(0)}`);
+      console.log(`📐 Scale: X=${scaleX.toFixed(4)}, Y=${scaleY.toFixed(4)}, diff=${Math.abs(scaleX - scaleY).toFixed(6)}`);
+      if (Math.abs(scaleX - scaleY) > 0.001) {
+        console.warn(`⚠️ アスペクト比が一致していません！スケルトンがズレる可能性があります`);
+      }
     }
 
     if (!footZoomEnabled) {

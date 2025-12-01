@@ -1355,13 +1355,14 @@ body {
   }
 
   .preview-canvas {
-    /* 🔥 スケルトンズレ修正: キャンバスを親要素いっぱいに広げる */
+    /* 🔥 スケルトンズレ修正 v4: キャンバスのアスペクト比を維持 */
     display: block;
-    width: 100% !important;
-    height: auto !important;
-    max-height: 45vh;
+    width: 100%;
+    height: auto;
     max-width: 100%;
     max-height: 45vh;
+    /* object-fit は canvas では効かないが念のため */
+    object-fit: contain;
   }
 
   /* フレームコントロール（スライダー）：通常はドキュメントフロー内 */
