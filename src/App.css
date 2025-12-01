@@ -1441,9 +1441,16 @@ body {
     z-index: 1;
   }
 
-  /* Step 5: wizard-step-headerを非表示（無駄な空白を削除） */
-  .wizard-content .wizard-step-header {
+  /* ステップ6のマーキングモードではwizard-step-headerを非表示（キャンバスが固定のため） */
+  /* 検出モード選択時（calibrationTypeがnull）は表示する */
+  .wizard-content.step-6 .wizard-step-header {
     display: none;
+  }
+  
+  /* その他のステップでは見出しを表示 */
+  .wizard-content .wizard-step-header {
+    display: block;
+    padding-top: 0;
   }
 
   /* Section item をコンパクトに */
@@ -1646,6 +1653,12 @@ body {
     height: auto;
     -webkit-overflow-scrolling: touch;
     padding-bottom: 120px;
+    padding-top: 50px; /* ヘッダー分のスペース確保 */
+  }
+  
+  /* ステップ6のマーキングモードでは固定レイアウト用の大きなpaddingが必要 */
+  .wizard-content.step-6 {
+    padding-top: calc(42px + min(56.25vw, 50vh) + 150px) !important;
   }
 
   /* 固定されたキャンバスエリアの子要素 */
