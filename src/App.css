@@ -1321,7 +1321,7 @@ body {
 
   /* ========== モバイル最適化：キャンバスを最大化、コントロールを最小化 ========== */
   
-  /* キャンバスエリア：デフォルト（ステップ5, 6以外では固定） */
+  /* キャンバスエリア：デフォルト（ステップ5, 6以外） */
   .canvas-area {
     position: relative !important;
     width: 100% !important;
@@ -1335,30 +1335,42 @@ body {
     border-radius: 8px;
     overflow: hidden;
   }
+
+  /* ★ステップ5（区間設定）用キャンバス：相対配置＆縦横比そのまま★ */
+  .wizard-content.step-5 .canvas-area {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 0 12px 0 !important;
+    border-radius: 8px;
+  }
   
   /* ステップ6（マーキング）でのキャンバスは固定表示 */
-.wizard-content.step-6 .canvas-area {
-  position: fixed !important;
-  top: 42px !important;
-  left: 0 !important;
-  right: 0 !important;
-  width: 100vw !important;
-  /* ★ 縦横比を JS に任せるので、height/max-height を消す ★ */
-  /* height: 56.25vw !important; */
-  /* max-height: 50vh !important; */
-  z-index: 1000 !important;
-  margin: 0 !important;
-  border-radius: 0;
-}
+  .wizard-content.step-6 .canvas-area {
+    position: fixed !important;
+    top: 42px !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100vw !important;
+    /* height/max-height はコメントアウトのまま */
+    /* height: 56.25vw !important; */
+    /* max-height: 50vh !important; */
+    z-index: 1000 !important;
+    margin: 0 !important;
+    border-radius: 0;
+  }
 
-.preview-canvas {
-  width: 100% !important;
-  height: auto !important;   /* ★ 100% → auto に変更 ★ */
-  object-fit: contain;
-  display: block;
-  margin: 0;
-}
-
+  .preview-canvas {
+    width: 100% !important;
+    height: auto !important;
+    object-fit: contain;
+    display: block;
+    margin: 0;
+  }
 
   /* フレームコントロール（スライダー）：通常はドキュメントフロー内 */
   .frame-control {
