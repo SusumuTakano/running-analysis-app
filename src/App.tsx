@@ -280,229 +280,6 @@ const calculateAngles = (
   };
 };
 
-// ============================================================
-// SVGスケルトンオーバーレイコンポーネント（スケルトンズレ完全修正）
-// MediaPipeのランドマークは既に0-1正規化されているため、
-// SVGのviewBox="0 0 1 1"で直接描画できる
-// ============================================================
-
-type SVGSkeletonOverlayProps = {
-  landmarks: FramePoseData["landmarks"] | null;
-  showSkeleton: boolean;
-  // セクションマーカー用（正規化座標 0-1）
-  sectionMarkers?: {
-    startX?: number;
-    midX?: number;
-    endX?: number;
-    showStart?: boolean;
-    showMid?: boolean;
-    showEnd?: boolean;
-  };
-  // 接地/離地マーカー用
-  contactFrames?: number[];
-  toeOffFrames?: number[];
-  currentFrame?: number;
-};
-
-const SVGSkeletonOverlay: React.FC<SVGSkeletonOverlayProps> = ({
-  landmarks,
-  showSkeleton,
-  sectionMarkers,
-  contactFrames = [],
-  toeOffFrames = [],
-  currentFrame,
-}) => {
-  const CONFIDENCE_THRESHOLD = 0.1;
-  
-  // スケルトン接続定義
-  const connections: [number, number][] = [
-    [11, 12], // 肩
-    [11, 13], [13, 15], // 左腕
-    [12, 14], [14, 16], // 右腕
-    [11, 23], [12, 24], // 体幹
-    [23, 24], // 腰
-    [23, 25], [25, 27], [27, 31], // 左脚
-    [24, 26], [26, 28], [28, 32], // 右脚
-  ];
-
-  // 姿勢の妥当性チェック
-  const isValidPose = (lms: FramePoseData["landmarks"]) => {
-    const leftShoulder = lms[11];
-    const rightShoulder = lms[12];
-    const leftHip = lms[23];
-    const rightHip = lms[24];
-    
-    if (
-      leftShoulder.visibility < CONFIDENCE_THRESHOLD ||
-      rightShoulder.visibility < CONFIDENCE_THRESHOLD ||
-      leftHip.visibility < CONFIDENCE_THRESHOLD ||
-      rightHip.visibility < CONFIDENCE_THRESHOLD
-    ) {
-      return false;
-    }
-    
-    const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
-    const hipY = (leftHip.y + rightHip.y) / 2;
-    
-    return shoulderY < hipY;
-  };
-
-  // 2点間の距離チェック（異常な接続を除外）
-  const isConnectionValid = (lms: FramePoseData["landmarks"], a: number, b: number) => {
-    const pointA = lms[a];
-    const pointB = lms[b];
-    if (
-      !pointA || !pointB ||
-      pointA.visibility < CONFIDENCE_THRESHOLD ||
-      pointB.visibility < CONFIDENCE_THRESHOLD
-    ) {
-      return false;
-    }
-    const dx = pointB.x - pointA.x;
-    const dy = pointB.y - pointA.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    return distance < 0.5; // 正規化座標で0.5以上は異常
-  };
-
-  return (
-    <svg
-      className="skeleton-svg"
-      viewBox="0 0 1 1"
-      preserveAspectRatio="none"
-    >
-      {/* セクションマーカー（縦線） */}
-      {sectionMarkers?.showStart && sectionMarkers.startX !== undefined && (
-        <line
-          x1={sectionMarkers.startX}
-          y1={0}
-          x2={sectionMarkers.startX}
-          y2={1}
-          stroke="#10b981"
-          strokeWidth={0.008}
-          strokeDasharray="0.02 0.01"
-        />
-      )}
-      {sectionMarkers?.showMid && sectionMarkers.midX !== undefined && (
-        <line
-          x1={sectionMarkers.midX}
-          y1={0}
-          x2={sectionMarkers.midX}
-          y2={1}
-          stroke="#3b82f6"
-          strokeWidth={0.008}
-          strokeDasharray="0.02 0.01"
-        />
-      )}
-      {sectionMarkers?.showEnd && sectionMarkers.endX !== undefined && (
-        <line
-          x1={sectionMarkers.endX}
-          y1={0}
-          x2={sectionMarkers.endX}
-          y2={1}
-          stroke="#ef4444"
-          strokeWidth={0.008}
-          strokeDasharray="0.02 0.01"
-        />
-      )}
-
-      {/* スケルトン描画 */}
-      {showSkeleton && landmarks && isValidPose(landmarks) && (
-        <g>
-          {/* 接続線 */}
-          {connections.map(([a, b], idx) => {
-            if (!isConnectionValid(landmarks, a, b)) return null;
-            const pointA = landmarks[a];
-            const pointB = landmarks[b];
-            return (
-              <line
-                key={`conn-${idx}`}
-                x1={pointA.x}
-                y1={pointA.y}
-                x2={pointB.x}
-                y2={pointB.y}
-                stroke="#0ea5e9"
-                strokeWidth={0.006}
-                strokeLinecap="round"
-              />
-            );
-          })}
-
-          {/* 関節点 */}
-          {landmarks.map((lm, idx) => {
-            if (lm.visibility < CONFIDENCE_THRESHOLD) return null;
-            return (
-              <circle
-                key={`point-${idx}`}
-                cx={lm.x}
-                cy={lm.y}
-                r={0.008}
-                fill="#f97316"
-              />
-            );
-          })}
-
-          {/* 大転子マーカーと垂直線 */}
-          {(() => {
-            const leftHip = landmarks[23];
-            const rightHip = landmarks[24];
-            if (
-              leftHip.visibility < CONFIDENCE_THRESHOLD ||
-              rightHip.visibility < CONFIDENCE_THRESHOLD
-            ) {
-              return null;
-            }
-            const hipCenterX = (leftHip.x + rightHip.x) / 2;
-            const hipCenterY = (leftHip.y + rightHip.y) / 2;
-            return (
-              <g>
-                <line
-                  x1={hipCenterX}
-                  y1={hipCenterY}
-                  x2={hipCenterX}
-                  y2={1}
-                  stroke="#dc2626"
-                  strokeWidth={0.004}
-                  strokeDasharray="0.02 0.01"
-                />
-                <circle
-                  cx={hipCenterX}
-                  cy={hipCenterY}
-                  r={0.015}
-                  fill="#dc2626"
-                />
-              </g>
-            );
-          })()}
-        </g>
-      )}
-
-      {/* 接地フレームマーカー */}
-      {contactFrames.includes(currentFrame ?? -1) && (
-        <rect
-          x={0}
-          y={0.9}
-          width={1}
-          height={0.02}
-          fill="#22c55e"
-          opacity={0.7}
-        />
-      )}
-
-      {/* 離地フレームマーカー */}
-      {toeOffFrames.includes(currentFrame ?? -1) && (
-        <rect
-          x={0}
-          y={0.9}
-          width={1}
-          height={0.02}
-          fill="#ef4444"
-          opacity={0.7}
-        />
-      )}
-    </svg>
-  );
-};
-
 /** グラフ用の指標キー */
 type GraphMetricKey =
   | "contactTime"
@@ -730,10 +507,6 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const displayCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  
-  // 🎯 SVGオーバーレイ用: 現在フレームの画像URL
-  const [currentFrameUrl, setCurrentFrameUrl] = useState<string | null>(null);
-  const frameUrlRef = useRef<string | null>(null); // メモリリーク防止用
 
   const [usedTargetFps, setUsedTargetFps] = useState<number | null>(null);
 
@@ -3486,51 +3259,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     });
   };
 
-  // ------------ 🎯 SVGオーバーレイ用: 現在フレームのURL生成 ------------
-  useEffect(() => {
-    const frames = framesRef.current;
-    if (!frames.length) {
-      setCurrentFrameUrl(null);
-      return;
-    }
-
-    const idx = clamp(currentFrame, 0, frames.length - 1);
-    const frame = frames[idx];
-    if (!frame || !frame.width || !frame.height) {
-      return;
-    }
-
-    // ImageData → Canvas → Blob URL
-    const offscreen = document.createElement("canvas");
-    offscreen.width = frame.width;
-    offscreen.height = frame.height;
-    const offCtx = offscreen.getContext("2d");
-    if (!offCtx) return;
-    offCtx.putImageData(frame, 0, 0);
-
-    // 古いURLをクリーンアップ
-    if (frameUrlRef.current) {
-      URL.revokeObjectURL(frameUrlRef.current);
-    }
-
-    offscreen.toBlob((blob) => {
-      if (blob) {
-        const url = URL.createObjectURL(blob);
-        frameUrlRef.current = url;
-        setCurrentFrameUrl(url);
-      }
-    }, "image/png");
-
-    return () => {
-      // クリーンアップ時にURLを解放
-      if (frameUrlRef.current) {
-        URL.revokeObjectURL(frameUrlRef.current);
-        frameUrlRef.current = null;
-      }
-    };
-  }, [currentFrame, framesCount]);
-
-  // ------------ 現在フレームの描画（canvas用・足ズーム対応） ------------
+  // ------------ 現在フレームの描画 ------------
   useEffect(() => {
     const canvas = displayCanvasRef.current;
     const frames = framesRef.current;
@@ -5525,40 +5254,12 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               </p>
             </div>
 
-            {/* 🎯 SVGオーバーレイ方式（スケルトンズレ完全修正） */}
+            {/* キャンバスプレビュー */}
             <div className="canvas-area" style={{ marginBottom: '2rem' }}>
-              {currentFrameUrl && videoWidth && videoHeight ? (
-                <div 
-                  className="frame-wrapper"
-                  style={{ aspectRatio: `${videoWidth} / ${videoHeight}` }}
-                >
-                  <img 
-                    src={currentFrameUrl} 
-                    alt="Current frame"
-                    className="frame-image"
-                  />
-                  <SVGSkeletonOverlay
-                    landmarks={poseResults[currentFrame]?.landmarks ?? null}
-                    showSkeleton={showSkeleton}
-                    sectionMarkers={{
-                      startX: savedStartHipX ?? undefined,
-                      midX: savedMidHipX ?? undefined,
-                      endX: savedEndHipX ?? undefined,
-                      showStart: sectionStartFrame !== null,
-                      showMid: sectionMidFrame !== null,
-                      showEnd: sectionEndFrame !== null,
-                    }}
-                    contactFrames={[...contactFrames, ...manualContactFrames]}
-                    toeOffFrames={[...autoToeOffFrames, ...manualToeOffFrames]}
-                    currentFrame={currentFrame}
-                  />
-                </div>
-              ) : (
-                <canvas 
-                  ref={displayCanvasRef} 
-                  className="preview-canvas"
-                />
-              )}
+              <canvas 
+                ref={displayCanvasRef} 
+                className="preview-canvas"
+              />
             </div>
 
             {/* 3つのスライダーでの区間設定 */}
@@ -6184,37 +5885,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               </button>
             </div>
 
-            {/* 🎯 SVGオーバーレイ方式（スケルトンズレ完全修正） */}
             <div className="canvas-area">
-              {currentFrameUrl && videoWidth && videoHeight && !footZoomEnabled ? (
-                <div 
-                  className="frame-wrapper"
-                  style={{ aspectRatio: `${videoWidth} / ${videoHeight}` }}
-                >
-                  <img 
-                    src={currentFrameUrl} 
-                    alt="Current frame"
-                    className="frame-image"
-                  />
-                  <SVGSkeletonOverlay
-                    landmarks={poseResults[currentFrame]?.landmarks ?? null}
-                    showSkeleton={showSkeleton}
-                    sectionMarkers={{
-                      startX: savedStartHipX ?? undefined,
-                      midX: savedMidHipX ?? undefined,
-                      endX: savedEndHipX ?? undefined,
-                      showStart: sectionStartFrame !== null,
-                      showMid: sectionMidFrame !== null,
-                      showEnd: sectionEndFrame !== null,
-                    }}
-                    contactFrames={[...contactFrames, ...manualContactFrames]}
-                    toeOffFrames={[...autoToeOffFrames, ...manualToeOffFrames]}
-                    currentFrame={currentFrame}
-                  />
-                </div>
-              ) : (
-                <canvas ref={displayCanvasRef} className="preview-canvas" />
-              )}
+              <canvas ref={displayCanvasRef} className="preview-canvas" />
             </div>
 
             {/* モバイル用：フレーム移動ボタン */}
@@ -6880,37 +6552,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 </button>
               </div>
 
-              {/* 🎯 SVGオーバーレイ方式（スケルトンズレ完全修正） */}
               <div className="canvas-area">
-                {currentFrameUrl && videoWidth && videoHeight && !footZoomEnabled ? (
-                  <div 
-                    className="frame-wrapper"
-                    style={{ aspectRatio: `${videoWidth} / ${videoHeight}` }}
-                  >
-                    <img 
-                      src={currentFrameUrl} 
-                      alt="Current frame"
-                      className="frame-image"
-                    />
-                    <SVGSkeletonOverlay
-                      landmarks={poseResults[currentFrame]?.landmarks ?? null}
-                      showSkeleton={showSkeleton}
-                      sectionMarkers={{
-                        startX: savedStartHipX ?? undefined,
-                        midX: savedMidHipX ?? undefined,
-                        endX: savedEndHipX ?? undefined,
-                        showStart: sectionStartFrame !== null,
-                        showMid: sectionMidFrame !== null,
-                        showEnd: sectionEndFrame !== null,
-                      }}
-                      contactFrames={[...contactFrames, ...manualContactFrames]}
-                      toeOffFrames={[...autoToeOffFrames, ...manualToeOffFrames]}
-                      currentFrame={currentFrame}
-                    />
-                  </div>
-                ) : (
-                  <canvas ref={displayCanvasRef} className="preview-canvas" />
-                )}
+                <canvas ref={displayCanvasRef} className="preview-canvas" />
               </div>
 
               <div className="frame-control">
@@ -7953,38 +7596,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                         </button>
                       </div>
                     </div>
-                    {/* 🎯 SVGオーバーレイ方式（スケルトンズレ完全修正） */}
                     <div className="canvas-area" style={{ maxHeight: '300px', overflow: 'hidden' }}>
-                      {currentFrameUrl && videoWidth && videoHeight ? (
-                        <div 
-                          className="frame-wrapper"
-                          style={{ aspectRatio: `${videoWidth} / ${videoHeight}`, maxHeight: '280px' }}
-                        >
-                          <img 
-                            src={currentFrameUrl} 
-                            alt="Current frame"
-                            className="frame-image"
-                            style={{ maxHeight: '280px' }}
-                          />
-                          <SVGSkeletonOverlay
-                            landmarks={poseResults[currentFrame]?.landmarks ?? null}
-                            showSkeleton={showSkeleton}
-                            sectionMarkers={{
-                              startX: savedStartHipX ?? undefined,
-                              midX: savedMidHipX ?? undefined,
-                              endX: savedEndHipX ?? undefined,
-                              showStart: sectionStartFrame !== null,
-                              showMid: sectionMidFrame !== null,
-                              showEnd: sectionEndFrame !== null,
-                            }}
-                            contactFrames={[...contactFrames, ...manualContactFrames]}
-                            toeOffFrames={[...autoToeOffFrames, ...manualToeOffFrames]}
-                            currentFrame={currentFrame}
-                          />
-                        </div>
-                      ) : (
-                        <canvas ref={displayCanvasRef} className="preview-canvas" style={{ maxHeight: '280px', objectFit: 'contain' }} />
-                      )}
+                      <canvas ref={displayCanvasRef} className="preview-canvas" style={{ maxHeight: '280px', objectFit: 'contain' }} />
                     </div>
                     <div style={{ 
                       display: 'flex', 
