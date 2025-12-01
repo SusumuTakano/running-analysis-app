@@ -508,6 +508,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const displayCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  const [currentFrameUrl, setCurrentFrameUrl] = useState<string | null>(null);
+  const frameUrlRef = useRef<string | null>(null);
+
   const [usedTargetFps, setUsedTargetFps] = useState<number | null>(null);
 
   // チュートリアル
@@ -517,6 +520,19 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   // 足元拡大
   const [footZoomEnabled, setFootZoomEnabled] = useState(false);
   const [zoomScale, setZoomScale] = useState(3);
+  const [mobileMarkerFocus, setMobileMarkerFocus] = useState(false);
+
+  useEffect(() => {
+    if (!isMobile && mobileMarkerFocus) {
+      setMobileMarkerFocus(false);
+      return;
+    }
+    if (wizardStep !== 6 && mobileMarkerFocus) {
+      setMobileMarkerFocus(false);
+    }
+  }, [isMobile, wizardStep, mobileMarkerFocus]);
+
+  const isMarkerFocus = isMobile && mobileMarkerFocus;
 
   // ------------ 動画最適化関連 -----------------
   // ------------ 姿勢推定関連 -----------------
@@ -2294,7 +2310,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       
       const interpolatedResults = interpolateMissingPoses(results);
       
-      setPoseResults(interpolatedResults);
+      let finalPoseResults = interpolatedResults;
       
       // 成功率を計算（補間前）
       const successCount = results.filter(r => r !== null && r.landmarks).length;
@@ -2323,23 +2339,34 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         setStatus(`✅ 姿勢推定完了！（成功率: ${interpolatedRateStr}%、補間前: ${successRateStr}%）`);
       }
       
-      // 🔧 メモリ解放: 姿勢推定が完了したらフレームデータを圧縮
-      // モバイルデバイスでは積極的にメモリを解放
-      const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      if (isMobileDevice && framesRef.current.length > 100) {
-        console.log('🧹 Mobile: Reducing frame data to save memory...');
-        // フレームデータを間引いて保持（表示用に最低限のみ）
-        const reducedFrames: ImageData[] = [];
-        const keepEvery = Math.ceil(framesRef.current.length / 100); // 最大100フレームに削減
-        for (let i = 0; i < framesRef.current.length; i += keepEvery) {
-          reducedFrames.push(framesRef.current[i]);
+      const shouldReduceForMobile = isMobile;
+      if (shouldReduceForMobile && framesRef.current.length) {
+        const originalFrameCount = framesRef.current.length;
+        const maxFramesForDevice = isIOS ? 160 : 220; // iOS は特に厳しいメモリ制限
+        if (originalFrameCount > maxFramesForDevice) {
+          const keepEvery = Math.ceil(originalFrameCount / maxFramesForDevice);
+          const keepIndices: number[] = [];
+          for (let i = 0; i < originalFrameCount; i += keepEvery) {
+            keepIndices.push(i);
+          }
+          if (keepIndices[keepIndices.length - 1] !== originalFrameCount - 1) {
+            keepIndices.push(originalFrameCount - 1);
+          }
+
+          const reducedFrames = keepIndices.map((idx) => framesRef.current[idx]);
+          const reducedPoseResults = keepIndices.map((idx) => finalPoseResults[idx] ?? null);
+
+          framesRef.current = reducedFrames;
+          finalPoseResults = reducedPoseResults;
+
+          console.log(`🧹 Mobile: Reduced frames & poses (step=${keepEvery}) → kept ${reducedFrames.length}/${originalFrameCount}`);
         }
-        // 元のフレームデータをクリア
-        framesRef.current.length = 0;
-        // 削減されたフレームを設定
-        framesRef.current = reducedFrames;
-        console.log(`🧹 Reduced frames: ${reducedFrames.length} frames kept`);
       }
+
+      const finalFrameCount = framesRef.current.length;
+      setFramesCount(finalFrameCount);
+      setCurrentFrame(0);
+      setPoseResults(finalPoseResults);
       
       // 自動で次のステップへ（区間設定）
       setTimeout(() => {
@@ -3167,7 +3194,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     width: number,
     height: number,
     currentFrameNum: number,
-    viewParams?: { srcX: number; srcY: number; srcW: number; srcH: number; scale: number }
+    viewParams?: { srcX: number; srcY: number; srcW: number; srcH: number; scale: number; frameWidth?: number; frameHeight?: number }
   ) => {
     const markers = [
       { frame: sectionStartFrame, color: "#10b981", label: "スタート", offset: startLineOffset, savedHipX: savedStartHipX, savedPixelX: savedStartPixelX },
@@ -3206,8 +3233,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       } else if (savedHipX !== null) {
         // 固定カメラモード: 腰の位置を使用（従来通り）
         if (viewParams) {
+          const baseWidth = viewParams.frameWidth ?? width;
           // 拡大表示時の座標変換
-          const origX = savedHipX * width;
+          const origX = savedHipX * baseWidth;
           const relX = origX - viewParams.srcX;
           torsoX = (relX / viewParams.srcW) * width;
         } else {
@@ -3259,6 +3287,54 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     });
   };
 
+  // ------------ ステップ5用: 現在フレームの静止画URL生成 ------------
+  useEffect(() => {
+    const frames = framesRef.current;
+    if (!frames.length) {
+      setCurrentFrameUrl(null);
+      if (frameUrlRef.current) {
+        URL.revokeObjectURL(frameUrlRef.current);
+        frameUrlRef.current = null;
+      }
+      return;
+    }
+
+    const idx = clamp(currentFrame, 0, frames.length - 1);
+    const frame = frames[idx];
+    if (!frame) return;
+
+    const offscreen = document.createElement("canvas");
+    offscreen.width = frame.width;
+    offscreen.height = frame.height;
+    const offCtx = offscreen.getContext("2d");
+    if (!offCtx) return;
+    offCtx.putImageData(frame, 0, 0);
+
+    let cancelled = false;
+    offscreen.toBlob((blob) => {
+      if (!blob || cancelled) return;
+      const url = URL.createObjectURL(blob);
+      if (frameUrlRef.current) {
+        URL.revokeObjectURL(frameUrlRef.current);
+      }
+      frameUrlRef.current = url;
+      setCurrentFrameUrl(url);
+    }, "image/jpeg", 0.8);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentFrame, framesCount]);
+
+  useEffect(() => {
+    return () => {
+      if (frameUrlRef.current) {
+        URL.revokeObjectURL(frameUrlRef.current);
+        frameUrlRef.current = null;
+      }
+    };
+  }, []);
+
   // ------------ 現在フレームの描画 ------------
   useEffect(() => {
     const canvas = displayCanvasRef.current;
@@ -3277,34 +3353,73 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       return;
     }
 
-    const w = frame.width;
-    const h = frame.height;
+    const sourceWidth = frame.width;
+    const sourceHeight = frame.height;
 
     const offscreen = document.createElement("canvas");
-    offscreen.width = w;
-    offscreen.height = h;
+    offscreen.width = sourceWidth;
+    offscreen.height = sourceHeight;
     const offCtx = offscreen.getContext("2d");
     if (!offCtx) return;
     offCtx.putImageData(frame, 0, 0);
 
-    // キャンバスサイズを動画サイズに設定
-    canvas.width = w;
-    canvas.height = h;
-    
-    // canvas.style.widthとcanvas.style.heightは削除（CSSに任せる）
+    // ===== 表示サイズを取得（CSSによる表示サイズと内部描画サイズを同期させる） =====
+    const rect = canvas.getBoundingClientRect();
+    const parent = canvas.parentElement;
+    const aspectRatio = sourceWidth / sourceHeight;
+
+    let displayWidth = rect.width;
+    let displayHeight = rect.height;
+
+    if (!displayWidth || !displayHeight) {
+      const fallbackWidth = parent?.clientWidth ?? sourceWidth;
+      displayWidth = fallbackWidth;
+      displayHeight = fallbackWidth / aspectRatio;
+    }
+
+    if (!displayHeight || Number.isNaN(displayHeight)) {
+      displayHeight = displayWidth / aspectRatio;
+    }
+
+    // iPhone Safari で address bar の影響により rect.height が 0 になるケースに備えて再計算
+    if (displayHeight === 0) {
+      const fallbackWidth = parent?.clientWidth ?? window.innerWidth;
+      displayWidth = fallbackWidth;
+      displayHeight = fallbackWidth / aspectRatio;
+    }
+
+    const dpr = window.devicePixelRatio || 1;
+    const internalWidth = Math.max(1, Math.round(displayWidth * dpr));
+    const internalHeight = Math.max(1, Math.round(displayHeight * dpr));
+
+    if (canvas.width !== internalWidth || canvas.height !== internalHeight) {
+      canvas.width = internalWidth;
+      canvas.height = internalHeight;
+    }
+
+    const shouldShowSkeleton = showSkeleton && wizardStep !== 5;
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, displayWidth, displayHeight);
+
+    if (idx === 0 && currentFrame === 0) {
+      console.log(`🎯 Canvas sizing → source: ${sourceWidth}x${sourceHeight}, display: ${displayWidth.toFixed(1)}x${displayHeight.toFixed(1)}, dpr: ${dpr}`);
+    }
 
     if (!footZoomEnabled) {
-      ctx.drawImage(offscreen, 0, 0, w, h, 0, 0, w, h);
+      ctx.drawImage(offscreen, 0, 0, sourceWidth, sourceHeight, 0, 0, displayWidth, displayHeight);
 
-      if (showSkeleton && poseResults[idx]?.landmarks) {
-        drawSkeleton(ctx, poseResults[idx]!.landmarks, w, h);
+      if (shouldShowSkeleton && poseResults[idx]?.landmarks) {
+        drawSkeleton(ctx, poseResults[idx]!.landmarks, displayWidth, displayHeight);
       }
       
       // 区間マーカー線を描画
-      drawSectionMarkers(ctx, w, h, currentFrame);
+      drawSectionMarkers(ctx, displayWidth, displayHeight, currentFrame);
       
       // 接地/離地マーカーを描画
-      drawContactMarkers(ctx, w, h, currentFrame);
+      drawContactMarkers(ctx, displayWidth, displayHeight, currentFrame);
     } else {
       let footCenterY = 0.75;
       let footCenterX = 0.5;
@@ -3354,18 +3469,18 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         }
       }
 
-      const srcW = w / zoomScale;
-      const srcH = h / zoomScale;
+      const srcW = sourceWidth / zoomScale;
+      const srcH = sourceHeight / zoomScale;
 
-      let srcX = footCenterX * w - srcW / 2;
-      let srcY = footCenterY * h - srcH / 2;
+      let srcX = footCenterX * sourceWidth - srcW / 2;
+      let srcY = footCenterY * sourceHeight - srcH / 2;
 
-      srcX = clamp(srcX, 0, w - srcW);
-      srcY = clamp(srcY, 0, h - srcH);
+      srcX = clamp(srcX, 0, sourceWidth - srcW);
+      srcY = clamp(srcY, 0, sourceHeight - srcH);
 
-      ctx.drawImage(offscreen, srcX, srcY, srcW, srcH, 0, 0, w, h);
+      ctx.drawImage(offscreen, srcX, srcY, srcW, srcH, 0, 0, displayWidth, displayHeight);
 
-      if (showSkeleton && poseResults[idx]?.landmarks) {
+      if (shouldShowSkeleton && poseResults[idx]?.landmarks) {
         const landmarks = poseResults[idx]!.landmarks;
 
         ctx.strokeStyle = "#0ea5e9";
@@ -3389,14 +3504,14 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         ];
 
         const transformPoint = (lm: { x: number; y: number }) => {
-          const origX = lm.x * w;
-          const origY = lm.y * h;
+          const origX = lm.x * sourceWidth;
+          const origY = lm.y * sourceHeight;
 
           const relX = origX - srcX;
           const relY = origY - srcY;
 
-          const canvasX = (relX / srcW) * w;
-          const canvasY = (relY / srcH) * h;
+          const canvasX = (relX / srcW) * displayWidth;
+          const canvasY = (relY / srcH) * displayHeight;
 
           return { x: canvasX, y: canvasY };
         };
@@ -3411,13 +3526,13 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
             if (
               transA.x >= -10 &&
-              transA.x <= w + 10 &&
+              transA.x <= displayWidth + 10 &&
               transA.y >= -10 &&
-              transA.y <= h + 10 &&
+              transA.y <= displayHeight + 10 &&
               transB.x >= -10 &&
-              transB.x <= w + 10 &&
+              transB.x <= displayWidth + 10 &&
               transB.y >= -10 &&
-              transB.y <= h + 10
+              transB.y <= displayHeight + 10
             ) {
               ctx.beginPath();
               ctx.moveTo(transA.x, transA.y);
@@ -3435,9 +3550,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
             if (
               trans.x >= -10 &&
-              trans.x <= w + 10 &&
+              trans.x <= displayWidth + 10 &&
               trans.y >= -10 &&
-              trans.y <= h + 10
+              trans.y <= displayHeight + 10
             ) {
               ctx.beginPath();
               ctx.arc(trans.x, trans.y, 6, 0, 2 * Math.PI);
@@ -3478,7 +3593,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           ctx.setLineDash([10, 5]); // 破線
           ctx.beginPath();
           ctx.moveTo(hipCenterTrans.x, hipCenterTrans.y);
-          ctx.lineTo(hipCenterTrans.x, h); // 画面下まで
+          ctx.lineTo(hipCenterTrans.x, displayHeight); // 画面下まで
           ctx.stroke();
           ctx.setLineDash([]); // 破線解除
           
@@ -3583,17 +3698,21 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       }
       
       // 拡大表示時も区間マーカー線を描画
-      drawSectionMarkers(ctx, w, h, currentFrame, {
+      drawSectionMarkers(ctx, displayWidth, displayHeight, currentFrame, {
         srcX,
         srcY,
         srcW,
         srcH,
         scale: zoomScale,
+        frameWidth: sourceWidth,
+        frameHeight: sourceHeight,
       });
       
       // 拡大表示時も接地/離地マーカーを描画
-      drawContactMarkers(ctx, w, h, currentFrame);
+      drawContactMarkers(ctx, displayWidth, displayHeight, currentFrame);
     }
+
+    ctx.restore();
   }, [
     currentFrame,
     framesCount,
@@ -3608,6 +3727,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     midLineOffset,
     endLineOffset,
     contactFrames,
+    manualContactFrames,
+    manualToeOffFrames,
+    autoToeOffFrames,
+    wizardStep,
   ]);
 
   const ready = framesCount > 0;
@@ -5160,7 +5283,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         // 姿勢推定データがない場合は強制的にステップ4に戻す
         if (poseResults.length === 0) {
           return (
-            <div className="wizard-content">
+            <div className="wizard-content step-5">
               <div className="wizard-step-header">
                 <h2 className="wizard-step-title">⚠️ 姿勢推定が必要です</h2>
               </div>
@@ -5202,9 +5325,71 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
           );
         }
         
+        const baseFrame = framesRef.current[currentFrame] ?? framesRef.current[sectionStartFrame ?? 0] ?? framesRef.current[0] ?? null;
+        const baseFrameWidth = baseFrame?.width ?? videoWidth ?? 0;
+
+        const computeMarkerPosition = (
+          frameValue: number | null,
+          savedHipX: number | null,
+          savedPixelX: number | null,
+          offsetPx: number
+        ) => {
+          if (frameValue == null) return null;
+
+          let normalized: number | null = null;
+
+          if (isPanMode) {
+            if (savedPixelX != null && baseFrameWidth > 0) {
+              normalized = savedPixelX / baseFrameWidth;
+            } else {
+              const hip = calculateHipPosition(frameValue);
+              if (hip !== null) normalized = hip;
+            }
+          } else {
+            if (savedHipX != null) {
+              normalized = savedHipX;
+            } else {
+              const hip = calculateHipPosition(frameValue);
+              if (hip !== null) normalized = hip;
+            }
+          }
+
+          if (normalized == null) return null;
+
+          const offsetNormalized = baseFrameWidth > 0 ? offsetPx / baseFrameWidth : 0;
+          const finalValue = Math.min(0.98, Math.max(0.02, normalized + offsetNormalized));
+          return finalValue;
+        };
+
+        const step5Markers = [
+          {
+            frame: sectionStartFrame,
+            color: "#10b981",
+            label: "スタート",
+            value: computeMarkerPosition(sectionStartFrame, savedStartHipX, savedStartPixelX, startLineOffset),
+          },
+          {
+            frame: sectionMidFrame,
+            color: "#f59e0b",
+            label: "中間",
+            value: computeMarkerPosition(sectionMidFrame, savedMidHipX, savedMidPixelX, midLineOffset),
+          },
+          {
+            frame: sectionEndFrame,
+            color: "#ef4444",
+            label: "フィニッシュ",
+            value: computeMarkerPosition(sectionEndFrame, savedEndHipX, savedEndPixelX, endLineOffset),
+          },
+        ].filter((marker) => marker.frame != null && marker.frame === currentFrame && marker.value != null) as Array<{
+          frame: number;
+          color: string;
+          label: string;
+          value: number;
+        }>;
+
         // スライダーによる区間設定UI（トリミング機能時代のシンプル方式に戻す）
         return (
-          <div className="wizard-content">
+          <div className="wizard-content step-5">
             <div className="wizard-step-header">
               <h2 className="wizard-step-title">ステップ 5: 区間設定</h2>
               <p className="wizard-step-desc">
@@ -5212,12 +5397,52 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               </p>
             </div>
 
-            {/* キャンバスプレビュー */}
+            {/* プレビュー（画像 + SVGオーバーレイ） */}
             <div className="canvas-area" style={{ marginBottom: '2rem' }}>
-              <canvas 
-                ref={displayCanvasRef} 
-                className="preview-canvas"
-              />
+              {currentFrameUrl ? (
+                <div className="frame-wrapper">
+                  <img src={currentFrameUrl} alt={`Frame ${currentFrame}`} />
+                  <svg className="frame-overlay" viewBox="0 0 1 1" preserveAspectRatio="none">
+                    {step5Markers.map((marker) => (
+                      <g key={`${marker.label}-${marker.frame}`}>
+                        <line
+                          x1={marker.value}
+                          x2={marker.value}
+                          y1={0}
+                          y2={1}
+                          stroke={marker.color}
+                          strokeWidth={0.01}
+                          strokeDasharray="0.03 0.02"
+                        />
+                        <rect
+                          x={Math.max(0.02, Math.min(0.9, marker.value - 0.12))}
+                          y={0.02}
+                          width={0.24}
+                          height={0.08}
+                          rx={0.01}
+                          fill="rgba(255, 255, 255, 0.95)"
+                        />
+                        <text
+                          x={Math.max(0.02, Math.min(0.9, marker.value - 0.12)) + 0.12}
+                          y={0.07}
+                          fill={marker.color}
+                          fontSize={0.05}
+                          fontWeight="bold"
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                        >
+                          {marker.label}
+                        </text>
+                      </g>
+                    ))}
+                  </svg>
+                </div>
+              ) : (
+                <canvas
+                  ref={displayCanvasRef}
+                  className="preview-canvas"
+                />
+              )}
             </div>
 
             {/* 3つのスライダーでの区間設定 */}
@@ -5808,47 +6033,97 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             {/* モード選択後のみマーク関連UIを表示 */}
             {calibrationType && (
             <>
-            <div className="marker-controls">
-              <button
-                className={
-                  footZoomEnabled ? "toggle-btn active" : "toggle-btn"
-                }
-                onClick={() => setFootZoomEnabled((v) => !v)}
-              >
-                足元拡大 {footZoomEnabled ? "ON" : "OFF"}
-              </button>
-              {footZoomEnabled && (
-                <label className="zoom-control">
-                  倍率:
-                  <input
-                    type="range"
-                    min={1}
-                    max={5}
-                    step={0.5}
-                    value={zoomScale}
-                    onChange={(e) => setZoomScale(Number(e.target.value))}
-                  />
-                  {zoomScale.toFixed(1)}x
-                </label>
+              {isMobile && (
+                <button
+                  className={`mobile-focus-toggle ${isMarkerFocus ? "active" : ""}`}
+                  onClick={() => setMobileMarkerFocus((v) => !v)}
+                >
+                  {isMarkerFocus ? "通常表示に戻す" : "映像に集中モード"}
+                </button>
               )}
-              <button
-                className={showSkeleton ? "toggle-btn active" : "toggle-btn"}
-                onClick={() => setShowSkeleton((v) => !v)}
-                disabled={!poseResults.length}
-              >
-                スケルトン {showSkeleton ? "ON" : "OFF"}
-              </button>
-              <button className="btn-ghost-small" onClick={handleClearMarkers}>
-                マーカークリア
-              </button>
-            </div>
 
-            <div className="canvas-area">
+              {!isMarkerFocus && (
+                <div className="marker-controls">
+                  <button
+                    className={
+                      footZoomEnabled ? "toggle-btn active" : "toggle-btn"
+                    }
+                    onClick={() => setFootZoomEnabled((v) => !v)}
+                  >
+                    足元拡大 {footZoomEnabled ? "ON" : "OFF"}
+                  </button>
+                  {footZoomEnabled && (
+                    <label className="zoom-control">
+                      倍率:
+                      <input
+                        type="range"
+                        min={1}
+                        max={5}
+                        step={0.5}
+                        value={zoomScale}
+                        onChange={(e) => setZoomScale(Number(e.target.value))}
+                      />
+                      {zoomScale.toFixed(1)}x
+                    </label>
+                  )}
+                  <button
+                    className={showSkeleton ? "toggle-btn active" : "toggle-btn"}
+                    onClick={() => setShowSkeleton((v) => !v)}
+                    disabled={!poseResults.length}
+                  >
+                    スケルトン {showSkeleton ? "ON" : "OFF"}
+                  </button>
+                  <button className="btn-ghost-small" onClick={handleClearMarkers}>
+                    マーカークリア
+                  </button>
+                </div>
+              )}
+
+            <div className={`canvas-area ${isMarkerFocus ? "focus-mode" : ""}`}>
+              {isMarkerFocus && (
+                <div className="focus-overlay">
+                  <button
+                    className="focus-toggle-btn"
+                    onClick={() => setMobileMarkerFocus(false)}
+                  >
+                    ↩ 通常表示へ
+                  </button>
+                  <div className="focus-toggle-group">
+                    <button
+                      className={showSkeleton ? "toggle-btn active" : "toggle-btn"}
+                      onClick={() => setShowSkeleton((v) => !v)}
+                      disabled={!poseResults.length}
+                    >
+                      スケルトン {showSkeleton ? "ON" : "OFF"}
+                    </button>
+                    <button
+                      className={footZoomEnabled ? "toggle-btn active" : "toggle-btn"}
+                      onClick={() => setFootZoomEnabled((v) => !v)}
+                    >
+                      足元拡大 {footZoomEnabled ? "ON" : "OFF"}
+                    </button>
+                  </div>
+                  {footZoomEnabled && (
+                    <label className="focus-zoom-slider">
+                      <span>倍率</span>
+                      <input
+                        type="range"
+                        min={1}
+                        max={5}
+                        step={0.5}
+                        value={zoomScale}
+                        onChange={(e) => setZoomScale(Number(e.target.value))}
+                      />
+                      <span>{zoomScale.toFixed(1)}x</span>
+                    </label>
+                  )}
+                </div>
+              )}
               <canvas ref={displayCanvasRef} className="preview-canvas" />
             </div>
 
             {/* モバイル用：フレーム移動ボタン */}
-            {isMobile && (
+            {isMobile && !isMarkerFocus && (
             <div className="mobile-marking-controls">
               <div className="mobile-frame-nav">
                 <button 
@@ -5884,7 +6159,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             )}
 
             {/* マーカー表示エリア - コントロールの下に配置 */}
-            {isMobile && (
+            {isMobile && !isMarkerFocus && (
             <div className="mobile-marker-display">
               {contactFrames.map((markerFrame, index) => {
                 if (markerFrame === currentFrame) {
@@ -5996,7 +6271,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             )}
 
             {/* 表示オプションボタン - マーカーの下に配置 */}
-            {isMobile && (
+            {isMobile && !isMarkerFocus && (
             <div className="mobile-view-options">
               <button
                 className={footZoomEnabled ? "toggle-btn active" : "toggle-btn"}
@@ -6031,7 +6306,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
             </div>
             )}
 
-            <div className="frame-control">
+            <div className={`frame-control ${isMarkerFocus ? "focus-mode" : ""}`}>
               <div className="frame-info">
                 フレーム: {currentLabel} / {maxLabel} | マーカー数:{" "}
                 {contactFrames.length}
@@ -6061,6 +6336,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 </button>
               </div>
             </div>
+
+            {isMarkerFocus && <div style={{ height: '160px' }} />}
 
 {/* PC用：マーカーリスト表示 */}
             {!isMobile && contactFrames.length > 0 && (
