@@ -3291,28 +3291,47 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     canvas.width = w;
     canvas.height = h;
     
-    // 🔥 スケルトンズレ修正: キャンバスの表示サイズを内部サイズに比例させる
-    // object-fit: contain はキャンバスでは正しく動作しないため、
-    // 親コンテナのサイズに基づいてアスペクト比を維持しながら表示サイズを計算
+    // 🔥 スケルトンズレ修正 v2: キャンバスの表示サイズを内部サイズに比例させる
+    // キャンバスは内部ピクセルサイズ (canvas.width/height) と
+    // CSS表示サイズ (style.width/height) が別々に管理される
+    // 両者の比率が異なるとスケルトン描画座標がズレる
     const canvasArea = canvas.parentElement;
     if (canvasArea) {
       const containerWidth = canvasArea.clientWidth;
+      const containerHeight = canvasArea.clientHeight;
       const aspectRatio = w / h;
       
+      // モバイルかどうかを検出
+      const isMobile = window.innerWidth <= 768;
+      
+      // 最大高さの制限
+      const maxHeight = isMobile 
+        ? Math.min(window.innerHeight * 0.45, containerHeight || window.innerHeight * 0.45)
+        : window.innerHeight * 0.8;
+      
+      let displayWidth: number;
+      let displayHeight: number;
+      
       // コンテナ幅に合わせた高さを計算
-      const displayHeight = containerWidth / aspectRatio;
+      const heightBasedOnWidth = containerWidth / aspectRatio;
       
-      // 最大高さの制限（80vh）を適用
-      const maxHeight = window.innerHeight * 0.8;
-      
-      if (displayHeight > maxHeight) {
+      if (heightBasedOnWidth > maxHeight) {
         // 高さが最大を超える場合は高さ基準でサイズを計算
-        canvas.style.height = `${maxHeight}px`;
-        canvas.style.width = `${maxHeight * aspectRatio}px`;
+        displayHeight = maxHeight;
+        displayWidth = maxHeight * aspectRatio;
       } else {
         // コンテナ幅基準
-        canvas.style.width = `${containerWidth}px`;
-        canvas.style.height = `${displayHeight}px`;
+        displayWidth = containerWidth;
+        displayHeight = heightBasedOnWidth;
+      }
+      
+      // 🔥 setProperty で確実にスタイルを適用（CSSの!importantを上書き）
+      canvas.style.setProperty('width', `${displayWidth}px`, 'important');
+      canvas.style.setProperty('height', `${displayHeight}px`, 'important');
+      
+      // デバッグ用ログ（本番では削除可能）
+      if (currentFrame === 0) {
+        console.log(`🎨 Canvas sizing: internal=${w}x${h}, display=${displayWidth.toFixed(0)}x${displayHeight.toFixed(0)}, container=${containerWidth}x${containerHeight || 'auto'}`);
       }
     }
 
