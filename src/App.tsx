@@ -5325,13 +5325,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     }
                     setStartLineOffset(0);
                   }}
-                  className="input-field"
-                  style={{ 
-                    cursor: 'pointer', 
-                    width: '100%',
-                    height: '8px',
-                    borderRadius: '4px'
-                  }}
+                  className="section-slider start-slider"
                 />
                 <div style={{
                   fontSize: '0.85rem',
@@ -5408,13 +5402,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     }
                     setEndLineOffset(0);
                   }}
-                  className="input-field"
-                  style={{ 
-                    cursor: 'pointer', 
-                    width: '100%',
-                    height: '8px',
-                    borderRadius: '4px'
-                  }}
+                  className="section-slider end-slider"
                 />
               </div>
 
@@ -5464,13 +5452,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     }
                     setMidLineOffset(0);
                   }}
-                  className="input-field"
-                  style={{ 
-                    cursor: 'pointer', 
-                    width: '100%',
-                    height: '8px',
-                    borderRadius: '4px'
-                  }}
+                  className="section-slider mid-slider"
                 />
               </div>
 

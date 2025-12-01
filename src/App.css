@@ -454,6 +454,123 @@ body {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
+/* ========== 区間設定スライダー (スタート/フィニッシュ地点) ========== */
+
+.section-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 10px;
+  border-radius: 5px;
+  background: linear-gradient(to right, var(--gray-200), var(--gray-300));
+  outline: none;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.section-slider:hover {
+  background: linear-gradient(to right, var(--gray-300), var(--gray-400));
+}
+
+/* スタート地点スライダー（緑） */
+.section-slider.start-slider {
+  background: linear-gradient(to right, #d1fae5, #10b981);
+}
+
+.section-slider.start-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #10b981;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.4);
+  border: 3px solid white;
+  transition: var(--transition);
+}
+
+.section-slider.start-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+  box-shadow: 0 3px 8px rgba(16, 185, 129, 0.5);
+}
+
+.section-slider.start-slider::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #10b981;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.4);
+  border: 3px solid white;
+}
+
+/* フィニッシュ地点スライダー（赤） */
+.section-slider.end-slider {
+  background: linear-gradient(to right, #fecaca, #ef4444);
+}
+
+.section-slider.end-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #ef4444;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.4);
+  border: 3px solid white;
+  transition: var(--transition);
+}
+
+.section-slider.end-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+  box-shadow: 0 3px 8px rgba(239, 68, 68, 0.5);
+}
+
+.section-slider.end-slider::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #ef4444;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.4);
+  border: 3px solid white;
+}
+
+/* 中間地点スライダー（青） */
+.section-slider.mid-slider {
+  background: linear-gradient(to right, #dbeafe, #2563eb);
+}
+
+.section-slider.mid-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #2563eb;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.4);
+  border: 3px solid white;
+  transition: var(--transition);
+}
+
+.section-slider.mid-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+  box-shadow: 0 3px 8px rgba(37, 99, 235, 0.5);
+}
+
+.section-slider.mid-slider::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #2563eb;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.4);
+  border: 3px solid white;
+}
+
 .frame-buttons-compact {
   display: flex;
   justify-content: center;
