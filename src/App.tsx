@@ -507,6 +507,12 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const displayCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  
+  // 🔥 スケルトンズレ修正 v5: 画像+オーバーレイ方式
+  const frameWrapperRef = useRef<HTMLDivElement | null>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const frameImageRef = useRef<HTMLImageElement | null>(null);
+  const [currentFrameUrl, setCurrentFrameUrl] = useState<string | null>(null);
 
   const [usedTargetFps, setUsedTargetFps] = useState<number | null>(null);
 
@@ -3259,8 +3265,331 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     });
   };
 
-  // ------------ 現在フレームの描画 ------------
+  // ------------ 現在フレームの描画 (v5: 画像+オーバーレイ方式) ------------
+  // フレームをBlobURLに変換
   useEffect(() => {
+    const frames = framesRef.current;
+    if (!frames.length) return;
+
+    const idx = clamp(currentFrame, 0, frames.length - 1);
+    const frame = frames[idx];
+
+    if (!frame || !frame.width || !frame.height) {
+      return;
+    }
+
+    // ImageDataをBlobURLに変換
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = frame.width;
+    tempCanvas.height = frame.height;
+    const tempCtx = tempCanvas.getContext("2d");
+    if (!tempCtx) return;
+    tempCtx.putImageData(frame, 0, 0);
+
+    tempCanvas.toBlob((blob) => {
+      if (blob) {
+        // 前のURLを解放
+        if (currentFrameUrl) {
+          URL.revokeObjectURL(currentFrameUrl);
+        }
+        const url = URL.createObjectURL(blob);
+        setCurrentFrameUrl(url);
+      }
+    }, "image/png");
+
+    return () => {
+      // クリーンアップ
+      tempCanvas.width = 0;
+      tempCanvas.height = 0;
+    };
+  }, [currentFrame, framesCount]);
+
+  // オーバーレイキャンバスにスケルトンを描画
+  useEffect(() => {
+    const wrapper = frameWrapperRef.current;
+    const canvas = overlayCanvasRef.current;
+    const img = frameImageRef.current;
+    const frames = framesRef.current;
+    
+    if (!wrapper || !canvas || !img || !frames.length) return;
+
+    const idx = clamp(currentFrame, 0, frames.length - 1);
+    const frame = frames[idx];
+
+    if (!frame || !frame.width || !frame.height) return;
+
+    // 元の動画サイズ
+    const originalWidth = frame.width;
+    const originalHeight = frame.height;
+
+    const resizeAndDraw = () => {
+      const rect = wrapper.getBoundingClientRect();
+      
+      if (rect.width === 0 || rect.height === 0) return;
+
+      // Retina対応
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width = rect.width + "px";
+      canvas.style.height = rect.height + "px";
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+
+      // ★ここが一番大事★ 座標をスケーリング
+      const scaleX = rect.width / originalWidth;
+      const scaleY = rect.height / originalHeight;
+
+      // デバッグログ
+      if (currentFrame === 0) {
+        console.log(`🎨 Overlay v5: original=${originalWidth}x${originalHeight}, display=${rect.width.toFixed(0)}x${rect.height.toFixed(0)}`);
+        console.log(`📐 Scale: X=${scaleX.toFixed(4)}, Y=${scaleY.toFixed(4)}`);
+      }
+
+      // スケルトン描画
+      if (showSkeleton && poseResults[idx]?.landmarks) {
+        drawSkeletonScaled(ctx, poseResults[idx]!.landmarks, scaleX, scaleY);
+      }
+
+      // 区間マーカー描画
+      drawSectionMarkersScaled(ctx, rect.width, rect.height, currentFrame, scaleX, scaleY, originalWidth);
+
+      // 接地/離地マーカー描画
+      drawContactMarkersScaled(ctx, rect.width, rect.height, currentFrame);
+    };
+
+    // 画像がロードされたら描画
+    if (img.complete) {
+      resizeAndDraw();
+    } else {
+      img.onload = resizeAndDraw;
+    }
+
+    // リサイズ対応
+    window.addEventListener("resize", resizeAndDraw);
+    return () => window.removeEventListener("resize", resizeAndDraw);
+  }, [currentFrame, poseResults, showSkeleton, sectionStartFrame, sectionEndFrame, sectionMidFrame, startLineOffset, endLineOffset, midLineOffset, isPanMode, savedStartHipX, savedEndHipX, savedMidHipX, contactFrames, manualContactFrames, autoToeOffFrames, currentFrameUrl]);
+
+  // スケーリング対応のスケルトン描画関数
+  const drawSkeletonScaled = (
+    ctx: CanvasRenderingContext2D,
+    landmarks: FramePoseData["landmarks"],
+    scaleX: number,
+    scaleY: number
+  ) => {
+    const CONFIDENCE_THRESHOLD = 0.1;
+
+    // 主要な関節の妥当性をチェック
+    const leftShoulder = landmarks[11];
+    const rightShoulder = landmarks[12];
+    const leftHip = landmarks[23];
+    const rightHip = landmarks[24];
+
+    if (
+      leftShoulder.visibility < CONFIDENCE_THRESHOLD ||
+      rightShoulder.visibility < CONFIDENCE_THRESHOLD ||
+      leftHip.visibility < CONFIDENCE_THRESHOLD ||
+      rightHip.visibility < CONFIDENCE_THRESHOLD
+    ) {
+      return;
+    }
+
+    const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
+    const hipY = (leftHip.y + rightHip.y) / 2;
+    if (shoulderY >= hipY) return;
+
+    ctx.strokeStyle = "#0ea5e9";
+    ctx.lineWidth = 4;
+
+    const connections: [number, number][] = [
+      [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+      [11, 23], [12, 24], [23, 24], [23, 25], [25, 27],
+      [27, 31], [24, 26], [26, 28], [28, 32],
+    ];
+
+    const frames = framesRef.current;
+    const frame = frames[0];
+    const originalWidth = frame?.width || 1;
+    const originalHeight = frame?.height || 1;
+
+    connections.forEach(([a, b]) => {
+      const pointA = landmarks[a];
+      const pointB = landmarks[b];
+      if (
+        pointA?.visibility > CONFIDENCE_THRESHOLD &&
+        pointB?.visibility > CONFIDENCE_THRESHOLD
+      ) {
+        // 元の座標（0-1の正規化座標）をピクセル座標に変換してスケーリング
+        const ax = pointA.x * originalWidth * scaleX;
+        const ay = pointA.y * originalHeight * scaleY;
+        const bx = pointB.x * originalWidth * scaleX;
+        const by = pointB.y * originalHeight * scaleY;
+
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(bx, by);
+        ctx.stroke();
+      }
+    });
+
+    ctx.fillStyle = "#f97316";
+    landmarks.forEach((lm) => {
+      if (lm.visibility > CONFIDENCE_THRESHOLD) {
+        const x = lm.x * originalWidth * scaleX;
+        const y = lm.y * originalHeight * scaleY;
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+    });
+
+    // 大転子の垂直線とつま先距離
+    if (leftHip.visibility > CONFIDENCE_THRESHOLD && rightHip.visibility > CONFIDENCE_THRESHOLD) {
+      const hipCenterX = ((leftHip.x + rightHip.x) / 2) * originalWidth * scaleX;
+      const hipCenterY = ((leftHip.y + rightHip.y) / 2) * originalHeight * scaleY;
+
+      ctx.strokeStyle = "rgba(255, 255, 0, 0.8)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(hipCenterX, hipCenterY);
+      ctx.lineTo(hipCenterX, ctx.canvas.height / (window.devicePixelRatio || 1));
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // つま先距離の計算と表示
+      const leftToe = landmarks[31];
+      const rightToe = landmarks[32];
+      const ASSUMED_THIGH_LENGTH_CM = 50;
+      const leftKnee = landmarks[25];
+      const leftThighLength = Math.sqrt(
+        Math.pow(leftKnee.x - leftHip.x, 2) + Math.pow(leftKnee.y - leftHip.y, 2)
+      );
+      const pixelsPerCm = leftThighLength > 0.01 ? (leftThighLength * originalWidth) / ASSUMED_THIGH_LENGTH_CM : 1;
+
+      let yOffset = 0;
+      [{ toe: leftToe, label: "L", color: "#22c55e" }, { toe: rightToe, label: "R", color: "#ef4444" }].forEach(({ toe, label, color }) => {
+        if (toe.visibility > CONFIDENCE_THRESHOLD) {
+          const toeX = toe.x * originalWidth * scaleX;
+          const toeY = toe.y * originalHeight * scaleY;
+          const hipX = ((leftHip.x + rightHip.x) / 2) * originalWidth;
+          const distancePixels = (toe.x * originalWidth) - hipX;
+          const distanceCm = distancePixels / pixelsPerCm;
+          const posLabel = distanceCm >= 0 ? "前" : "後";
+
+          ctx.fillStyle = color;
+          ctx.font = "bold 14px sans-serif";
+          ctx.fillText(`${label}: ${Math.abs(distanceCm).toFixed(1)}cm${posLabel}`, hipCenterX + 10, hipCenterY + 20 + yOffset);
+          yOffset += 18;
+        }
+      });
+
+      // 大転子ラベル
+      ctx.fillStyle = "rgba(255, 255, 0, 0.9)";
+      ctx.font = "bold 12px sans-serif";
+      ctx.fillText("大転子", hipCenterX + 5, hipCenterY - 5);
+    }
+  };
+
+  // スケーリング対応の区間マーカー描画
+  const drawSectionMarkersScaled = (
+    ctx: CanvasRenderingContext2D,
+    displayWidth: number,
+    displayHeight: number,
+    frameIdx: number,
+    scaleX: number,
+    scaleY: number,
+    originalWidth: number
+  ) => {
+    if (sectionStartFrame === null && sectionEndFrame === null && sectionMidFrame === null) return;
+
+    const markers: { frame: number; savedHipX: number | null; offset: number; color: string; label: string }[] = [];
+
+    if (sectionStartFrame !== null) {
+      markers.push({ frame: sectionStartFrame, savedHipX: savedStartHipX, offset: startLineOffset, color: "#22c55e", label: "スタート" });
+    }
+    if (sectionEndFrame !== null) {
+      markers.push({ frame: sectionEndFrame, savedHipX: savedEndHipX, offset: endLineOffset, color: "#ef4444", label: "フィニッシュ" });
+    }
+    if (sectionMidFrame !== null) {
+      markers.push({ frame: sectionMidFrame, savedHipX: savedMidHipX, offset: midLineOffset, color: "#f59e0b", label: "中間" });
+    }
+
+    markers.forEach(({ frame, savedHipX, offset, color, label }) => {
+      let torsoX: number;
+
+      if (isPanMode) {
+        const hipX = calculateHipPosition(frame);
+        if (hipX !== null) {
+          torsoX = hipX * originalWidth * scaleX;
+        } else if (savedHipX !== null) {
+          torsoX = savedHipX * originalWidth * scaleX;
+        } else {
+          torsoX = displayWidth / 2;
+        }
+      } else if (savedHipX !== null) {
+        torsoX = savedHipX * originalWidth * scaleX;
+      } else {
+        torsoX = displayWidth / 2;
+      }
+
+      const finalX = torsoX + offset;
+      const clampedX = Math.max(20, Math.min(displayWidth - 20, finalX));
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 8;
+      ctx.setLineDash([15, 8]);
+      ctx.beginPath();
+      ctx.moveTo(clampedX, displayHeight);
+      ctx.lineTo(clampedX, 0);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.font = "bold 18px sans-serif";
+      const textWidth = ctx.measureText(label).width;
+      ctx.fillRect(clampedX - textWidth / 2 - 10, 8, textWidth + 20, 32);
+      ctx.fillStyle = color;
+      ctx.textAlign = "center";
+      ctx.fillText(label, clampedX, 30);
+    });
+  };
+
+  // スケーリング対応の接地/離地マーカー描画
+  const drawContactMarkersScaled = (
+    ctx: CanvasRenderingContext2D,
+    displayWidth: number,
+    displayHeight: number,
+    frameIdx: number
+  ) => {
+    // 簡略化: 現在フレームが接地/離地フレームの場合にインジケーターを表示
+    const allContactFrames = [...(manualContactFrames || []), ...(contactFrames || [])];
+    const allToeOffFrames = [...(autoToeOffFrames || [])];
+
+    if (allContactFrames.includes(frameIdx)) {
+      ctx.fillStyle = "rgba(34, 197, 94, 0.8)";
+      ctx.font = "bold 16px sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText("👟 接地", 10, displayHeight - 10);
+    }
+
+    if (allToeOffFrames.includes(frameIdx)) {
+      ctx.fillStyle = "rgba(239, 68, 68, 0.8)";
+      ctx.font = "bold 16px sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillText("🦶 離地", displayWidth - 10, displayHeight - 10);
+    }
+  };
+
+  // ========== 旧方式（後方互換性のため残す）==========
+  useEffect(() => {
+    // 新方式(frame-wrapper)が存在する場合はスキップ
+    if (frameWrapperRef.current) return;
+    
     const canvas = displayCanvasRef.current;
     const frames = framesRef.current;
     if (!canvas || !frames.length) return;
@@ -3271,9 +3600,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     const idx = clamp(currentFrame, 0, frames.length - 1);
     const frame = frames[idx];
 
-    // フレームが存在しない場合は描画をスキップ
     if (!frame || !frame.width || !frame.height) {
-      console.warn(`⚠️ フレーム ${idx} が存在しないか無効です`);
       return;
     }
 
@@ -3287,47 +3614,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     if (!offCtx) return;
     offCtx.putImageData(frame, 0, 0);
 
-    // キャンバスサイズを動画サイズに設定
     canvas.width = w;
     canvas.height = h;
-    
-    // 🔥 スケルトンズレ修正 v4: アスペクト比を明示的に設定
-    // キャンバス要素は通常の画像と異なり、CSSのwidth:100%+height:autoでは
-    // アスペクト比が自動維持されないことがある
-    // aspect-ratioプロパティを明示的に設定することで確実にアスペクト比を維持
-    const aspectRatio = w / h;
-    canvas.style.aspectRatio = `${w} / ${h}`;
-    
-    // 親コンテナの幅を取得して、適切なサイズを計算
-    const parent = canvas.parentElement;
-    if (parent) {
-      const parentWidth = parent.clientWidth;
-      const maxHeight = window.innerHeight * 0.45; // 45vh
-      const heightFromWidth = parentWidth / aspectRatio;
-      
-      if (heightFromWidth > maxHeight) {
-        // 高さ制限に引っかかる場合
-        const widthFromHeight = maxHeight * aspectRatio;
-        canvas.style.width = `${widthFromHeight}px`;
-        canvas.style.height = `${maxHeight}px`;
-      } else {
-        // 幅いっぱいに表示
-        canvas.style.width = `${parentWidth}px`;
-        canvas.style.height = `${heightFromWidth}px`;
-      }
-    }
-    
-    // デバッグ用ログ
-    if (currentFrame === 0) {
-      const displayRect = canvas.getBoundingClientRect();
-      const scaleX = displayRect.width / w;
-      const scaleY = displayRect.height / h;
-      console.log(`🎨 Canvas: internal=${w}x${h}, display=${displayRect.width.toFixed(0)}x${displayRect.height.toFixed(0)}`);
-      console.log(`📐 Scale: X=${scaleX.toFixed(4)}, Y=${scaleY.toFixed(4)}, diff=${Math.abs(scaleX - scaleY).toFixed(6)}`);
-      if (Math.abs(scaleX - scaleY) > 0.001) {
-        console.warn(`⚠️ アスペクト比が一致していません！スケルトンがズレる可能性があります`);
-      }
-    }
 
     if (!footZoomEnabled) {
       ctx.drawImage(offscreen, 0, 0, w, h, 0, 0, w, h);
@@ -3336,10 +3624,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         drawSkeleton(ctx, poseResults[idx]!.landmarks, w, h);
       }
       
-      // 区間マーカー線を描画
       drawSectionMarkers(ctx, w, h, currentFrame);
-      
-      // 接地/離地マーカーを描画
       drawContactMarkers(ctx, w, h, currentFrame);
     } else {
       let footCenterY = 0.75;
@@ -5248,12 +5533,22 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               </p>
             </div>
 
-            {/* キャンバスプレビュー */}
+            {/* キャンバスプレビュー (v5: 画像+オーバーレイ方式) */}
             <div className="canvas-area" style={{ marginBottom: '2rem' }}>
-              <canvas 
-                ref={displayCanvasRef} 
-                className="preview-canvas"
-              />
+              <div className="frame-wrapper" ref={frameWrapperRef}>
+                {currentFrameUrl && (
+                  <img 
+                    ref={frameImageRef}
+                    src={currentFrameUrl} 
+                    alt="frame" 
+                    className="frame-image"
+                  />
+                )}
+                <canvas 
+                  ref={overlayCanvasRef} 
+                  className="overlay-canvas"
+                />
+              </div>
             </div>
 
             {/* 3つのスライダーでの区間設定 */}
@@ -5879,8 +6174,22 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               </button>
             </div>
 
+            {/* キャンバス (v5: 画像+オーバーレイ方式) */}
             <div className="canvas-area">
-              <canvas ref={displayCanvasRef} className="preview-canvas" />
+              <div className="frame-wrapper" ref={frameWrapperRef}>
+                {currentFrameUrl && (
+                  <img 
+                    ref={frameImageRef}
+                    src={currentFrameUrl} 
+                    alt="frame" 
+                    className="frame-image"
+                  />
+                )}
+                <canvas 
+                  ref={overlayCanvasRef} 
+                  className="overlay-canvas"
+                />
+              </div>
             </div>
 
             {/* モバイル用：フレーム移動ボタン */}
@@ -6546,8 +6855,22 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                 </button>
               </div>
 
+              {/* キャンバス (v5: 画像+オーバーレイ方式) */}
               <div className="canvas-area">
-                <canvas ref={displayCanvasRef} className="preview-canvas" />
+                <div className="frame-wrapper" ref={frameWrapperRef}>
+                  {currentFrameUrl && (
+                    <img 
+                      ref={frameImageRef}
+                      src={currentFrameUrl} 
+                      alt="frame" 
+                      className="frame-image"
+                    />
+                  )}
+                  <canvas 
+                    ref={overlayCanvasRef} 
+                    className="overlay-canvas"
+                  />
+                </div>
               </div>
 
               <div className="frame-control">

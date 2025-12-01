@@ -364,7 +364,10 @@ body {
   text-align: center;
 }
 
-/* ========== キャンバス表示（Step 4, 5） ========== */
+/* ========== フレーム表示（画像+オーバーレイ方式） ========== */
+
+/* 🔥 スケルトンズレ修正 v5: 画像とオーバーレイキャンバスを分離 */
+/* 画像とキャンバスを同じボックスに重ねて、座標をスケーリングして描画 */
 
 .canvas-area {
   margin-bottom: 20px;
@@ -374,37 +377,66 @@ body {
   box-shadow: var(--shadow-md);
 }
 
+/* 画像＋骨格を入れる箱 */
+.frame-wrapper {
+  position: relative;
+  width: 100%;
+  background: #000;
+}
+
+/* 元画像（フレーム） */
+.frame-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 80vh;
+  object-fit: contain;
+}
+
+/* 骨格用オーバーレイキャンバス */
+.overlay-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 /* PC版: ステップ5, 6でキャンバスを固定表示 */
 @media (min-width: 769px) {
   /* ステップ5, 6共通: キャンバス固定 */
   .wizard-step-5 .canvas-area,
   .wizard-step-6 .canvas-area {
     position: fixed !important;
-    top: 80px !important; /* ヘッダー分の余白 */
+    top: 80px !important;
     left: 0;
     right: 0;
-    width: 100vw !important; /* 横幅いっぱい */
-    max-width: 100vw !important; /* 横幅いっぱい */
-    z-index: 9999 !important; /* 最前面に表示 */
+    width: 100vw !important;
+    max-width: 100vw !important;
+    z-index: 9999 !important;
     margin: 0 !important;
     padding: 0 !important;
-    pointer-events: auto; /* クリック可能に */
+    pointer-events: auto;
   }
 
   /* ステップ5, 6: キャンバス固定時のコンテンツ余白調整 */
   .wizard-step-5 .wizard-content,
   .wizard-step-6 .wizard-content {
-    padding-top: calc(70vh + 40px); /* キャンバス高さ + 余白 */
+    padding-top: calc(70vh + 40px);
+  }
+  
+  .frame-image {
+    max-height: 70vh;
   }
 }
 
+/* 後方互換性のため残す（将来削除予定） */
 .preview-canvas {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 80vh; /* PC版で画面の80%まで（より大きく） */
-  /* object-fit: contain を削除 - キャンバスは内部サイズと表示サイズを一致させる必要がある */
-  /* スケルトン描画座標がズレないようにアスペクト比はJSで管理 */
+  max-height: 80vh;
 }
 
 /* ========== フレームコントロール ========== */
@@ -1354,15 +1386,36 @@ body {
     overflow: hidden;
   }
 
-  .preview-canvas {
-    /* 🔥 スケルトンズレ修正 v4: キャンバスのアスペクト比を維持 */
+  /* 🔥 スケルトンズレ修正 v5: 画像+オーバーレイ方式（モバイル） */
+  .frame-wrapper {
+    position: relative;
+    width: 100%;
+    background: #000;
+  }
+  
+  .frame-image {
     display: block;
     width: 100%;
     height: auto;
-    max-width: 100%;
     max-height: 45vh;
-    /* object-fit は canvas では効かないが念のため */
     object-fit: contain;
+  }
+  
+  .overlay-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  
+  /* 後方互換性のため残す */
+  .preview-canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 45vh;
   }
 
   /* フレームコントロール（スライダー）：通常はドキュメントフロー内 */
