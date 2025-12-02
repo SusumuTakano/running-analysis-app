@@ -89,21 +89,8 @@ const MainApp: React.FC = () => {
   const { user, loading } = useAuth();
   const [viewMode, setViewMode] = useState<ViewMode>('app');
   const [currentRoute, setCurrentRoute] = useState<AppRoute>('/');
-  const [loadingTimeout, setLoadingTimeout] = useState(false);
 
-  // ローディングタイムアウト（3秒後に強制的に表示）
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      if (loading) {
-        console.log('⚠️ Loading timeout - forcing display');
-        setLoadingTimeout(true);
-      }
-    }, 3000);
-
-    return () => clearTimeout(timeout);
-  }, [loading]);
-
-  // URL変更を監視
+  // URL変更を監視（簡易的なルーティング）
   useEffect(() => {
     const path = window.location.pathname as AppRoute;
     setCurrentRoute(path);
@@ -134,9 +121,9 @@ const MainApp: React.FC = () => {
     setViewMode('app');
   };
 
-  // ローディング中（タイムアウト処理付き）
-  if (loading && !loadingTimeout) {
-    console.log('🔄 MainApp: Loading...');
+  // ローディング中
+  if (loading) {
+    console.log('🔄 MainApp: Still loading... (loading=' + loading + ')');
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -147,9 +134,10 @@ const MainApp: React.FC = () => {
     );
   }
 
-  console.log('✅ MainApp: Displaying content (loading:', loading, ', timeout:', loadingTimeout, ')');
+  console.log('✅ MainApp: Loading complete! Showing content...');
   console.log('Current user:', user);
   console.log('Current route:', currentRoute);
+  console.log('View mode:', viewMode);
 
   // 管理者ログインページ（/admin/login）
   if (currentRoute === '/admin/login') {
@@ -212,6 +200,9 @@ const MainApp: React.FC = () => {
     );
   }
 
+  // 一般ユーザー画面（/）
+  // ログインなしで誰でもアクセス可能に変更
+  
   // プロフィールページを表示（ログイン済みのみ）
   if (viewMode === 'profile') {
     if (!user) {
@@ -232,7 +223,7 @@ const MainApp: React.FC = () => {
     return <AdminPage />;
   }
 
-  // 分析アプリを表示（ログイン不要）
+  // 分析アプリを表示（ログイン不要 - AuthGuardを削除）
   return (
     <div className="min-h-screen bg-gray-100">
       {user && <Navigation viewMode={viewMode} setViewMode={setViewMode} onAdminLogout={handleAdminLogout} />}
