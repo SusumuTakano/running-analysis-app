@@ -2889,23 +2889,23 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     let preferredFps: number;
     
     if (isIOS) {
-      // iOS（iPhone/iPad）: メモリ制限が厳しいため、控えめに設定
-      MAX_FRAMES = 300; // 🔧 60fps × 5秒 or 120fps × 2.5秒（メモリ節約）
-      MAX_WIDTH = 640;  // 🔧 SD品質（メモリ節約）
+      // iOS（iPhone/iPad）: 高解像度でマーク精度向上（メモリは許容範囲）
+      MAX_FRAMES = 300; // 🔧 60fps × 5秒 or 120fps × 2.5秒
+      MAX_WIDTH = 1280;  // 🔧 HD品質（マーク精度向上のため高解像度に変更）
       preferredFps = selectedFps;
-      console.log(`📱 iOS detected: ${selectedFps}fps mode (640px, max 300 frames - memory optimized)`);
+      console.log(`📱 iOS detected: ${selectedFps}fps mode (1280px HD, max 300 frames)`);
     } else if (isMobile) {
-      // その他のモバイル（Android等）: やや厳しめに設定
+      // その他のモバイル（Android等）: 高解像度
       MAX_FRAMES = 400; // 🔧 60fps × 6.7秒 or 120fps × 3.3秒
-      MAX_WIDTH = 720;  // 🔧 HD品質（メモリ節約）
+      MAX_WIDTH = 1280;  // 🔧 HD品質（マーク精度向上のため高解像度に変更）
       preferredFps = selectedFps;
-      console.log(`📱 Mobile detected: ${selectedFps}fps mode (720px, max 400 frames - memory optimized)`);
+      console.log(`📱 Mobile detected: ${selectedFps}fps mode (1280px HD, max 400 frames)`);
     } else {
       // デスクトップ: 比較的余裕があるが、大きな動画には注意
       MAX_FRAMES = 600;   // 🔧 60fps × 10秒 or 120fps × 5秒
-      MAX_WIDTH = 1280;   // 🔧 HD品質
+      MAX_WIDTH = 1920;   // 🔧 Full HD品質（デスクトップは高解像度に変更）
       preferredFps = selectedFps;
-      console.log(`💻 Desktop detected: ${selectedFps}fps mode (1280px, max 600 frames)`);
+      console.log(`💻 Desktop detected: ${selectedFps}fps mode (1920px Full HD, max 600 frames)`);
     }
     
     // ユーザーが選択したFPSを使用
@@ -3971,14 +3971,16 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   // 研究データベース（目標記録に対する最適なピッチとストライド）
   // 出典: これまでの研究報告「身体の大きさ、四肢の長さがピッチに大きく影響し、体型によって至適ピッチが選択され、
   //        そのときのストライド長によってパフォーマンスが決まる」
-  const getOptimalPitchStride = (targetTime: number, currentPitch: number, currentStride: number) => {
+  const getOptimalPitchStride = (targetTime: number, currentPitch: number, currentStride: number, gender: 'male' | 'female' | 'other' | null) => {
     const targetSpeed = 100 / targetTime;
     
-    // 研究データ: 男子競技者の3つの体型パターン
-    // ピッチ型: 4.66歩/秒、平均型: 4.84歩/秒、ストライド型: ~5.03歩/秒
-    // 女子競技者: ピッチ型: 4.44歩/秒、平均型: 4.65歩/秒、ストライド型: 4.86歩/秒
+    // 研究データ: これまでの研究による最適ピッチ・ストライド
+    // 男子競技者: ストライド型 4.66歩/秒、平均型 4.84歩/秒、ピッチ型 5.03歩/秒
+    // 女子競技者: ストライド型 4.44歩/秒、平均型 4.65歩/秒、ピッチ型 4.86歩/秒
     
-    const matsuoData: { [key: string]: { pitch: number; stride: number }[] } = {
+    // これまでの研究データ: 配列は [ストライド型, 平均型, ピッチ型] の順
+    const matsuoDataMale: { [key: string]: { pitch: number; stride: number }[] } = {
+      // 男子競技者データ（ストライド型4.66、平均型4.84、ピッチ型5.03）
       "9.50": [{ pitch: 4.66, stride: 2.65 }, { pitch: 4.84, stride: 2.54 }, { pitch: 5.03, stride: 2.45 }],
       "9.60": [{ pitch: 4.66, stride: 2.62 }, { pitch: 4.84, stride: 2.52 }, { pitch: 5.03, stride: 2.42 }],
       "9.70": [{ pitch: 4.66, stride: 2.59 }, { pitch: 4.84, stride: 2.49 }, { pitch: 5.03, stride: 2.40 }],
@@ -3988,6 +3990,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       "10.10": [{ pitch: 4.66, stride: 2.47 }, { pitch: 4.84, stride: 2.38 }, { pitch: 5.03, stride: 2.29 }],
       "10.20": [{ pitch: 4.66, stride: 2.44 }, { pitch: 4.84, stride: 2.35 }, { pitch: 5.03, stride: 2.26 }],
       "10.30": [{ pitch: 4.66, stride: 2.41 }, { pitch: 4.84, stride: 2.32 }, { pitch: 5.03, stride: 2.24 }],
+    };
+    
+    const matsuoDataFemale: { [key: string]: { pitch: number; stride: number }[] } = {
+      // 女子競技者データ（ストライド型4.44、平均型4.65、ピッチ型4.86）
       "10.50": [{ pitch: 4.44, stride: 2.36 }, { pitch: 4.65, stride: 2.26 }, { pitch: 4.86, stride: 2.18 }],
       "10.60": [{ pitch: 4.44, stride: 2.33 }, { pitch: 4.65, stride: 2.24 }, { pitch: 4.86, stride: 2.15 }],
       "10.80": [{ pitch: 4.44, stride: 2.27 }, { pitch: 4.65, stride: 2.18 }, { pitch: 4.86, stride: 2.10 }],
@@ -3996,6 +4002,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       "11.50": [{ pitch: 4.44, stride: 2.24 }, { pitch: 4.65, stride: 2.14 }, { pitch: 4.86, stride: 2.05 }],
       "12.00": [{ pitch: 4.44, stride: 1.92 }, { pitch: 4.65, stride: 1.84 }, { pitch: 4.86, stride: 1.78 }],
     };
+    
+    // プロフィールの性別に応じてデータを選択（デフォルトは男子）
+    const isFemale = gender === 'female';
+    const matsuoData = isFemale ? matsuoDataFemale : matsuoDataMale;
     
     // 目標タイムに最も近いデータを取得
     const timeStr = targetTime.toFixed(2);
@@ -4013,11 +4023,12 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     // 現在のピッチ/ストライド比から体型を判定
     const pitchStrideRatio = currentPitch / currentStride;
     
+    // data配列は [ストライド型, 平均型, ピッチ型] の順
     let selectedType = 1; // 平均型をデフォルト
     if (pitchStrideRatio > 2.4) {
-      selectedType = 0; // ピッチ型
+      selectedType = 2; // ピッチ型（配列の3番目）
     } else if (pitchStrideRatio < 2.2) {
-      selectedType = 2; // ストライド型
+      selectedType = 0; // ストライド型（配列の1番目）
     }
     
     const optimal = data[selectedType];
@@ -4025,7 +4036,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     return {
       pitch: optimal.pitch,
       stride: optimal.stride,
-      type: selectedType === 0 ? "ピッチ型" : selectedType === 2 ? "ストライド型" : "平均型"
+      type: selectedType === 0 ? "ストライド型" : selectedType === 2 ? "ピッチ型" : "平均型",
+      gender: isFemale ? "女子" : "男子"
     };
   };
 
@@ -4044,11 +4056,12 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     const speedGap = targetSpeed - currentSpeed;
     const speedGapPercent = (speedGap / currentSpeed) * 100;
 
-    // 研究データから最適なピッチとストライドを取得
-    const optimal = getOptimalPitchStride(targetTime, currentPitch, currentStride);
+    // 研究データから最適なピッチとストライドを取得（プロフィールの性別を使用）
+    const optimal = getOptimalPitchStride(targetTime, currentPitch, currentStride, athleteInfo.gender);
     const optimalPitch = optimal.pitch;
     const optimalStride = optimal.stride;
     const bodyType = optimal.type;
+    const gender = optimal.gender;
     
     // 現在との差分を計算
     const strideGap = optimalStride - currentStride;
@@ -4065,12 +4078,17 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     advice += `- **現在のストライド**: ${currentStride.toFixed(2)} m\n`;
     advice += `- **判定された体型**: ${bodyType}\n\n`;
     
-    advice += `### 🎯 目標値（これまでの研究報告に基づく）\n`;
+    advice += `### 🎯 目標値（これまでの研究に基づく・${gender}競技者）\n`;
     advice += `- **必要な平均速度**: ${targetSpeed.toFixed(2)} m/s\n`;
     advice += `- **最適なピッチ（${bodyType}）**: ${optimalPitch.toFixed(2)} 歩/秒\n`;
     advice += `- **最適なストライド（${bodyType}）**: ${optimalStride.toFixed(2)} m\n\n`;
     
-    advice += `> 📚 **科学的根拠**: これまでの研究報告によると「身体の大きさ、四肢の長さがピッチに大きく影響し、体型によって至適ピッチが選択され、そのときのストライド長によってパフォーマンスが決まる」\n\n`;
+    advice += `> 📚 **科学的根拠**: これまでの研究によると「身体の大きさ、四肢の長さがピッチに大きく影響し、体型によって至適ピッチが選択され、そのときのストライド長によってパフォーマンスが決まる」\n`;
+    if (gender === "男子") {
+      advice += `> - **男子競技者**: ストライド型 4.66歩/秒、平均型 4.84歩/秒、ピッチ型 5.03歩/秒\n\n`;
+    } else {
+      advice += `> - **女子競技者**: ストライド型 4.44歩/秒、平均型 4.65歩/秒、ピッチ型 4.86歩/秒\n\n`;
+    }
     
     advice += `### 📈 改善が必要な項目\n`;
     advice += `- **速度**: ${speedGap >= 0 ? '+' : ''}${speedGap.toFixed(2)} m/s (${speedGapPercent >= 0 ? '+' : ''}${speedGapPercent.toFixed(1)}%)\n`;
@@ -5897,23 +5915,6 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                     📊 検出モードを選択してください
                   </h3>
                   
-                  {/* 推奨モードの説明 */}
-                  <div style={{
-                    background: '#d1fae5',
-                    padding: '14px 18px',
-                    borderRadius: '10px',
-                    marginBottom: '16px',
-                    border: '2px solid #10b981'
-                  }}>
-                    <p style={{ fontWeight: 'bold', color: '#065f46', margin: 0, fontSize: '1rem' }}>
-                      ✅ 推奨：手動マーク設定
-                    </p>
-                    <p style={{ fontSize: '0.9rem', color: '#047857', margin: '6px 0 0 0', lineHeight: '1.6' }}>
-                      ブレーキ率・キック率の解析には「<strong>手動マーク設定</strong>」が必須です。<br/>
-                      半自動設定では、ピッチとストライドのみ解析できます。
-                    </p>
-                  </div>
-
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {/* モード1: 手動マーク設定（接地・離地とも手動） */}
                     <button
@@ -6087,10 +6088,22 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
                     {/* コマ送りボタン（大きく） */}
                     <div className="mobile-nav-buttons">
-                      <button onClick={() => changeFrame(-10)} disabled={!ready}>-10</button>
-                      <button onClick={() => changeFrame(-1)} disabled={!ready}>-1</button>
-                      <button onClick={() => changeFrame(1)} disabled={!ready}>+1</button>
-                      <button onClick={() => changeFrame(10)} disabled={!ready}>+10</button>
+                      <button onClick={() => changeFrame(-10)} disabled={!ready}>
+                        <span className="button-icon">⏪</span>
+                        <span className="button-label">10戻る</span>
+                      </button>
+                      <button onClick={() => changeFrame(-1)} disabled={!ready}>
+                        <span className="button-icon">◀️</span>
+                        <span className="button-label">1戻る</span>
+                      </button>
+                      <button onClick={() => changeFrame(1)} disabled={!ready}>
+                        <span className="button-icon">▶️</span>
+                        <span className="button-label">1進む</span>
+                      </button>
+                      <button onClick={() => changeFrame(10)} disabled={!ready}>
+                        <span className="button-icon">⏩</span>
+                        <span className="button-label">10進む</span>
+                      </button>
                     </div>
 
                     {/* マークボタン */}
@@ -6129,21 +6142,23 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                         : (manualContactFrames.length === manualToeOffFrames.length ? '📍 接地マーク' : '📍 離地マーク')}
                     </button>
 
-                    {/* オプション（小さく） */}
+                    {/* オプションボタン（iPad向け改善） */}
                     <div className="mobile-options">
                       <button 
                         className={showSkeleton ? 'active' : ''} 
                         onClick={() => setShowSkeleton(v => !v)}
                       >
-                        骨格{showSkeleton ? 'ON' : 'OFF'}
+                        💀 骨格表示 {showSkeleton ? 'ON' : 'OFF'}
                       </button>
                       <button 
                         className={footZoomEnabled ? 'active' : ''} 
                         onClick={() => setFootZoomEnabled(v => !v)}
                       >
-                        拡大{footZoomEnabled ? 'ON' : 'OFF'}
+                        🔍 足元拡大 {footZoomEnabled ? 'ON' : 'OFF'}
                       </button>
-                      <button onClick={handleClearMarkers}>クリア</button>
+                      <button onClick={handleClearMarkers} className="clear-btn">
+                        🗑️ マーカー全削除
+                      </button>
                     </div>
 
                     {/* 足元拡大率スライダー */}
@@ -6670,7 +6685,8 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
               </div>
             )}
 
-            {currentAngles && (
+            {/* 現在フレームの角度（PC用のみ表示、iPad/iPhoneでは非表示） */}
+            {!isMobile && currentAngles && (
               <div className="angle-display-compact">
                 <h4>現在フレームの角度</h4>
                 <div className="angle-grid-compact">
@@ -7307,51 +7323,51 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                               gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fit, minmax(140px, 1fr))', 
                               gap: isMobile ? '8px' : '12px' 
                             }}>
-                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '8px' : '12px', borderRadius: '8px' }}>
-                                <div className="label" style={{ fontSize: isMobile ? '0.6rem' : '0.75rem', opacity: 0.9 }}>前半 接地</div>
-                                <div className="value" style={{ fontSize: isMobile ? '0.95rem' : '1.3rem', fontWeight: 'bold', marginTop: '2px' }}>
+                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '10px' : '12px', borderRadius: '8px' }}>
+                                <div className="label" style={{ fontSize: isMobile ? '0.7rem' : '0.75rem', opacity: 0.9, marginBottom: '4px' }}>前半 接地</div>
+                                <div className="value" style={{ fontSize: isMobile ? '1.1rem' : '1.3rem', fontWeight: 'bold' }}>
                                   {firstHalfAvg.contact?.toFixed(3) ?? 'ー'}s
                                 </div>
                               </div>
-                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '8px' : '12px', borderRadius: '8px' }}>
-                                <div className="label" style={{ fontSize: isMobile ? '0.6rem' : '0.75rem', opacity: 0.9 }}>後半 接地</div>
-                                <div className="value" style={{ fontSize: isMobile ? '0.95rem' : '1.3rem', fontWeight: 'bold', marginTop: '2px' }}>
+                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '10px' : '12px', borderRadius: '8px' }}>
+                                <div className="label" style={{ fontSize: isMobile ? '0.7rem' : '0.75rem', opacity: 0.9, marginBottom: '4px' }}>後半 接地</div>
+                                <div className="value" style={{ fontSize: isMobile ? '1.1rem' : '1.3rem', fontWeight: 'bold' }}>
                                   {secondHalfAvg.contact?.toFixed(3) ?? 'ー'}s
                                 </div>
                               </div>
-                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '8px' : '12px', borderRadius: '8px' }}>
-                                <div className="label" style={{ fontSize: isMobile ? '0.6rem' : '0.75rem', opacity: 0.9 }}>前半 ピッチ</div>
-                                <div className="value" style={{ fontSize: isMobile ? '0.95rem' : '1.3rem', fontWeight: 'bold', marginTop: '2px' }}>
+                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '10px' : '12px', borderRadius: '8px' }}>
+                                <div className="label" style={{ fontSize: isMobile ? '0.7rem' : '0.75rem', opacity: 0.9, marginBottom: '4px' }}>前半 ピッチ</div>
+                                <div className="value" style={{ fontSize: isMobile ? '1.1rem' : '1.3rem', fontWeight: 'bold' }}>
                                   {firstHalfAvg.pitch?.toFixed(2) ?? 'ー'}
                                 </div>
                               </div>
-                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '8px' : '12px', borderRadius: '8px' }}>
-                                <div className="label" style={{ fontSize: isMobile ? '0.6rem' : '0.75rem', opacity: 0.9 }}>後半 ピッチ</div>
-                                <div className="value" style={{ fontSize: isMobile ? '0.95rem' : '1.3rem', fontWeight: 'bold', marginTop: '2px' }}>
+                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '10px' : '12px', borderRadius: '8px' }}>
+                                <div className="label" style={{ fontSize: isMobile ? '0.7rem' : '0.75rem', opacity: 0.9, marginBottom: '4px' }}>後半 ピッチ</div>
+                                <div className="value" style={{ fontSize: isMobile ? '1.1rem' : '1.3rem', fontWeight: 'bold' }}>
                                   {secondHalfAvg.pitch?.toFixed(2) ?? 'ー'}
                                 </div>
                               </div>
-                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '8px' : '12px', borderRadius: '8px' }}>
-                                <div className="label" style={{ fontSize: isMobile ? '0.6rem' : '0.75rem', opacity: 0.9 }}>前半 ストライド</div>
-                                <div className="value" style={{ fontSize: isMobile ? '0.95rem' : '1.3rem', fontWeight: 'bold', marginTop: '2px' }}>
+                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '10px' : '12px', borderRadius: '8px' }}>
+                                <div className="label" style={{ fontSize: isMobile ? '0.7rem' : '0.75rem', opacity: 0.9, marginBottom: '4px' }}>前半 ストライド</div>
+                                <div className="value" style={{ fontSize: isMobile ? '1.1rem' : '1.3rem', fontWeight: 'bold' }}>
                                   {firstHalfAvg.stride?.toFixed(2) ?? 'ー'}m
                                 </div>
                               </div>
-                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '8px' : '12px', borderRadius: '8px' }}>
-                                <div className="label" style={{ fontSize: isMobile ? '0.6rem' : '0.75rem', opacity: 0.9 }}>後半 ストライド</div>
-                                <div className="value" style={{ fontSize: isMobile ? '0.95rem' : '1.3rem', fontWeight: 'bold', marginTop: '2px' }}>
+                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '10px' : '12px', borderRadius: '8px' }}>
+                                <div className="label" style={{ fontSize: isMobile ? '0.7rem' : '0.75rem', opacity: 0.9, marginBottom: '4px' }}>後半 ストライド</div>
+                                <div className="value" style={{ fontSize: isMobile ? '1.1rem' : '1.3rem', fontWeight: 'bold' }}>
                                   {secondHalfAvg.stride?.toFixed(2) ?? 'ー'}m
                                 </div>
                               </div>
-                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '8px' : '12px', borderRadius: '8px' }}>
-                                <div className="label" style={{ fontSize: isMobile ? '0.6rem' : '0.75rem', opacity: 0.9 }}>前半 速度</div>
-                                <div className="value" style={{ fontSize: isMobile ? '0.95rem' : '1.3rem', fontWeight: 'bold', marginTop: '2px' }}>
+                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '10px' : '12px', borderRadius: '8px' }}>
+                                <div className="label" style={{ fontSize: isMobile ? '0.7rem' : '0.75rem', opacity: 0.9, marginBottom: '4px' }}>前半 速度</div>
+                                <div className="value" style={{ fontSize: isMobile ? '1.1rem' : '1.3rem', fontWeight: 'bold' }}>
                                   {firstHalfAvg.speed?.toFixed(2) ?? 'ー'}m/s
                                 </div>
                               </div>
-                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '8px' : '12px', borderRadius: '8px' }}>
-                                <div className="label" style={{ fontSize: isMobile ? '0.6rem' : '0.75rem', opacity: 0.9 }}>後半 速度</div>
-                                <div className="value" style={{ fontSize: isMobile ? '0.95rem' : '1.3rem', fontWeight: 'bold', marginTop: '2px' }}>
+                              <div className="step9-comparison-item" style={{ background: 'rgba(255,255,255,0.15)', padding: isMobile ? '10px' : '12px', borderRadius: '8px' }}>
+                                <div className="label" style={{ fontSize: isMobile ? '0.7rem' : '0.75rem', opacity: 0.9, marginBottom: '4px' }}>後半 速度</div>
+                                <div className="value" style={{ fontSize: isMobile ? '1.1rem' : '1.3rem', fontWeight: 'bold' }}>
                                   {secondHalfAvg.speed?.toFixed(2) ?? 'ー'}m/s
                                 </div>
                               </div>
@@ -7867,8 +7883,23 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
                         </button>
                       </div>
                     </div>
-                    <div className="canvas-area" style={{ maxHeight: '300px', overflow: 'hidden' }}>
-                      <canvas ref={displayCanvasRef} className="preview-canvas" style={{ maxHeight: '280px', objectFit: 'contain' }} />
+                    <div className="canvas-area" style={{ 
+                      width: '100%', 
+                      maxWidth: '600px', 
+                      aspectRatio: '16/9',
+                      margin: '0 auto',
+                      overflow: 'hidden',
+                      background: '#000',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <canvas ref={displayCanvasRef} className="preview-canvas" style={{ 
+                        width: '100%', 
+                        height: '100%',
+                        objectFit: 'contain' 
+                      }} />
                     </div>
                     <div style={{ 
                       display: 'flex', 

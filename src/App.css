@@ -420,27 +420,80 @@ body {
   box-shadow: var(--shadow-md);
 }
 
-/* PC版: ステップ5, 6でキャンバスを固定表示 */
+/* PC版: ステップ5は通常、ステップ6は動画固定 */
 @media (min-width: 769px) {
-  /* ステップ5, 6共通: キャンバス固定 */
-  .wizard-step-5 .canvas-area,
-  .wizard-step-6 .canvas-area {
-    position: fixed !important;
-    top: 80px !important; /* ヘッダー分の余白 */
-    left: 0;
-    right: 0;
-    width: 100vw !important; /* 横幅いっぱい */
-    max-width: 100vw !important; /* 横幅いっぱい */
-    z-index: 9999 !important; /* 最前面に表示 */
-    margin: 0 !important;
-    padding: 0 !important;
-    pointer-events: auto; /* クリック可能に */
+  /* ステップ5: 通常のレイアウト */
+  .wizard-step-5 .canvas-area {
+    position: relative !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 60vh !important;
+    margin: 0 0 16px 0 !important;
+    border-radius: 8px !important;
   }
 
-  /* ステップ5, 6: キャンバス固定時のコンテンツ余白調整 */
-  .wizard-step-5 .wizard-content,
+  .wizard-step-5 .wizard-content {
+    padding-top: 0 !important;
+  }
+
+  /* ステップ6: 動画を上部に固定（マーカー一覧がスクロール可能） */
+  .wizard-step-6 .canvas-area {
+    position: fixed !important;
+    top: 60px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 60vw !important;
+    max-width: 900px !important;
+    height: calc(60vw * 9 / 16) !important;
+    max-height: calc(900px * 9 / 16) !important;
+    margin: 0 !important;
+    border-radius: 8px !important;
+    background: #000 !important;
+    z-index: 100 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .wizard-step-6 .canvas-area canvas {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    object-fit: contain !important;
+  }
+
+  /* フレームコントロールも動画の下に固定 */
+  .wizard-step-6 .frame-control {
+    position: fixed !important;
+    top: calc(60px + 60vw * 9 / 16 + 10px) !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 60vw !important;
+    max-width: 900px !important;
+    z-index: 99 !important;
+    background: white !important;
+    border-radius: 8px !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+    padding: 12px 16px !important;
+    margin: 0 !important;
+  }
+
+  /* マーカー一覧エリアに上部余白を追加 */
   .wizard-step-6 .wizard-content {
-    padding-top: calc(70vh + 40px); /* キャンバス高さ + 余白 */
+    padding-top: calc(60px + 45vh + 80px) !important;
+  }
+
+  /* キーボード操作説明も固定位置に */
+  .wizard-step-6 .keyboard-help {
+    position: fixed !important;
+    top: calc(60px + 45vh + 90px) !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: calc(100% - 40px) !important;
+    max-width: 1400px !important;
+    z-index: 98 !important;
   }
 }
 
@@ -448,8 +501,8 @@ body {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 80vh; /* PC版で画面の80%まで（より大きく） */
-  /* object-fit: contain を削除 - キャンバスは内部サイズと表示サイズを一致させる必要がある */
+  max-height: 60vh; /* PC版で画面の60%まで */
+  object-fit: contain;
   /* スケルトン描画座標がズレないようにアスペクト比はJSで管理 */
 }
 
@@ -1382,59 +1435,37 @@ body {
     overflow: hidden;
   }
 
-  /* ★ステップ5（区間設定）用キャンバス：相対配置＆縦横比そのまま★ */
+  /* ステップ5（区間設定）: PC用は通常レイアウト */
   .wizard-content.step-5 .canvas-area {
     position: relative !important;
-    top: auto !important;
-    left: auto !important;
-    right: auto !important;
     width: 100% !important;
+    max-width: 100% !important;
     height: auto !important;
-    max-height: none !important;
+    max-height: 60vh !important;
     margin: 0 0 12px 0 !important;
     border-radius: 8px;
-  }
-  
-  /* ステップ5（区間設定）: 動画を上部に固定しつつスクロールでスライダー操作 */
-  .wizard-content.step-5 .canvas-area {
-    position: sticky !important;
-    top: 48px !important;
-    left: 0 !important;
-    right: 0 !important;
-    width: 100vw !important;
-    height: 56.25vw !important;
-    max-height: 50vh !important;
-    z-index: 950 !important;
-    margin: 0 0 12px 0 !important;
-    border-radius: 0;
     background: #000;
   }
 
   .wizard-content.step-5 .canvas-area canvas {
     width: 100% !important;
-    height: 100% !important;
+    height: auto !important;
+    max-height: 60vh !important;
     object-fit: contain;
   }
 
   /* ========== ステップ6（マーキング）専用レイアウト ========== */
-  /* 動画エリア：上部に固定、画面の40%程度 */
+  /* ========== ステップ6（マーキング）専用レイアウト ========== */
+  /* PC用は通常レイアウト */
   .wizard-content.step-6 .canvas-area {
-    position: fixed !important;
-    top: 44px !important;
-    left: 0 !important;
-    right: 0 !important;
-    width: 100vw !important;
-    height: 40vh !important;
-    max-height: 40vh !important;
-    z-index: 1000 !important;
-    margin: 0 !important;
-    border-radius: 0;
+    position: relative !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: 60vh !important;
+    margin: 0 0 12px 0 !important;
+    border-radius: 8px;
     background: #000;
-  }
-
-  .wizard-content.step-6 .canvas-area.focus-mode {
-    height: calc(100vh - 120px) !important;
-    max-height: calc(100vh - 120px) !important;
   }
 
   .preview-canvas {
@@ -1460,14 +1491,14 @@ body {
     border: 1px solid var(--gray-200);
   }
   
-  /* フレームスライダー：動画直下に固定 */
+  /* フレームスライダー：PC用は通常レイアウト */
   .wizard-content.step-6 .frame-control {
-    position: fixed !important;
-    top: calc(44px + 40vh) !important;
-    left: 0 !important;
-    right: 0 !important;
-    z-index: 999 !important;
-    margin: 0 !important;
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    z-index: 1 !important;
+    margin: 0 0 12px 0 !important;
     padding: 8px 16px !important;
     border-radius: 0;
     border: none;
@@ -2256,8 +2287,304 @@ body {
   }
 }
 
-/* iPad向け最適化 (min-width: 429px) and (max-width: 1024px) */
-@media (min-width: 429px) and (max-width: 1024px) {
+/* iPad・タブレット向け最適化（769px〜1366px） */
+@media (min-width: 769px) and (max-width: 1366px) {
+  /* iPad Step 6: 動画エリアを固定 */
+  .mobile-step6-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100vh !important;
+    overflow: hidden !important;
+  }
+
+  .mobile-step6-layout .mobile-video-area {
+    position: sticky !important;
+    top: 60px !important;
+    width: 100% !important;
+    aspect-ratio: 16/9 !important;
+    background: #000 !important;
+    border-radius: 12px !important;
+    overflow: hidden !important;
+    margin-bottom: 16px !important;
+    z-index: 100 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+    flex-shrink: 0 !important;
+  }
+
+  .mobile-step6-layout .mobile-video-area canvas {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+  }
+
+  .mobile-step6-layout .mobile-controls-fixed {
+    flex: 1 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding: 16px !important;
+  }
+}
+
+/* すべてのタブレット・モバイル（1366px以下）共通スタイル */
+@media (max-width: 1366px) {
+
+  /* iPad Step 6: フレーム情報 */
+  .mobile-step6-layout .mobile-frame-info {
+    font-size: 1.2rem !important;
+    font-weight: bold !important;
+    text-align: center !important;
+    padding: 12px !important;
+    background: #f1f5f9 !important;
+    border-radius: 10px !important;
+    margin-bottom: 12px !important;
+    color: #1e293b !important;
+  }
+
+  /* iPad Step 6: フレームスライダー */
+  .mobile-step6-layout .mobile-frame-slider {
+    width: 100% !important;
+    height: 10px !important;
+    margin: 12px 0 !important;
+    -webkit-appearance: none !important;
+    background: #e2e8f0 !important;
+    border-radius: 5px !important;
+  }
+
+  /* iPad Step 6: コマ送りボタン（大きく見やすく） */
+  .mobile-step6-layout .mobile-nav-buttons {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+    margin: 16px 0 !important;
+  }
+
+  .mobile-step6-layout .mobile-nav-buttons button {
+    min-height: 70px !important;
+    font-size: 1rem !important;
+    font-weight: 600 !important;
+    padding: 12px 16px !important;
+    border-radius: 16px !important;
+    background: linear-gradient(135deg, #eff6ff, #dbeafe) !important;
+    border: 2px solid #3b82f6 !important;
+    color: #1e40af !important;
+    cursor: pointer !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15) !important;
+    transition: all 0.2s !important;
+  }
+
+  .mobile-step6-layout .mobile-nav-buttons button .button-icon {
+    font-size: 1.8rem !important;
+    line-height: 1 !important;
+  }
+
+  .mobile-step6-layout .mobile-nav-buttons button .button-label {
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+  }
+
+  .mobile-step6-layout .mobile-nav-buttons button:active {
+    background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
+    color: white !important;
+    transform: scale(0.96) !important;
+    box-shadow: 0 1px 4px rgba(59, 130, 246, 0.3) !important;
+  }
+
+  .mobile-step6-layout .mobile-nav-buttons button:disabled {
+    opacity: 0.4 !important;
+    cursor: not-allowed !important;
+  }
+
+  /* iPad Step 6: 接地マークボタン（横長で大きく目立つ） */
+  .mobile-step6-layout .mobile-mark-button {
+    width: 100% !important;
+    min-height: 75px !important;
+    font-size: 1.4rem !important;
+    font-weight: bold !important;
+    padding: 20px 32px !important;
+    border-radius: 20px !important;
+    margin: 20px 0 !important;
+    box-shadow: 0 8px 24px rgba(16, 185, 129, 0.35) !important;
+    border: none !important;
+    color: white !important;
+    background: linear-gradient(135deg, #10b981, #059669) !important;
+    transition: all 0.2s !important;
+  }
+
+  .mobile-step6-layout .mobile-mark-button:active {
+    transform: scale(0.97) !important;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;
+  }
+
+  .mobile-step6-layout .mobile-mark-button:disabled {
+    opacity: 0.5 !important;
+    cursor: not-allowed !important;
+  }
+
+  /* iPad Step 6: オプションボタン（3列グリッド、モダンなデザイン） */
+  .mobile-step6-layout .mobile-options {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 10px !important;
+    margin: 16px 0 !important;
+  }
+
+  .mobile-step6-layout .mobile-options button {
+    min-height: 68px !important;
+    font-size: 0.9rem !important;
+    font-weight: 600 !important;
+    padding: 12px 8px !important;
+    border-radius: 16px !important;
+    background: linear-gradient(135deg, #ffffff, #f8fafc) !important;
+    border: 2px solid #e2e8f0 !important;
+    color: #64748b !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    line-height: 1.2 !important;
+    max-width: none !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06) !important;
+    transition: all 0.2s !important;
+    cursor: pointer !important;
+  }
+
+  .mobile-step6-layout .mobile-options button:active {
+    transform: scale(0.96) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+  }
+
+  .mobile-step6-layout .mobile-options button.active {
+    background: linear-gradient(135deg, #dbeafe, #bfdbfe) !important;
+    border-color: #3b82f6 !important;
+    color: #1e40af !important;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2) !important;
+  }
+
+  .mobile-step6-layout .mobile-options button.clear-btn {
+    background: linear-gradient(135deg, #fef2f2, #fee2e2) !important;
+    border-color: #fca5a5 !important;
+    color: #dc2626 !important;
+  }
+
+  .mobile-step6-layout .mobile-options button.clear-btn:active {
+    background: linear-gradient(135deg, #fee2e2, #fecaca) !important;
+  }
+
+  /* iPad Step 6: 拡大率スライダー */
+  .mobile-step6-layout .mobile-zoom-slider {
+    display: flex !important;
+    align-items: center !important;
+    gap: 16px !important;
+    padding: 16px 20px !important;
+    background: #f1f5f9 !important;
+    border-radius: 14px !important;
+    margin: 12px 0 !important;
+    font-size: 1.1rem !important;
+    font-weight: 500 !important;
+  }
+
+  .mobile-step6-layout .mobile-zoom-slider input[type="range"] {
+    flex: 1 !important;
+    height: 10px !important;
+    -webkit-appearance: none !important;
+    background: #cbd5e1 !important;
+    border-radius: 5px !important;
+  }
+
+  .mobile-step6-layout .mobile-zoom-slider .zoom-value {
+    font-weight: bold !important;
+    color: #3b82f6 !important;
+    min-width: 50px !important;
+    text-align: right !important;
+  }
+
+  /* iPad Step 6: マーカー一覧 */
+  .mobile-step6-layout .mobile-marker-list {
+    background: #f8fafc !important;
+    border-radius: 14px !important;
+    padding: 16px !important;
+    margin: 16px 0 !important;
+    border: 1px solid #e2e8f0 !important;
+  }
+
+  .mobile-step6-layout .mobile-marker-list-header {
+    font-size: 1.1rem !important;
+    font-weight: 600 !important;
+    color: #475569 !important;
+    margin-bottom: 14px !important;
+    text-align: center !important;
+  }
+
+  .mobile-step6-layout .mobile-marker-items {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+    justify-content: center !important;
+  }
+
+  .mobile-step6-layout .mobile-marker-step {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    background: white !important;
+    padding: 10px 14px !important;
+    border-radius: 10px !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08) !important;
+  }
+
+  .mobile-step6-layout .mobile-marker-step .step-label {
+    font-weight: bold !important;
+    color: #64748b !important;
+    font-size: 1rem !important;
+    min-width: 36px !important;
+  }
+
+  .mobile-step6-layout .mobile-marker-step .marker-frame {
+    min-width: 70px !important;
+    min-height: 42px !important;
+    font-size: 1rem !important;
+    font-weight: 600 !important;
+    padding: 8px 14px !important;
+    border-radius: 8px !important;
+    border: none !important;
+  }
+
+  .mobile-step6-layout .mobile-marker-step .marker-frame.contact {
+    background: #dcfce7 !important;
+    color: #166534 !important;
+  }
+
+  .mobile-step6-layout .mobile-marker-step .marker-frame.toeoff {
+    background: #fef3c7 !important;
+    color: #92400e !important;
+  }
+
+  /* iPad Step 6: マーク終了ボタン */
+  .mobile-step6-layout .mobile-finish-button {
+    width: 100% !important;
+    min-height: 64px !important;
+    font-size: 1.3rem !important;
+    font-weight: bold !important;
+    padding: 18px 28px !important;
+    border-radius: 16px !important;
+    margin-top: 20px !important;
+    background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
+    color: white !important;
+    border: none !important;
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4) !important;
+  }
+
+  .mobile-step6-layout .mobile-finish-button:disabled {
+    background: #94a3b8 !important;
+    box-shadow: none !important;
+  }
+
   /* AI評価セクションの最適化 */
   .result-card {
     padding: 16px !important;
@@ -2414,20 +2741,27 @@ body {
     z-index: 100;
   }
 
-  /* 動画エリア */
+  /* 動画エリア（高解像度表示・固定） */
   .mobile-video-area {
+    position: sticky;
+    top: 0;
     width: 100%;
-    height: 35vh;
+    height: 50vh;
+    min-height: 280px;
     background: #000;
     display: flex;
     align-items: center;
     justify-content: center;
+    z-index: 10;
+    flex-shrink: 0;
   }
 
   .mobile-video-area .preview-canvas {
     width: 100%;
     height: 100%;
     object-fit: contain;
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
   }
 
   /* 固定コントロールエリア */
@@ -2437,6 +2771,8 @@ body {
     flex-direction: column;
     gap: 8px;
     padding: 12px 16px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     padding-bottom: calc(16px + env(safe-area-inset-bottom, 0));
     overflow-y: auto;
     background: white;
@@ -2698,6 +3034,53 @@ body {
     text-align: center;
     font-weight: 700;
     color: #0284c7;
+  }
+
+  /* ========== モバイル専用 Step 5/6 Canvas設定 ========== */
+  /* ステップ5（区間設定）: モバイルでは動画を上部に固定 */
+  .wizard-content.step-5 .canvas-area {
+    position: sticky !important;
+    top: 48px !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100vw !important;
+    height: 56.25vw !important;
+    max-height: 50vh !important;
+    z-index: 950 !important;
+    margin: 0 0 12px 0 !important;
+    border-radius: 0;
+    background: #000;
+  }
+
+  .wizard-content.step-5 .canvas-area canvas {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain;
+  }
+
+  /* ステップ6（マーキング）: モバイルでは固定レイアウト */
+  .wizard-content.step-6 .canvas-area {
+    position: fixed !important;
+    top: 44px !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100vw !important;
+    height: 40vh !important;
+    max-height: 40vh !important;
+    z-index: 1000 !important;
+    margin: 0 !important;
+    border-radius: 0;
+    background: #000;
+  }
+
+  .wizard-content.step-6 .frame-control {
+    position: fixed !important;
+    top: calc(44px + 40vh) !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 999 !important;
+    margin: 0 !important;
+    border-radius: 0;
   }
 }
 
