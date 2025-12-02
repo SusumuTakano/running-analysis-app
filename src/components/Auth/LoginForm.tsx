@@ -22,8 +22,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onToggleMode }) => {
       console.log('🔐 LoginForm: Attempting sign in for:', email);
       await signIn(email, password);
       console.log('✅ LoginForm: Sign in successful');
-      // AuthContextのonAuthStateChangeが自動的に状態を更新するので、
-      // ここではloadingをfalseにするだけ
+      // AuthContextのonAuthStateChangeが自動的に状態を更新する
+      setLoading(false);
     } catch (err: any) {
       console.error('❌ LoginForm: Sign in failed:', err);
       const errorMessage = err.message || 'ログインに失敗しました';

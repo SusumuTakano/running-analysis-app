@@ -23,24 +23,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('📋 Fetching profile for user:', authUser.id);
       const startTime = Date.now();
       
-      // タイムアウト付きでプロフィールを取得（5秒）
-      const profilePromise = supabase
+      // プロフィールを取得（簡略化）
+      const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', authUser.id)
         .single();
-      
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Profile fetch timeout after 5s')), 5000)
-      );
-      
-      const { data, error } = await Promise.race([
-        profilePromise,
-        timeoutPromise
-      ]).catch((err) => {
-        console.warn('⚠️ Profile fetch failed or timed out:', err.message);
-        return { data: null, error: err };
-      }) as any;
 
       const elapsed = Date.now() - startTime;
       console.log(`📋 Profile fetch took ${elapsed}ms`);
@@ -87,19 +75,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('🔐 AuthContext: Calling supabase.auth.getSession()...');
         const startTime = Date.now();
         
-        // getSession()にも10秒のタイムアウトを追加
-        const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('getSession timeout after 10s')), 10000)
-        );
-        
-        const { data: { session }, error } = await Promise.race([
-          sessionPromise,
-          timeoutPromise
-        ]).catch((err) => {
-          console.warn('⚠️ getSession failed or timed out:', err.message);
-          return { data: { session: null }, error: err };
-        }) as any;
+        // getSession()を呼び出し（簡略化）
+        const { data: { session }, error } = await supabase.auth.getSession();
         
         const elapsed = Date.now() - startTime;
         console.log(`🔐 AuthContext: getSession() took ${elapsed}ms`);
@@ -147,10 +124,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(null);
         } else if (event === 'TOKEN_REFRESHED' && session?.user) {
           console.log('🔄 Token refreshed');
-          // トークンがリフレッシュされた場合も、ユーザー情報を更新
-          if (!user || user.id !== session.user.id) {
-            await fetchUserProfile(session.user);
-          }
+          // トークンがリフレッシュされた場合、プロフィールを更新
+          await fetchUserProfile(session.user);
         }
         setLoading(false);
       }
@@ -159,7 +134,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [user]); // userを依存配列に追加
 
   // サインイン
   const signIn = async (email: string, password: string) => {
