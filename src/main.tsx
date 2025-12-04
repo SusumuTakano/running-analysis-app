@@ -70,6 +70,34 @@ const ProtectedApp: React.FC = () => {
 
 /** 画面上部の太めヘッダーナビ */
 const AppTopNav: React.FC = () => {
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  // ログイン状態をチェック
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setUser(session?.user || null);
+      } catch (error) {
+        console.error('Auth check error:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkAuth();
+
+    // 認証状態の変更を監視
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user || null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   return (
     <div
       style={{
@@ -137,15 +165,31 @@ const AppTopNav: React.FC = () => {
             gap: 16,
           }}
         >
-          <TopNavLink to="/dashboard" label="マイページ" />
-          <TopNavLink to="/athletes" label="選手管理" />
-          <TopNavLink to="/profile" label="ユーザー情報" />
-          <span style={{ height: 26, width: 1, background: "#d1d5db" }} />
-          <TopNavLink to="/login" label="ログイン" />
-          <TopNavLink to="/register" label="ユーザー登録" />
-          <TopNavLink to="/logout" label="ログアウト" />
-          <span style={{ height: 26, width: 1, background: "#d1d5db" }} />
-          <TopNavLink to="/admin/login" label="管理者ログイン" />
+          {/* ログイン済みの場合のメニュー */}
+          {user ? (
+            <>
+              <TopNavLink to="/dashboard" label="マイページ" />
+              <TopNavLink to="/athletes" label="選手管理" />
+              <TopNavLink to="/profile" label="ユーザー情報" />
+              <span style={{ height: 26, width: 1, background: "#d1d5db" }} />
+              <TopNavLink to="/logout" label="ログアウト" />
+              {/* 管理者の場合のみ管理画面リンクを表示 */}
+              {user.user_metadata?.is_admin && (
+                <>
+                  <span style={{ height: 26, width: 1, background: "#d1d5db" }} />
+                  <TopNavLink to="/admin" label="管理画面" />
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              {/* 未ログインの場合のメニュー */}
+              <TopNavLink to="/login" label="ログイン" />
+              <TopNavLink to="/register" label="ユーザー登録" />
+              <span style={{ height: 26, width: 1, background: "#d1d5db" }} />
+              <TopNavLink to="/admin/login" label="管理者ログイン" />
+            </>
+          )}
         </nav>
       </div>
     </div>

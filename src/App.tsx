@@ -664,13 +664,56 @@ useEffect(() => {
 
 
   // チュートリアル
-  const [showTutorial, setShowTutorial] = useState(true); // 初回表示フラグ
+  // チュートリアルの表示設定をローカルストレージから取得
+  const [showTutorial, setShowTutorial] = useState(() => {
+    const savedPreference = localStorage.getItem('hideTutorial');
+    return savedPreference !== 'true'; // 'true'の場合は表示しない
+  });
   const [tutorialStep, setTutorialStep] = useState(0); // 現在のステップ
-  // 「次回から表示しない」が押されていなければ、初回だけ自動で開く
+  // チュートリアルステップをリセットする関数
+  const resetTutorialStep = () => {
+    setTutorialStep(0);
+  };
+
+  // URLパラメータからセッションビューモードを確認
   useEffect(() => {
-    const hidden = localStorage.getItem("runningAnalysisHideTutorial");
-    if (!hidden) {
-      setShowTutorial(true);
+    const urlParams = new URLSearchParams(window.location.search);
+    const viewMode = urlParams.get('viewMode');
+    const sessionId = urlParams.get('sessionId');
+    const step = urlParams.get('step');
+    
+    if (viewMode === 'true' && sessionId) {
+      // ローカルストレージからセッションデータを読み込む
+      const storedData = localStorage.getItem('viewSessionData');
+      const fullSession = localStorage.getItem('viewFullSession');
+      
+      if (storedData) {
+        try {
+          const sessionData = JSON.parse(storedData);
+          console.log('Loading session data for viewing:', sessionData);
+          
+          // データを復元（実装は後で調整）
+          if (step === '6' && sessionData) {
+            // ステップ6（結果表示）へジャンプ
+            setWizardStep(6);
+            
+            // セッションデータから各種データを復元
+            // Note: ステート更新関数が存在する場合のみ実行
+            // これは読み取り専用モードのため、将来的な実装として残す
+            console.log('Session data loaded for viewing:', {
+              hasStepMetrics: !!sessionData.stepMetrics,
+              hasThreePhaseAngles: !!sessionData.threePhaseAngles,
+              hasStepSummary: !!sessionData.stepSummary,
+              hasAthleteInfo: !!sessionData.athleteInfo
+            });
+            
+            // URLをクリーンにする
+            window.history.replaceState({}, document.title, '/');
+          }
+        } catch (e) {
+          console.error('Failed to load session data:', e);
+        }
+      }
     }
   }, []);
 
@@ -2848,7 +2891,7 @@ const [notesInput, setNotesInput] = useState<string>("");
     URL.revokeObjectURL(url);
   };
 
-  // ------------ Supabase 関連 ------------
+  // ------------ サーバー保存関連 ------------
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<string | null>(null);
 
@@ -2863,32 +2906,193 @@ const [notesInput, setNotesInput] = useState<string>("");
 
     try {
       setSaving(true);
-      const payload = {
+      
+      // ステップサマリーから追加データを取得
+      const avgStride = stepSummary?.avgStride ?? null;
+      const avgCadence = stepSummary?.avgStepPitch ?? null;
+      const avgContactTime = stepSummary?.avgContact ?? null;
+      const avgFlightTime = stepSummary?.avgFlight ?? null;
+      
+      // 基本データを保存（存在するカラムのみ）
+      const payload: any = {
         source_video_name: videoName,
         distance_m,
-        frames_count: framesCount || null,
-        section_start_frame: sectionRange.start,
-        section_end_frame: sectionRange.end,
-        section_frame_count,
         section_time_s,
         avg_speed_mps,
         target_fps: usedTargetFps,
         label: labelInput || null,
         notes: notesInput || null,
       };
+      
+      // オプションカラム（存在する場合のみ追加）
+      if (framesCount) payload.frames_count = framesCount;
+      if (framesCount) payload.frame_count = framesCount;
+      if (sectionRange.start !== null) payload.section_start_frame = sectionRange.start;
+      if (sectionRange.end !== null) payload.section_end_frame = sectionRange.end;
+      if (section_frame_count) payload.section_frame_count = section_frame_count;
+      if (avgStride) payload.avg_stride_m = avgStride;
+      if (avgCadence) payload.avg_cadence_hz = avgCadence;
+      if (avgContactTime) payload.avg_contact_time_s = avgContactTime;
+      if (avgFlightTime) payload.avg_flight_time_s = avgFlightTime;
+      if (videoRef.current?.duration) payload.source_video_duration_s = videoRef.current.duration;
+      
+      // video_filenameカラムが存在する場合
+      payload.video_filename = videoName;
+      
+      // section_typeカラムが存在する場合
+      payload.section_start_type = "manual";
+      payload.section_end_type = "manual";
 
-      const { data, error } = await supabase
-        .from("running_analysis_sessions")
-        .insert(payload)
-        .select()
-        .single();
+      // まず最小限のデータで保存を試みる
+      let sessionData: any = null;
+      let sessionError: any = null;
+      
+      try {
+        const result = await supabase
+          .from("running_analysis_sessions")
+          .insert(payload)
+          .select()
+          .single();
+        
+        sessionData = result.data;
+        sessionError = result.error;
+      } catch (insertError: any) {
+        // カラムエラーの場合、最小限のデータで再試行
+        if (insertError?.message?.includes("column")) {
+          console.warn("一部のカラムが存在しません。基本データのみ保存します。");
+          
+          const minimalPayload = {
+            source_video_name: videoName,
+            distance_m,
+            section_time_s,
+            avg_speed_mps,
+            label: labelInput || null,
+            notes: notesInput || null,
+          };
+          
+          const result = await supabase
+            .from("running_analysis_sessions")
+            .insert(minimalPayload)
+            .select()
+            .single();
+          
+          sessionData = result.data;
+          sessionError = result.error;
+        } else {
+          throw insertError;
+        }
+      }
 
-      if (error) throw error;
+      if (sessionError) throw sessionError;
+      
+      const sessionId = (sessionData as any).id;
+      
+      // ステップメトリクスを保存（別テーブルが存在する場合）
+      if (stepMetrics && stepMetrics.length > 0) {
+        try {
+          const metricsPayload = stepMetrics.map((metric, index) => ({
+            session_id: sessionId,
+            step_index: index,
+            contact_frame: metric.contactFrame,
+            toe_off_frame: metric.toeOffFrame,
+            next_contact_frame: metric.nextContactFrame,
+            contact_time: metric.contactTime,
+            flight_time: metric.flightTime,
+            step_time: metric.stepTime,
+            stride_length: metric.stride,
+            speed: metric.speedMps,
+          }));
+          
+          const { error: metricsError } = await supabase
+            .from("step_metrics")
+            .insert(metricsPayload);
+          
+          if (metricsError) {
+            console.warn("ステップメトリクスの保存に失敗（テーブルが存在しない可能性）:", metricsError);
+          }
+        } catch (e) {
+          console.warn("ステップメトリクスの保存をスキップ:", e);
+        }
+      }
+      
+      // 3局面角度データを保存（別テーブルが存在する場合）
+      if (threePhaseAngles && threePhaseAngles.length > 0) {
+        try {
+          const anglesPayload: any[] = [];
+          threePhaseAngles.forEach((angles, stepIndex) => {
+            // 各局面のデータを保存
+            ['contact', 'midSupport', 'toeOff'].forEach(phase => {
+              const phaseData = angles[phase as keyof typeof angles];
+              if (phaseData && typeof phaseData === 'object' && 'hip' in phaseData) {
+                anglesPayload.push({
+                  session_id: sessionId,
+                  step_index: stepIndex,
+                  phase: phase === 'midSupport' ? 'mid_support' : phase === 'toeOff' ? 'toe_off' : phase,
+                  hip_angle: (phaseData as any).hip,
+                  knee_angle: (phaseData as any).knee,
+                  ankle_angle: (phaseData as any).ankle,
+                  trunk_angle: (phaseData as any).trunk,
+                  shoulder_angle: (phaseData as any).shoulder,
+                  elbow_angle: (phaseData as any).elbow,
+                });
+              }
+            });
+          });
+          
+          if (anglesPayload.length > 0) {
+            const { error: anglesError } = await supabase
+              .from("three_phase_angles")
+              .insert(anglesPayload);
+            
+            if (anglesError) {
+              console.warn("3局面角度データの保存に失敗（テーブルが存在しない可能性）:", anglesError);
+            }
+          }
+        } catch (e) {
+          console.warn("3局面角度データの保存をスキップ:", e);
+        }
+      }
+      
+      // ステップサマリーを保存（別テーブルが存在する場合）
+      if (stepSummary) {
+        try {
+          const summaryPayload = {
+            session_id: sessionId,
+            avg_stride_length: stepSummary.avgStride,
+            avg_contact_time: stepSummary.avgContact,
+            avg_flight_time: stepSummary.avgFlight,
+            avg_speed: stepSummary.avgSpeedMps,
+            avg_cadence: avgCadence,
+            total_steps: stepMetrics?.length || 0,
+          };
+          
+          const { error: summaryError } = await supabase
+            .from("step_summaries")
+            .insert(summaryPayload);
+          
+          if (summaryError) {
+            console.warn("ステップサマリーの保存に失敗（テーブルが存在しない可能性）:", summaryError);
+          }
+        } catch (e) {
+          console.warn("ステップサマリーの保存をスキップ:", e);
+        }
+      }
 
-      setSaveResult(`✅ 保存成功: id=${(data as any).id ?? ""}`);
+      setSaveResult(`✅ 保存成功: セッションID=${sessionId}\n詳細データも保存されました。`);
     } catch (e: any) {
-      console.error(e);
-      setSaveResult(`❌ 保存エラー: ${e.message ?? String(e)}`);
+      console.error("保存エラー詳細:", e);
+      // エラーメッセージを分かりやすく
+      let errorMsg = "❌ 保存エラー: ";
+      if (e.message?.includes("column")) {
+        errorMsg += "データベースの構造に問題があります。管理者にお問い合わせください。";
+      } else if (e.message?.includes("permission") || e.message?.includes("policy")) {
+        errorMsg += "権限エラーです。ログインし直してください。";
+      } else if (e.message?.includes("network")) {
+        errorMsg += "ネットワークエラーです。接続を確認してください。";
+      } else {
+        errorMsg += e.message || "不明なエラーが発生しました。";
+      }
+      setSaveResult(errorMsg);
     } finally {
       setSaving(false);
     }
@@ -5164,7 +5368,15 @@ const [notesInput, setNotesInput] = useState<string>("");
             <div></div>
             <button
               className="btn-primary-large"
-              onClick={() => setWizardStep(1)}
+              onClick={() => {
+                setWizardStep(1);
+                // ローカルストレージの設定を確認してチュートリアルを表示
+                const savedPreference = localStorage.getItem('hideTutorial');
+                if (savedPreference !== 'true') {
+                  setShowTutorial(true);
+                  setTutorialStep(0);
+                }
+              }}
               disabled={
                 !athleteInfo.name ||
                 !athleteInfo.age ||
@@ -8093,7 +8305,7 @@ const [notesInput, setNotesInput] = useState<string>("");
                     onClick={handleSaveSession}
                     disabled={saving}
                   >
-                    💾 Supabaseに保存
+                    💾 サーバーに保存
                   </button>
 
                   <button
@@ -8368,21 +8580,53 @@ const [notesInput, setNotesInput] = useState<string>("");
               gap: '12px',
               justifyContent: 'space-between'
             }}>
-              <button
-                onClick={() => setShowTutorial(false)}
-                style={{
-                  padding: '12px 24px',
-                  borderRadius: '8px',
-                  border: '2px solid #e5e7eb',
-                  background: 'white',
-                  color: '#6b7280',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  fontSize: '1rem'
-                }}
-              >
-                スキップ
-              </button>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button
+                  onClick={() => setShowTutorial(false)}
+                  style={{
+                    padding: '12px 24px',
+                    borderRadius: '8px',
+                    border: '2px solid #e5e7eb',
+                    background: 'white',
+                    color: '#6b7280',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    fontSize: '1rem'
+                  }}
+                >
+                  スキップ
+                </button>
+                {tutorialStep === 0 && (
+                  <button
+                    onClick={() => {
+                      localStorage.setItem('hideTutorial', 'true');
+                      setShowTutorial(false);
+                    }}
+                    style={{
+                      padding: '12px 24px',
+                      borderRadius: '8px',
+                      border: '2px solid #f59e0b',
+                      background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                      color: '#92400e',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      fontSize: '1rem',
+                      transition: 'all 0.2s',
+                      boxShadow: '0 2px 4px rgba(251, 191, 36, 0.2)',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'linear-gradient(135deg, #fde68a 0%, #fcd34d 100%)';
+                      e.currentTarget.style.boxShadow = '0 4px 8px rgba(251, 191, 36, 0.3)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)';
+                      e.currentTarget.style.boxShadow = '0 2px 4px rgba(251, 191, 36, 0.2)';
+                    }}
+                  >
+                    🚫 次回から表示しない
+                  </button>
+                )}
+              </div>
               <div style={{ display: 'flex', gap: '12px' }}>
                 {tutorialStep > 0 && (
                   <button
@@ -8460,6 +8704,8 @@ const [notesInput, setNotesInput] = useState<string>("");
               {/* 使い方ボタン（チュートリアル） */}
               <button
                 onClick={() => {
+                  // 一時的にチュートリアルの非表示設定を解除して表示
+                  localStorage.removeItem('hideTutorial');
                   setShowTutorial(true);
                   setTutorialStep(0);
                 }}

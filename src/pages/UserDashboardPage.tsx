@@ -7,10 +7,27 @@ type RunningAnalysisSession = {
   id: string;
   created_at: string;
   source_video_name: string | null;
+  video_filename?: string | null;
   distance_m: number | null;
   section_time_s: number | null;
   avg_speed_mps: number | null;
+  avg_stride_m?: number | null;
+  avg_cadence_hz?: number | null;
+  avg_contact_time_s?: number | null;
+  avg_flight_time_s?: number | null;
+  frame_count?: number | null;
+  frames_count?: number | null;
+  target_fps?: number | null;
+  source_video_duration_s?: number | null;
+  section_start_type?: string | null;
+  section_end_type?: string | null;
+  section_start_frame?: number | null;
+  section_end_frame?: number | null;
+  notes?: string | null;
   label: string | null;
+  athlete_id?: string | null;
+  athlete_name?: string | null;
+  [key: string]: any;  // その他のフィールドも許可
 };
 
 const UserDashboardPage: React.FC = () => {
@@ -19,6 +36,7 @@ const UserDashboardPage: React.FC = () => {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [sessions, setSessions] = useState<RunningAnalysisSession[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
 
   useEffect(() => {
     const load = async () => {
@@ -33,20 +51,47 @@ const UserDashboardPage: React.FC = () => {
 
       setUserEmail(data.session.user.email ?? null);
 
+      // セッションデータの取得（すべてのカラムを取得）
       const { data: sessionsData, error: sessionsError } =
         await supabase
           .from("running_analysis_sessions")
-          .select(
-            "id, created_at, source_video_name, distance_m, section_time_s, avg_speed_mps, label"
-          )
+          .select("*")
           .order("created_at", { ascending: false })
           .limit(10);
+      
+      // デバッグ: 取得したデータを確認
+      console.log("Sessions data:", sessionsData);
+      console.log("Sessions error:", sessionsError);
 
       if (sessionsError) {
-        setErrorMsg(sessionsError.message);
+        // カラムが存在しない場合は、基本カラムのみ取得
+        if (sessionsError.message.includes('athlete_id') || sessionsError.message.includes('athlete_name')) {
+          const { data: basicData, error: basicError } = await supabase
+            .from("running_analysis_sessions")
+            .select("id, created_at, source_video_name, distance_m, section_time_s, avg_speed_mps, label")
+            .order("created_at", { ascending: false })
+            .limit(10);
+          
+          if (basicError) {
+            setErrorMsg(basicError.message);
+          } else {
+            // athlete_idとathlete_nameをnullで補完
+            const sessionsWithNull = (basicData ?? []).map(s => ({
+              ...s,
+              athlete_id: null,
+              athlete_name: null,
+              session_data: null
+            }));
+            setSessions(sessionsWithNull);
+          }
+        } else {
+          setErrorMsg(sessionsError.message);
+        }
       } else {
         setSessions(sessionsData ?? []);
       }
+
+
 
       setLoading(false);
     };
@@ -57,6 +102,281 @@ const UserDashboardPage: React.FC = () => {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/login", { replace: true });
+  };
+
+  // 詳細表示
+  const handleViewDetails = (session: RunningAnalysisSession) => {
+    console.log("Viewing session details:", session);
+    
+    // セッション全体をローカルストレージに保存
+    const sessionDataToView = {
+      // 基本情報
+      id: session.id,
+      created_at: session.created_at,
+      source_video_name: session.source_video_name || session.video_filename,
+      
+      // 解析結果
+      distance_m: session.distance_m,
+      section_time_s: session.section_time_s,
+      avg_speed_mps: session.avg_speed_mps,
+      avg_stride_m: session.avg_stride_m,
+      avg_cadence_hz: session.avg_cadence_hz,
+      avg_contact_time_s: session.avg_contact_time_s,
+      avg_flight_time_s: session.avg_flight_time_s,
+      
+      // フレーム情報
+      frame_count: session.frame_count,
+      frames_count: session.frames_count,
+      target_fps: session.target_fps,
+      source_video_duration_s: session.source_video_duration_s,
+      
+      // 区間情報
+      section_start_type: session.section_start_type,
+      section_end_type: session.section_end_type,
+      section_start_frame: session.section_start_frame,
+      section_end_frame: session.section_end_frame,
+      
+      // その他のメタデータ
+      notes: session.notes,
+      label: session.label,
+      
+      // すべてのデータ（念のため）
+      _raw: session
+    };
+    
+    // ローカルストレージに保存
+    localStorage.setItem('viewSessionData', JSON.stringify(sessionDataToView));
+    localStorage.setItem('viewSessionId', session.id);
+    
+    // 新しいタブで結果ページを開く
+    const resultUrl = `/dashboard/session/${session.id}`;
+    
+    // 結果表示用の簡易HTMLページを生成
+    const resultHtml = `
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>解析結果 - ${session.source_video_name || 'Session ' + session.id}</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+      margin: 0;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      padding: 32px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    h1 {
+      color: #1a202c;
+      border-bottom: 3px solid #667eea;
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+    }
+    .section {
+      margin-bottom: 32px;
+    }
+    .section h2 {
+      color: #2d3748;
+      font-size: 1.5rem;
+      margin-bottom: 16px;
+      padding-left: 12px;
+      border-left: 4px solid #764ba2;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+    }
+    .metric-card {
+      background: #f7fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .metric-label {
+      font-size: 0.875rem;
+      color: #718096;
+      margin-bottom: 4px;
+    }
+    .metric-value {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #2d3748;
+    }
+    .metric-unit {
+      font-size: 0.875rem;
+      color: #718096;
+      margin-left: 4px;
+    }
+    .back-button {
+      display: inline-block;
+      padding: 12px 24px;
+      background: #667eea;
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: bold;
+      margin-bottom: 24px;
+      transition: background 0.2s;
+    }
+    .back-button:hover {
+      background: #5a67d8;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/dashboard" class="back-button">← ダッシュボードに戻る</a>
+    
+    <h1>🏃 解析結果詳細</h1>
+    
+    <div class="section">
+      <h2>基本情報</h2>
+      <div class="metrics">
+        <div class="metric-card">
+          <div class="metric-label">セッションID</div>
+          <div class="metric-value">${session.id.slice(0, 8)}...</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">解析日時</div>
+          <div class="metric-value">${new Date(session.created_at).toLocaleString('ja-JP')}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">動画名</div>
+          <div class="metric-value">${session.source_video_name || session.video_filename || '-'}</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h2>走行データ</h2>
+      <div class="metrics">
+        <div class="metric-card">
+          <div class="metric-label">距離</div>
+          <div class="metric-value">${session.distance_m || '-'}<span class="metric-unit">m</span></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">区間時間</div>
+          <div class="metric-value">${session.section_time_s || '-'}<span class="metric-unit">秒</span></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">平均速度</div>
+          <div class="metric-value">${session.avg_speed_mps ? session.avg_speed_mps.toFixed(2) : '-'}<span class="metric-unit">m/s</span></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h2>ストライド分析</h2>
+      <div class="metrics">
+        <div class="metric-card">
+          <div class="metric-label">平均ストライド</div>
+          <div class="metric-value">${session.avg_stride_m ? session.avg_stride_m.toFixed(2) : '-'}<span class="metric-unit">m</span></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">平均ケイデンス</div>
+          <div class="metric-value">${session.avg_cadence_hz ? session.avg_cadence_hz.toFixed(2) : '-'}<span class="metric-unit">Hz</span></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">平均接地時間</div>
+          <div class="metric-value">${session.avg_contact_time_s ? session.avg_contact_time_s.toFixed(3) : '-'}<span class="metric-unit">秒</span></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">平均滞空時間</div>
+          <div class="metric-value">${session.avg_flight_time_s ? session.avg_flight_time_s.toFixed(3) : '-'}<span class="metric-unit">秒</span></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h2>フレーム情報</h2>
+      <div class="metrics">
+        <div class="metric-card">
+          <div class="metric-label">総フレーム数</div>
+          <div class="metric-value">${session.frame_count || session.frames_count || '-'}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">ターゲットFPS</div>
+          <div class="metric-value">${session.target_fps || '-'}<span class="metric-unit">fps</span></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">動画時間</div>
+          <div class="metric-value">${session.source_video_duration_s ? session.source_video_duration_s.toFixed(2) : '-'}<span class="metric-unit">秒</span></div>
+        </div>
+      </div>
+    </div>
+    
+    ${session.notes ? `
+    <div class="section">
+      <h2>備考</h2>
+      <p style="background: #f7fafc; padding: 16px; border-radius: 8px; line-height: 1.6;">
+        ${session.notes}
+      </p>
+    </div>
+    ` : ''}
+  </div>
+</body>
+</html>
+    `;
+    
+    // 新しいウィンドウで結果を表示
+    const resultWindow = window.open('', '_blank');
+    if (resultWindow) {
+      resultWindow.document.write(resultHtml);
+      resultWindow.document.close();
+    } else {
+      alert('ポップアップがブロックされました。ポップアップを許可してください。');
+    }
+  };
+
+  // ラベル編集
+  const handleEditSession = (session: RunningAnalysisSession) => {
+    const newLabel = prompt('ラベルを編集:', session.label || '');
+    if (newLabel !== null) {
+      updateSessionLabel(session.id, newLabel);
+    }
+  };
+
+  // ラベルの更新
+  const updateSessionLabel = async (sessionId: string, newLabel: string) => {
+    const { error } = await supabase
+      .from('running_analysis_sessions')
+      .update({ label: newLabel })
+      .eq('id', sessionId);
+    
+    if (error) {
+      alert('更新に失敗しました: ' + error.message);
+    } else {
+      // リロード
+      window.location.reload();
+    }
+  };
+
+
+
+  // セッションの削除
+  const handleDeleteSession = async (sessionId: string) => {
+    if (!confirm('このセッションを削除してもよろしいですか？')) return;
+    
+    const { error } = await supabase
+      .from('running_analysis_sessions')
+      .delete()
+      .eq('id', sessionId);
+    
+    if (error) {
+      alert('削除に失敗しました: ' + error.message);
+    } else {
+      // リロード
+      window.location.reload();
+    }
   };
 
   const totalSessions = sessions.length;
@@ -227,7 +547,7 @@ const UserDashboardPage: React.FC = () => {
               color: "#4b5563",
             }}
           >
-            今後、「選手と解析のひもづけ」「詳細表示／編集」機能をここに追加していきます。
+            詳細ボタンをクリックすると解析結果を確認できます。
           </p>
 
           {errorMsg && (
@@ -286,6 +606,7 @@ const UserDashboardPage: React.FC = () => {
                     <th style={thStyle}>区間時間(s)</th>
                     <th style={thStyle}>平均速度(m/s)</th>
                     <th style={thStyle}>ラベル</th>
+                    <th style={thStyle}>操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -294,11 +615,61 @@ const UserDashboardPage: React.FC = () => {
                       <td style={tdStyle}>
                         {new Date(s.created_at).toLocaleString("ja-JP")}
                       </td>
-                      <td style={tdStyle}>{s.source_video_name ?? "-"}</td>
+                      <td style={tdStyle}>
+                        {s.source_video_name || s.video_filename || "-"}
+                      </td>
                       <td style={tdStyle}>{s.distance_m ?? "-"}</td>
                       <td style={tdStyle}>{s.section_time_s ?? "-"}</td>
-                      <td style={tdStyle}>{s.avg_speed_mps ?? "-"}</td>
+                      <td style={tdStyle}>
+                        {s.avg_speed_mps ? s.avg_speed_mps.toFixed(2) : "-"}
+                      </td>
                       <td style={tdStyle}>{s.label ?? "-"}</td>
+                      <td style={tdStyle}>
+                        <button
+                          onClick={() => handleViewDetails(s)}
+                          style={{
+                            padding: "4px 8px",
+                            fontSize: 11,
+                            borderRadius: 4,
+                            border: "1px solid #cbd5e1",
+                            background: "white",
+                            color: "#3b82f6",
+                            cursor: "pointer",
+                            marginRight: 4
+                          }}
+                        >
+                          詳細
+                        </button>
+                        <button
+                          onClick={() => handleEditSession(s)}
+                          style={{
+                            padding: "4px 8px",
+                            fontSize: 11,
+                            borderRadius: 4,
+                            border: "1px solid #cbd5e1",
+                            background: "white",
+                            color: "#10b981",
+                            cursor: "pointer",
+                            marginRight: 4
+                          }}
+                        >
+                          編集
+                        </button>
+                        <button
+                          onClick={() => handleDeleteSession(s.id)}
+                          style={{
+                            padding: "4px 8px",
+                            fontSize: 11,
+                            borderRadius: 4,
+                            border: "1px solid #fca5a5",
+                            background: "#fef2f2",
+                            color: "#ef4444",
+                            cursor: "pointer"
+                          }}
+                        >
+                          削除
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
