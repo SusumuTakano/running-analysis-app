@@ -7202,9 +7202,61 @@ const [notesInput, setNotesInput] = useState<string>("");
                 ステップ解析結果とグラフを確認できます。スライダーで各フレームの角度を確認できます。
               </p>
             </div>
+            
+            {/* スクロールボタン（iPad/モバイル用） */}
+            <div style={{
+              position: 'fixed',
+              bottom: '20px',
+              right: '20px',
+              zIndex: 10000,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}>
+              <button
+                onClick={() => document.getElementById('frame-viewer')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                style={{
+                  width: '50px',
+                  height: '50px',
+                  borderRadius: '50%',
+                  background: 'rgba(103, 126, 234, 0.9)',
+                  color: 'white',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title="フレームビューアーへ"
+              >
+                ↑
+              </button>
+              <button
+                onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })}
+                style={{
+                  width: '50px',
+                  height: '50px',
+                  borderRadius: '50%',
+                  background: 'rgba(118, 75, 162, 0.9)',
+                  color: 'white',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title="ページ下部へ"
+              >
+                ↓
+              </button>
+            </div>
 
             {/* フレームビューアー */}
-            <div className="result-viewer-card">
+            <div className="result-viewer-card" id="frame-viewer">
               <div className="viewer-controls">
                 <button
                   className={footZoomEnabled ? "toggle-btn active" : "toggle-btn"}

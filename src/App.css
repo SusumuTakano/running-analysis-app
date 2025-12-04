@@ -372,29 +372,68 @@ body {
   overflow: hidden;
   background: #000;
   box-shadow: var(--shadow-md);
+  /* iPad/ノートPC対応: 最大高さを制限 */
+  max-height: 50vh; /* 画面の50%に制限 */
+  position: relative;
+}
+
+/* iPad/タブレット専用のスタイル (768px〜1024px) */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .wizard-step-5 .canvas-area,
+  .wizard-step-6 .canvas-area,
+  .wizard-step-7 .canvas-area {
+    position: fixed !important;
+    top: 70px !important;
+    left: 10px !important;
+    right: 10px !important;
+    width: calc(100vw - 20px) !important;
+    max-width: none !important;
+    max-height: 35vh !important; /* iPadで画面の35%に制限 */
+    z-index: 9999 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: rgba(0, 0, 0, 0.98);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  
+  .wizard-step-5 .wizard-content,
+  .wizard-step-6 .wizard-content,
+  .wizard-step-7 .wizard-content {
+    padding-top: calc(35vh + 90px) !important;
+  }
+  
+  /* ステップ7の結果表示でも同様の制限 */
+  .result-viewer-card {
+    max-width: 100%;
+  }
 }
 
 /* PC版: ステップ5, 6でキャンバスを固定表示 */
-@media (min-width: 769px) {
+@media (min-width: 1025px) {
   /* ステップ5, 6共通: キャンバス固定 */
   .wizard-step-5 .canvas-area,
   .wizard-step-6 .canvas-area {
     position: fixed !important;
     top: 80px !important; /* ヘッダー分の余白 */
-    left: 0;
-    right: 0;
-    width: 100vw !important; /* 横幅いっぱい */
-    max-width: 100vw !important; /* 横幅いっぱい */
+    left: 50%; /* 中央配置 */
+    transform: translateX(-50%); /* 中央配置 */
+    width: 80vw !important; /* 画面幅の80%に制限 */
+    max-width: 1000px !important; /* 最大幅を制限 */
+    max-height: 45vh !important; /* 画面高さの45%に制限 */
     z-index: 9999 !important; /* 最前面に表示 */
     margin: 0 !important;
     padding: 0 !important;
     pointer-events: auto; /* クリック可能に */
+    background: rgba(0, 0, 0, 0.95); /* 半透明背景 */
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); /* 影を追加 */
   }
 
   /* ステップ5, 6: キャンバス固定時のコンテンツ余白調整 */
   .wizard-step-5 .wizard-content,
   .wizard-step-6 .wizard-content {
-    padding-top: calc(70vh + 40px); /* キャンバス高さ + 余白 */
+    padding-top: calc(45vh + 100px); /* キャンバス高さ + ヘッダー + 余白 */
   }
 }
 
@@ -402,9 +441,29 @@ body {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 80vh; /* PC版で画面の80%まで（より大きく） */
-  /* object-fit: contain を削除 - キャンバスは内部サイズと表示サイズを一致させる必要がある */
-  /* スケルトン描画座標がズレないようにアスペクト比はJSで管理 */
+  max-height: 40vh; /* iPad/ノートPC対応: 画面の40%に制限 */
+  object-fit: contain; /* アスペクト比を保持 */
+}
+
+/* モバイル用の追加調整 */
+@media (max-width: 767px) {
+  .canvas-area {
+    max-height: 35vh; /* モバイルでは35%に制限 */
+    margin-bottom: 15px;
+  }
+  
+  .preview-canvas {
+    max-height: 35vh;
+  }
+  
+  .wizard-step-7 .canvas-area {
+    max-height: 35vh;
+  }
+  
+  /* フレームビューワーカードもコンパクトに */
+  .result-viewer-card {
+    padding: 15px;
+  }
 }
 
 /* ========== フレームコントロール ========== */
@@ -872,6 +931,22 @@ body {
   background: var(--gray-50);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
+  /* iPad/ノートPC対応 */
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* ステップ7の解析結果画面でもキャンバスサイズを制限 */
+.wizard-step-7 .canvas-area {
+  max-height: 40vh; /* 画面の40%に制限 */
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.wizard-step-7 .preview-canvas {
+  max-height: 40vh;
+  object-fit: contain;
 }
 
 .viewer-controls {
