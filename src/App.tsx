@@ -2449,40 +2449,42 @@ const [notesInput, setNotesInput] = useState<string>("");
       const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
       const isIPad = /iPad/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
       
-      // 🔧 iPad専用の最適化設定
+      // 🔧 デバイスごとの最適化設定
       let modelComplexity = 2; // デフォルトは高精度
       let minDetectionConfidence = 0.1;
       let minTrackingConfidence = 0.1;
       let staticImageMode = false;
+      let smoothLandmarks = true;
       
       if (isIPad) {
-        console.log('📱 iPad detected - using ULTRA OPTIMIZED settings for maximum recognition');
-        modelComplexity = 1; // 中精度モデル（0だと精度が低すぎる）
-        minDetectionConfidence = 0.05; // 検出閾値を極限まで下げる
-        minTrackingConfidence = 0.05; // トラッキング閾値も極限まで下げる
-        staticImageMode = true; // 静止画モードで各フレーム独立処理
+        console.log('📱 iPad detected - applying mobile optimized settings');
+        modelComplexity = 1; // 中精度モデル
+        minDetectionConfidence = 0.05; // 検出閾値を下げる
+        minTrackingConfidence = 0.05;
+        staticImageMode = false; // ストリーミング処理で追従性を向上
+        smoothLandmarks = true; // 滑らかな骨格追従
       } else if (isMobile) {
         console.log('📱 Mobile device detected');
-        modelComplexity = 1; // モバイルは中精度
-        minDetectionConfidence = 0.1;
-        minTrackingConfidence = 0.1;
+        modelComplexity = 1;
+        minDetectionConfidence = 0.08;
+        minTrackingConfidence = 0.08;
       } else {
         console.log('💻 Desktop detected');
-        minDetectionConfidence = 0.05; // PCでも閾値を下げる
+        minDetectionConfidence = 0.05;
         minTrackingConfidence = 0.05;
       }
       
       console.log(`🔧 Setting options: modelComplexity=${modelComplexity}, detection=${minDetectionConfidence}, tracking=${minTrackingConfidence}`);
       
       pose.setOptions({
-        modelComplexity: modelComplexity,
-        smoothLandmarks: !isIPad, // iPadではスムージングを無効化
+        modelComplexity,
+        smoothLandmarks,
         enableSegmentation: false,
         smoothSegmentation: false,
-        minDetectionConfidence: minDetectionConfidence,
-        minTrackingConfidence: minTrackingConfidence,
+        minDetectionConfidence,
+        minTrackingConfidence,
         selfieMode: false,
-        staticImageMode: staticImageMode, // iPadでは静止画モードを使用
+        staticImageMode,
       });
       
       console.log(`🚀 Pose estimation config: mobile=${isMobile}, iOS=${isIOS}, iPad=${isIPad}, modelComplexity=${modelComplexity}`);
@@ -2507,43 +2509,40 @@ const [notesInput, setNotesInput] = useState<string>("");
         throw new Error("Canvas context の作成に失敗しました");
       }
 
+      // MediaPipe入力用に縮小したキャンバスを用意
+      const maxPoseWidth = isIPad ? 540 : 960;
+      const poseScale = Math.min(1, maxPoseWidth / tempCanvas.width);
+      const poseCanvas = document.createElement("canvas");
+      poseCanvas.width = Math.max(1, Math.round(tempCanvas.width * poseScale));
+      poseCanvas.height = Math.max(1, Math.round(tempCanvas.height * poseScale));
+      const poseCtx = poseCanvas.getContext("2d", { willReadFrequently: true });
+      if (!poseCtx) {
+        throw new Error("Pose canvas context の作成に失敗しました");
+      }
+
+      const drawPoseInput = () => {
+        poseCtx.clearRect(0, 0, poseCanvas.width, poseCanvas.height);
+        poseCtx.drawImage(
+          tempCanvas,
+          0,
+          0,
+          tempCanvas.width,
+          tempCanvas.height,
+          0,
+          0,
+          poseCanvas.width,
+          poseCanvas.height
+        );
+      };
+
       // 🔧 バッチ処理のサイズ（メモリ解放のタイミング）
       const batchSize = isIPad ? 3 : (isMobile ? 5 : 20); // iPadは3フレームごと
       const timeoutDuration = isIPad ? 15000 : (isMobile ? 10000 : 5000); // iPadは15秒
 
-      // iPadの場合は画像の前処理を行う
-      if (isIPad) {
-        console.log('🔧 iPad: Applying image preprocessing for better detection...');
-        
-        // コントラストと明度を調整するための処理
-        const preprocessImage = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
-          const imageData = ctx.getImageData(0, 0, width, height);
-          const data = imageData.data;
-          
-          // コントラストを上げる
-          const contrast = 1.2;
-          const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
-          
-          for (let i = 0; i < data.length; i += 4) {
-            data[i] = factor * (data[i] - 128) + 128;     // R
-            data[i + 1] = factor * (data[i + 1] - 128) + 128; // G
-            data[i + 2] = factor * (data[i + 2] - 128) + 128; // B
-          }
-          
-          ctx.putImageData(imageData, 0, 0);
-        };
-        
-        // 最初のフレームを前処理
-        tempCtx.putImageData(framesRef.current[0], 0, 0);
-        preprocessImage(tempCtx, tempCanvas.width, tempCanvas.height);
-      }
-      
       // 最初のフレームで動作確認
       if (totalFrames > 0) {
         console.log('🧪 Testing pose estimation on first frame...');
-        if (!isIPad) {
-          tempCtx.putImageData(framesRef.current[0], 0, 0);
-        }
+        tempCtx.putImageData(framesRef.current[0], 0, 0);
         
         try {
           const testResult = await new Promise<any>((resolve, reject) => {
@@ -2558,7 +2557,8 @@ const [notesInput, setNotesInput] = useState<string>("");
               resolve(r);
             });
             
-            pose.send({ image: tempCanvas }).catch((e: any) => {
+            drawPoseInput();
+            pose.send({ image: poseCanvas }).catch((e: any) => {
               console.error('❌ Test frame send error:', e);
               reject(e);
             });
@@ -2588,21 +2588,6 @@ const [notesInput, setNotesInput] = useState<string>("");
         // 🔧 canvasを再利用（毎回作成しない）
         tempCtx.putImageData(frame, 0, 0);
         
-        // iPadの場合は各フレームで前処理
-        if (isIPad && i % 2 === 0) { // 偶数フレームのみ処理（負荷軽減）
-          const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-          const data = imageData.data;
-          
-          // 簡易的なコントラスト強調
-          for (let j = 0; j < data.length; j += 4) {
-            // 明るさを少し上げる
-            data[j] = Math.min(255, data[j] * 1.1);     // R
-            data[j + 1] = Math.min(255, data[j + 1] * 1.1); // G
-            data[j + 2] = Math.min(255, data[j + 2] * 1.1); // B
-          }
-          
-          tempCtx.putImageData(imageData, 0, 0);
-        }
 
         try {
           const result = await new Promise<any>((resolve, reject) => {
@@ -2622,7 +2607,8 @@ const [notesInput, setNotesInput] = useState<string>("");
               resolve(r);
             });
 
-            pose.send({ image: tempCanvas }).catch((e: any) => {
+            drawPoseInput();
+            pose.send({ image: poseCanvas }).catch((e: any) => {
               console.error(`❌ Frame ${i} send error:`, e);
               reject(e);
             });
@@ -2690,6 +2676,8 @@ const [notesInput, setNotesInput] = useState<string>("");
       // 🔧 tempCanvasの参照をクリア
       tempCanvas.width = 0;
       tempCanvas.height = 0;
+      poseCanvas.width = 0;
+      poseCanvas.height = 0;
 
       // MediaPipe Pose インスタンスを明示的にクローズ（メモリ解放）
       try {
@@ -2794,33 +2782,6 @@ const [notesInput, setNotesInput] = useState<string>("");
     // デバイス判定
     const isIPad = /iPad/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     const CONFIDENCE_THRESHOLD = isIPad ? 0.01 : 0.05;
-    
-    // iPadでの座標補正
-    let scaleX = 1;
-    let scaleY = 1;
-    let offsetX = 0;
-    let offsetY = 0;
-    
-    if (isIPad) {
-      // iPadでキャンバスの実際のサイズとCSSサイズの差を補正
-      const canvas = ctx.canvas;
-      const rect = canvas.getBoundingClientRect();
-      
-      // 実際の描画サイズとCSSサイズの比率を計算
-      if (rect.width > 0 && rect.height > 0) {
-        scaleX = canvas.width / rect.width;
-        scaleY = canvas.height / rect.height;
-        
-        // スケール値が異常な場合は1にリセット
-        if (scaleX > 10 || scaleY > 10 || scaleX < 0.1 || scaleY < 0.1) {
-          console.warn(`⚠️ iPad: Abnormal scale detected: scaleX=${scaleX}, scaleY=${scaleY}, resetting to 1`);
-          scaleX = 1;
-          scaleY = 1;
-        }
-      }
-      
-      console.log(`📐 iPad scale adjustment: scaleX=${scaleX.toFixed(2)}, scaleY=${scaleY.toFixed(2)}`);
-    }
     
     // 主要な関節の妥当性をチェック
     const isValidPose = () => {
@@ -6760,15 +6721,29 @@ const [notesInput, setNotesInput] = useState<string>("");
                   </div>
                   <div style={{ fontSize: '0.9rem', color: '#4b5563', lineHeight: '1.6' }}>
                     {calibrationType === 3 ? (
-                      <>
-                        <kbd style={{ background: '#e5e7eb', padding: '2px 6px', borderRadius: '4px' }}>Space</kbd>キーで<strong>接地</strong>→<strong>離地</strong>→<strong>接地</strong>→... の順にマーク<br/>
-                        <span style={{ color: '#059669' }}>💡 下のマーカー一覧から1歩目含めすべて修正可能</span>
-                      </>
+                      isMobile ? (
+                        <>
+                          📱 画面下の<strong>「接地 / 離地マーク」ボタン</strong>をタップして、<strong>接地</strong>→<strong>離地</strong>→<strong>接地</strong>→... の順にマーク<br/>
+                          <span style={{ color: '#059669' }}>💡 マーカー一覧から1歩目を含めて自由に修正できます</span>
+                        </>
+                      ) : (
+                        <>
+                          <kbd style={{ background: '#e5e7eb', padding: '2px 6px', borderRadius: '4px' }}>Space</kbd>キーで<strong>接地</strong>→<strong>離地</strong>→<strong>接地</strong>→... の順にマーク<br/>
+                          <span style={{ color: '#059669' }}>💡 下のマーカー一覧から1歩目含めすべて修正可能</span>
+                        </>
+                      )
                     ) : (
-                      <>
-                        <kbd style={{ background: '#e5e7eb', padding: '2px 6px', borderRadius: '4px' }}>Space</kbd>キーで<strong>接地</strong>をマーク（離地は自動検出）<br/>
-                        <span style={{ color: '#3b82f6' }}>💡 下のマーカー一覧から修正可能</span>
-                      </>
+                      isMobile ? (
+                        <>
+                          📱 画面下の<strong>「接地マーク」ボタン</strong>をタップすると<strong>接地</strong>を登録（離地は自動検出）<br/>
+                          <span style={{ color: '#3b82f6' }}>💡 マーカー一覧から修正できます</span>
+                        </>
+                      ) : (
+                        <>
+                          <kbd style={{ background: '#e5e7eb', padding: '2px 6px', borderRadius: '4px' }}>Space</kbd>キーで<strong>接地</strong>をマーク（離地は自動検出）<br/>
+                          <span style={{ color: '#3b82f6' }}>💡 下のマーカー一覧から修正可能</span>
+                        </>
+                      )
                     )}
                   </div>
                 </div>
