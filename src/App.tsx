@@ -3077,8 +3077,88 @@ const [notesInput, setNotesInput] = useState<string>("");
           console.warn("ステップサマリーの保存をスキップ:", e);
         }
       }
+      
+      // AIアドバイスと全データをJSONとしてセッションに保存
+      try {
+        // AI評価を生成
+        const runType = detectionMode === 1 ? "dash" : "full";
+        const analysisType: 'acceleration' | 'topSpeed' = runType === 'dash' ? 'acceleration' : 'topSpeed';
+        
+        // stepSummaryをrunningEvaluation用の型に変換
+        const evalSummary = {
+          avgContact: stepSummary?.avgContact ?? 0,
+          avgFlight: stepSummary?.avgFlight ?? 0,
+          avgStepPitch: stepSummary?.avgStepPitch ?? 0,
+          avgStride: stepSummary?.avgStride ?? 0,
+          avgSpeed: stepSummary?.avgSpeedMps ?? 0,
+        };
+        
+        const aiEvaluation = generateRunningEvaluation(stepMetrics, threePhaseAngles, evalSummary, analysisType, {
+          heightCm: athleteInfo?.height_cm,
+          gender: athleteInfo?.gender as 'male' | 'female' | 'other' | null,
+        });
+        
+        // 100m目標記録アドバイスを生成（目標記録が設定されている場合）
+        let targetAdvice = null;
+        if (athleteInfo?.target_record) {
+          const targetTime = parseFloat(athleteInfo.target_record);
+          if (!isNaN(targetTime) && targetTime > 0) {
+            targetAdvice = generateTargetAdvice(targetTime, analysisType);
+          }
+        }
+        
+        // すべての解析データをまとめる
+        const fullAnalysisData = {
+          // 基本情報
+          athleteInfo,
+          analysisType,
+          
+          // ステップデータ
+          stepMetrics,
+          stepSummary,
+          threePhaseAngles,
+          
+          // 解析結果
+          distance: distanceValue,
+          sectionTime,
+          avgSpeed,
+          
+          // フレーム情報
+          sectionRange,
+          usedTargetFps,
+          framesCount,
+          
+          // AI評価とアドバイス
+          aiEvaluation,
+          targetAdvice,
+          
+          // メタデータ
+          timestamp: new Date().toISOString(),
+          version: "1.0",
+        };
+        
+        // セッションテーブルに追加データとして保存
+        const { error: updateError } = await supabase
+          .from("running_analysis_sessions")
+          .update({
+            session_data: fullAnalysisData,
+            metadata: {
+              has_ai_evaluation: !!aiEvaluation,
+              has_target_advice: !!targetAdvice,
+              analysis_type: analysisType,
+              athlete_name: athleteInfo?.name || null,
+            }
+          })
+          .eq('id', sessionId);
+          
+        if (updateError) {
+          console.warn("追加データの保存に失敗:", updateError);
+        }
+      } catch (e) {
+        console.warn("AIアドバイスの保存をスキップ:", e);
+      }
 
-      setSaveResult(`✅ 保存成功: セッションID=${sessionId}\n詳細データも保存されました。`);
+      setSaveResult(`✅ 保存成功: セッションID=${sessionId}\n詳細データとAIアドバイスも保存されました。`);
     } catch (e: any) {
       console.error("保存エラー詳細:", e);
       // エラーメッセージを分かりやすく

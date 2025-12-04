@@ -105,8 +105,50 @@ const UserDashboardPage: React.FC = () => {
   };
 
   // 詳細表示
-  const handleViewDetails = (session: RunningAnalysisSession) => {
+  const handleViewDetails = async (session: RunningAnalysisSession) => {
     console.log("Viewing session details:", session);
+    
+    // 詳細データを取得（step_metrics, three_phase_angles, step_summaries）
+    let stepMetrics = null;
+    let threePhaseAngles = null;
+    let stepSummary = null;
+    
+    try {
+      // ステップメトリクスを取得
+      const { data: metricsData } = await supabase
+        .from('step_metrics')
+        .select('*')
+        .eq('session_id', session.id)
+        .order('step_index', { ascending: true });
+        
+      if (metricsData && metricsData.length > 0) {
+        stepMetrics = metricsData;
+      }
+      
+      // 3局面角度データを取得
+      const { data: anglesData } = await supabase
+        .from('three_phase_angles')
+        .select('*')
+        .eq('session_id', session.id)
+        .order('step_index', { ascending: true });
+        
+      if (anglesData && anglesData.length > 0) {
+        threePhaseAngles = anglesData;
+      }
+      
+      // ステップサマリーを取得
+      const { data: summaryData } = await supabase
+        .from('step_summaries')
+        .select('*')
+        .eq('session_id', session.id)
+        .single();
+        
+      if (summaryData) {
+        stepSummary = summaryData;
+      }
+    } catch (e) {
+      console.warn("詳細データの取得に失敗:", e);
+    }
     
     // セッション全体をローカルストレージに保存
     const sessionDataToView = {
@@ -139,6 +181,15 @@ const UserDashboardPage: React.FC = () => {
       // その他のメタデータ
       notes: session.notes,
       label: session.label,
+      
+      // 詳細データ（取得できた場合）
+      stepMetrics,
+      threePhaseAngles,
+      stepSummary,
+      
+      // JSONデータ（session_dataやmetadata）
+      session_data: session.session_data,
+      metadata: session.metadata,
       
       // すべてのデータ（念のため）
       _raw: session
@@ -314,14 +365,126 @@ const UserDashboardPage: React.FC = () => {
       </div>
     </div>
     
+    ${stepSummary ? `
+    <div class="section">
+      <h2>📊 ステップ統計サマリー</h2>
+      <div class="metrics">
+        <div class="metric-card">
+          <div class="metric-label">総ステップ数</div>
+          <div class="metric-value">${stepSummary.total_steps || '-'}<span class="metric-unit">歩</span></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">平均ストライド長</div>
+          <div class="metric-value">${stepSummary.avg_stride_length ? stepSummary.avg_stride_length.toFixed(2) : '-'}<span class="metric-unit">m</span></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">平均接地時間</div>
+          <div class="metric-value">${stepSummary.avg_contact_time ? (stepSummary.avg_contact_time * 1000).toFixed(1) : '-'}<span class="metric-unit">ms</span></div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">平均滞空時間</div>
+          <div class="metric-value">${stepSummary.avg_flight_time ? (stepSummary.avg_flight_time * 1000).toFixed(1) : '-'}<span class="metric-unit">ms</span></div>
+        </div>
+      </div>
+    </div>
+    ` : ''}
+    
+    ${stepMetrics && stepMetrics.length > 0 ? `
+    <div class="section">
+      <h2>👟 各ステップ詳細データ</h2>
+      <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr style="background: #f7fafc;">
+              <th style="padding: 8px; border: 1px solid #e2e8f0; text-align: left;">ステップ</th>
+              <th style="padding: 8px; border: 1px solid #e2e8f0; text-align: left;">接地時間</th>
+              <th style="padding: 8px; border: 1px solid #e2e8f0; text-align: left;">滞空時間</th>
+              <th style="padding: 8px; border: 1px solid #e2e8f0; text-align: left;">ストライド</th>
+              <th style="padding: 8px; border: 1px solid #e2e8f0; text-align: left;">速度</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${stepMetrics.slice(0, 10).map((metric, idx) => `
+            <tr>
+              <td style="padding: 8px; border: 1px solid #e2e8f0;">#${idx + 1}</td>
+              <td style="padding: 8px; border: 1px solid #e2e8f0;">${metric.contact_time ? (metric.contact_time * 1000).toFixed(1) : '-'} ms</td>
+              <td style="padding: 8px; border: 1px solid #e2e8f0;">${metric.flight_time ? (metric.flight_time * 1000).toFixed(1) : '-'} ms</td>
+              <td style="padding: 8px; border: 1px solid #e2e8f0;">${metric.stride_length ? metric.stride_length.toFixed(2) : '-'} m</td>
+              <td style="padding: 8px; border: 1px solid #e2e8f0;">${metric.speed ? metric.speed.toFixed(2) : '-'} m/s</td>
+            </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        ${stepMetrics.length > 10 ? `<p style="margin-top: 10px; color: #718096;">※ 最初の10ステップのみ表示（全${stepMetrics.length}ステップ中）</p>` : ''}
+      </div>
+    </div>
+    ` : ''}
+    
+    ${threePhaseAngles && threePhaseAngles.length > 0 ? `
+    <div class="section">
+      <h2>📐 3局面角度データ（代表値）</h2>
+      <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr style="background: #f7fafc;">
+              <th style="padding: 8px; border: 1px solid #e2e8f0;">局面</th>
+              <th style="padding: 8px; border: 1px solid #e2e8f0;">股関節</th>
+              <th style="padding: 8px; border: 1px solid #e2e8f0;">膝関節</th>
+              <th style="padding: 8px; border: 1px solid #e2e8f0;">足関節</th>
+              <th style="padding: 8px; border: 1px solid #e2e8f0;">体幹</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${['contact', 'mid_support', 'toe_off'].map(phase => {
+              const phaseData = threePhaseAngles.find(a => a.phase === phase);
+              const phaseName = phase === 'contact' ? '接地' : phase === 'mid_support' ? '中間支持' : '離地';
+              return phaseData ? `
+              <tr>
+                <td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold;">${phaseName}</td>
+                <td style="padding: 8px; border: 1px solid #e2e8f0;">${phaseData.hip_angle ? phaseData.hip_angle.toFixed(1) : '-'}°</td>
+                <td style="padding: 8px; border: 1px solid #e2e8f0;">${phaseData.knee_angle ? phaseData.knee_angle.toFixed(1) : '-'}°</td>
+                <td style="padding: 8px; border: 1px solid #e2e8f0;">${phaseData.ankle_angle ? phaseData.ankle_angle.toFixed(1) : '-'}°</td>
+                <td style="padding: 8px; border: 1px solid #e2e8f0;">${phaseData.trunk_angle ? phaseData.trunk_angle.toFixed(1) : '-'}°</td>
+              </tr>
+              ` : '';
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    ` : ''}
+    
+    ${session.session_data?.aiEvaluation ? `
+    <div class="section">
+      <h2>🤖 AI評価</h2>
+      <div style="background: #f0f9ff; border: 2px solid #0ea5e9; border-radius: 8px; padding: 20px; white-space: pre-wrap; line-height: 1.8; color: #0c4a6e;">
+${session.session_data.aiEvaluation.replace(/</g, '&lt;').replace(/>/g, '&gt;')}
+      </div>
+    </div>
+    ` : ''}
+    
+    ${session.session_data?.targetAdvice ? `
+    <div class="section">
+      <h2>🎯 100m目標記録アドバイス</h2>
+      <div style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px; padding: 20px; white-space: pre-wrap; line-height: 1.8; color: #78350f;">
+${session.session_data.targetAdvice.replace(/</g, '&lt;').replace(/>/g, '&gt;')}
+      </div>
+    </div>
+    ` : ''}
+    
     ${session.notes ? `
     <div class="section">
-      <h2>備考</h2>
+      <h2>📝 備考</h2>
       <p style="background: #f7fafc; padding: 16px; border-radius: 8px; line-height: 1.6;">
         ${session.notes}
       </p>
     </div>
     ` : ''}
+    
+    <div style="margin-top: 40px; padding-top: 20px; border-top: 2px solid #e2e8f0; text-align: center; color: #718096;">
+      <p>解析日時: ${new Date(session.created_at).toLocaleString('ja-JP')}</p>
+      <p>Session ID: ${session.id}</p>
+    </div>
   </div>
 </body>
 </html>
