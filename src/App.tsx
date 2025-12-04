@@ -24,6 +24,19 @@ type AthleteInfo = {
   target_record: string;
 };
 
+type AthleteOption = {
+  id: string;
+  full_name: string;
+  gender: "male" | "female" | "other" | null;
+  affiliation: string | null;
+  birthdate: string | null;
+  age: number | null;
+  height_cm: number | null;
+  current_record_s: number | null;
+  target_record_s: number | null;
+};
+
+
 /** Supabase の running_analysis_sessions の型 */
 type RunningAnalysisSession = {
   id: string;
@@ -475,21 +488,157 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     return () => window.removeEventListener('resize', checkDevice);
   }, []);
 
-  const [wizardStep, setWizardStep] = useState<WizardStep>(0);
-  const [selectedFps, setSelectedFps] = useState<60 | 120>(120); // FPS選択: 60 or 120（デフォルト120fps）
-  
-  // ------------ 測定者情報 -----------------
-  const [athleteInfo, setAthleteInfo] = useState<AthleteInfo>({
-    name: '',
-    age: null,
-    gender: null,
-    affiliation: '',
-    height_cm: null,
-    current_record: '',
-    target_record: '',
-  });
+const [wizardStep, setWizardStep] = useState<WizardStep>(0);
+  const [selectedFps, setSelectedFps] = useState<60 | 120>(120); // FPS選択: 60 or 120 (デフォルト120fps)
 
-  // ------------ 動画・フレーム関連 -----------------
+// ------------- 測定者情報 -------------------
+const initialAthleteInfo: AthleteInfo = {
+  name: "",
+  age: null,
+  gender: null,
+  affiliation: "",
+  height_cm: null,
+  current_record: "",
+  target_record: "",
+};
+
+const [athleteInfo, setAthleteInfo] =
+  useState<AthleteInfo>(initialAthleteInfo);
+
+// ------------- 登録済み選手リスト -------------------
+const [athleteOptions, setAthleteOptions] = useState<AthleteOption[]>([]);
+const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null);
+
+// ログイン中ユーザーの選手一覧を読み込む
+useEffect(() => {
+  const loadAthletes = async () => {
+    const { data: sessionData, error: sessionError } =
+      await supabase.auth.getSession();
+
+    if (sessionError || !sessionData.session) {
+      return;
+    }
+
+    const authUserId = sessionData.session.user.id;
+
+    const { data, error } = await supabase
+      .from("athletes")
+      .select(
+        "id, full_name, sex, birth_date, affiliation, height_cm, current_record_s, target_record_s"
+      )
+      .eq("owner_auth_user_id", authUserId)
+      .order("created_at", { ascending: false });
+
+
+    if (error) {
+      console.error("athletes の取得に失敗しました", error);
+      return;
+    }
+
+    const rows = data ?? [];
+
+  const options: AthleteOption[] = rows.map((row: any) => {
+  // ① 誕生日（birth_date など）から年齢を計算
+  const birthRaw: string | null =
+    row.birth_date ?? row.birthdate ?? row.date_of_birth ?? null;
+
+  let computedAge: number | null = null;
+  if (birthRaw) {
+    const birth = new Date(birthRaw);
+    if (!isNaN(birth.getTime())) {
+      const today = new Date();
+      computedAge = today.getFullYear() - birth.getFullYear();
+      const m = today.getMonth() - birth.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+        computedAge--;
+      }
+    }
+  }
+
+  // テーブルに age カラムがあればそちらを優先。なければ計算結果
+  const age: number | null =
+    typeof row.age === "number" ? row.age : computedAge;
+
+  // ② gender / sex を統一（日本語 → male / female / other に変換）
+  const rawGender: string | null =
+    (row.gender as string | null) ?? (row.sex as string | null) ?? null;
+
+  let genderValue: "male" | "female" | "other" | null = null;
+  if (rawGender) {
+    switch (rawGender) {
+      case "male":
+      case "男性":
+      case "男":
+        genderValue = "male";
+        break;
+      case "female":
+      case "女性":
+      case "女":
+        genderValue = "female";
+        break;
+      case "other":
+      case "その他":
+        genderValue = "other";
+        break;
+      default:
+        genderValue = "other";
+    }
+  }
+
+  // ③ affiliation も候補カラムを全部見て拾う
+  const affiliationValue: string | null =
+    row.affiliation ?? row.team ?? null;
+
+  return {
+    id: row.id,
+    full_name: row.full_name ?? "",
+    gender: genderValue,
+    affiliation: affiliationValue,
+    height_cm: row.height_cm ?? null,
+    current_record_s: row.current_record_s ?? null,
+    target_record_s: row.target_record_s ?? null,
+    birthdate: birthRaw,
+    age,
+  };
+});
+
+
+    setAthleteOptions(options);
+  };
+
+  loadAthletes();
+}, []);
+
+
+
+
+
+
+  // 選手をプルダウンで選んだら測定者情報フォームに反映
+  useEffect(() => {
+    if (!selectedAthleteId) return;
+
+    const selected = athleteOptions.find(
+      (a) => a.id === selectedAthleteId
+    );
+    if (!selected) return;
+
+    setAthleteInfo((prev) => ({
+      ...prev,
+      name: selected.full_name,
+      height_cm: selected.height_cm,
+      current_record:
+        selected.current_record_s != null
+          ? String(selected.current_record_s)
+          : "",
+      target_record:
+        selected.target_record_s != null
+          ? String(selected.target_record_s)
+          : "",
+    }));
+  }, [selectedAthleteId, athleteOptions]);
+
+  // ------------- 動画・フレーム関連 -------------------
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
 
@@ -510,9 +659,21 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
   const [usedTargetFps, setUsedTargetFps] = useState<number | null>(null);
 
+  // ===== 新しい解析を開始（リセット）ボタン用 =====
+
+
+
   // チュートリアル
   const [showTutorial, setShowTutorial] = useState(true); // 初回表示フラグ
   const [tutorialStep, setTutorialStep] = useState(0); // 現在のステップ
+  // 「次回から表示しない」が押されていなければ、初回だけ自動で開く
+  useEffect(() => {
+    const hidden = localStorage.getItem("runningAnalysisHideTutorial");
+    if (!hidden) {
+      setShowTutorial(true);
+    }
+  }, []);
+
 
   // 足元拡大
   const [footZoomEnabled, setFootZoomEnabled] = useState(false);
@@ -571,14 +732,56 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   }, [sectionStartFrame, sectionEndFrame, framesCount]);
 
   const sectionTime =
-    usedTargetFps && sectionRange.actualCount > 0
-      ? sectionRange.actualCount / usedTargetFps
-      : null;
+  usedTargetFps && sectionRange.actualCount > 0
+    ? sectionRange.actualCount / usedTargetFps
+    : null;
 
-  // ------------ 距離・速度・ラベル ---------------
-  const [distanceInput, setDistanceInput] = useState<string>("10");
-  const [labelInput, setLabelInput] = useState<string>("");
-  const [notesInput, setNotesInput] = useState<string>("");
+// ★ 新しい解析を最初からやり直すハンドラ
+const handleStartNewAnalysis = () => {
+  // ウィザードをステップ0に戻す
+  setWizardStep(0);
+
+  // 測定者情報をリセット
+  setSelectedAthleteId(null);
+  setAthleteInfo(initialAthleteInfo);
+
+  // 動画・フレーム関連
+  setVideoFile(null);
+  setVideoUrl(null);
+  setIsExtracting(false);
+  setExtractProgress(0);
+  setStatus("");               // ← あなたのコードは status / setStatus なのでここは setStatus
+
+  // フレーム情報
+  framesRef.current = [];      // ← setFrames は存在しないので、ref を直接クリア
+  setFramesCount(0);
+  setCurrentFrame(0);
+  setUsedTargetFps(null);
+
+  // 姿勢推定結果
+  setPoseResults([]);
+  setIsPoseProcessing(false);
+  setPoseProgress(0);
+
+  // 区間設定
+  setSectionStartFrame(null);
+  setSectionMidFrame(null);
+  setSectionEndFrame(null);
+
+  // 必要ならラインオフセット類もリセット（あれば）
+  // setStartLineOffset(0);
+  // setMidLineOffset(0);
+  // setEndLineOffset(0);
+
+  // 一番上までスクロール
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
+
+// ------------- 距離・速度・ラベル -------------
+const [distanceInput, setDistanceInput] = useState<string>("10");
+const [labelInput, setLabelInput] = useState<string>("");
+const [notesInput, setNotesInput] = useState<string>("");
+
   
   // ------------ 被検者の身長 ---------------
   const [subjectHeightInput, setSubjectHeightInput] = useState<string>("170");
@@ -4549,202 +4752,432 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   // ------------ ウィザードステップの内容 ------------
   const renderStepContent = () => {
     switch (wizardStep) {
-      case 0:
-        return (
-          <div className="wizard-content">
-            <div className="wizard-step-header">
-              <h2 className="wizard-step-title">ステップ 0: 測定者情報</h2>
-              <p className="wizard-step-desc">
-                測定者の基本情報を入力してください。身長や目標記録は解析に活用されます。
-              </p>
-            </div>
+          case 0:
+      return (
+        <div className="wizard-content">
+          <div className="wizard-step-header">
+            <h2 className="wizard-step-title">ステップ 0: 測定者情報</h2>
+            <p className="wizard-step-desc">
+              測定者の基本情報を入力してください。身長や目標記録は解析に活用されます。
+            </p>
+          </div>
 
-            <div style={{
-              maxWidth: '600px',
-              margin: '0 auto',
-              background: 'white',
-              padding: '32px',
-              borderRadius: '12px',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-            }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                {/* 氏名 */}
+          <div
+            style={{
+              maxWidth: "600px",
+              margin: "0 auto",
+              background: "white",
+              padding: "32px",
+              borderRadius: "12px",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+            }}
+          >
+            {/* 登録済み選手から選択 */}
+            {athleteOptions.length > 0 && (
+              <div
+                style={{
+                  marginBottom: "24px",
+                  padding: "12px 16px",
+                  borderRadius: "8px",
+                  background: "#f1f5f9",
+                  border: "1px solid #cbd5e1",
+                }}
+              >
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "13px",
+                    marginBottom: "6px",
+                    color: "#0f172a",
+                    fontWeight: 600,
+                  }}
+                >
+                  登録済みの選手から選ぶ
+                </label>
+                <select
+                  value={selectedAthleteId ?? ""}
+                  onChange={(e) => {
+                    const id = e.target.value || null;
+                    setSelectedAthleteId(id);
+
+                    // 「選択しない」を選んだらフォームをリセット
+                    if (!id) {
+                      setAthleteInfo({
+                        name: "",
+                        age: null,
+                        gender: null,
+                        affiliation: "",
+                        height_cm: null,
+                        current_record: "",
+                        target_record: "",
+                      });
+                      return;
+                    }
+
+                    const selected = athleteOptions.find(
+                      (ath) => ath.id === id
+                    );
+                    if (selected) {
+                      setAthleteInfo({
+                        name: selected.full_name ?? "",
+                        age: selected.age ?? null,
+                        gender:
+                          (selected.gender as
+                            | "male"
+                            | "female"
+                            | "other"
+                            | null) ?? null,
+                        affiliation: selected.affiliation ?? "",
+                        height_cm: selected.height_cm ?? null,
+                        current_record:
+                          selected.current_record_s != null
+                            ? String(selected.current_record_s)
+                            : "",
+                        target_record:
+                          selected.target_record_s != null
+                            ? String(selected.target_record_s)
+                            : "",
+                      });
+                    }
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px",
+                    fontSize: "0.95rem",
+                    borderRadius: "6px",
+                    border: "1px solid #cbd5e1",
+                    backgroundColor: "white",
+                  }}
+                >
+                  <option value="">
+                    （選択しない・新しい選手として入力）
+                  </option>
+                  {athleteOptions.map((ath) => (
+                    <option key={ath.id} value={ath.id}>
+                      {ath.full_name}
+                      {ath.current_record_s != null
+                        ? ` / 現在: ${ath.current_record_s.toFixed(2)} 秒`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+                <p
+                  style={{
+                    fontSize: "0.8rem",
+                    color: "#64748b",
+                    marginTop: "4px",
+                  }}
+                >
+                  選手を選択すると、氏名や身長・記録が下のフォームに自動入力されます。
+                </p>
+              </div>
+            )}
+
+            {/* ここから下は従来のフォーム部分 */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "24px",
+              }}
+            >
+              {/* 氏名 */}
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontWeight: "bold",
+                    marginBottom: "8px",
+                    color: "#374151",
+                  }}
+                >
+                  氏名 <span style={{ color: "#ef4444" }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  value={athleteInfo.name}
+                  onChange={(e) =>
+                    setAthleteInfo({ ...athleteInfo, name: e.target.value })
+                  }
+                  placeholder="山田 太郎"
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    fontSize: "1rem",
+                    border: "1px solid #d1d5db",
+                    borderRadius: "8px",
+                    outline: "none",
+                  }}
+                />
+              </div>
+
+              {/* 年齢と性別 */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "16px",
+                }}
+              >
                 <div>
-                  <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', color: '#374151' }}>
-                    氏名 <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={athleteInfo.name}
-                    onChange={(e) => setAthleteInfo({ ...athleteInfo, name: e.target.value })}
-                    placeholder="山田 太郎"
+                  <label
                     style={{
-                      width: '100%',
-                      padding: '12px',
-                      fontSize: '1rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '8px',
-                      outline: 'none'
+                      display: "block",
+                      fontWeight: "bold",
+                      marginBottom: "8px",
+                      color: "#374151",
                     }}
-                  />
-                </div>
-
-                {/* 年齢と性別 */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', color: '#374151' }}>
-                      年齢 <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <input
-                      type="number"
-                      value={athleteInfo.age ?? ''}
-                      onChange={(e) => setAthleteInfo({ ...athleteInfo, age: e.target.value ? Number(e.target.value) : null })}
-                      placeholder="25"
-                      min="1"
-                      max="120"
-                      style={{
-                        width: '100%',
-                        padding: '12px',
-                        fontSize: '1rem',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '8px',
-                        outline: 'none'
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', color: '#374151' }}>
-                      性別 <span style={{ color: '#ef4444' }}>*</span>
-                    </label>
-                    <select
-                      value={athleteInfo.gender ?? ''}
-                      onChange={(e) => setAthleteInfo({ ...athleteInfo, gender: e.target.value as 'male' | 'female' | 'other' | null })}
-                      style={{
-                        width: '100%',
-                        padding: '12px',
-                        fontSize: '1rem',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '8px',
-                        outline: 'none'
-                      }}
-                    >
-                      <option value="">選択してください</option>
-                      <option value="male">男性</option>
-                      <option value="female">女性</option>
-                      <option value="other">その他</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* 所属 */}
-                <div>
-                  <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', color: '#374151' }}>
-                    所属（任意）
-                  </label>
-                  <input
-                    type="text"
-                    value={athleteInfo.affiliation}
-                    onChange={(e) => setAthleteInfo({ ...athleteInfo, affiliation: e.target.value })}
-                    placeholder="〇〇高校陸上部"
-                    style={{
-                      width: '100%',
-                      padding: '12px',
-                      fontSize: '1rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '8px',
-                      outline: 'none'
-                    }}
-                  />
-                </div>
-
-                {/* 身長 */}
-                <div>
-                  <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', color: '#374151' }}>
-                    身長（cm） <span style={{ color: '#ef4444' }}>*</span>
+                  >
+                    年齢 <span style={{ color: "#ef4444" }}>*</span>
                   </label>
                   <input
                     type="number"
-                    value={athleteInfo.height_cm ?? ''}
-                    onChange={(e) => setAthleteInfo({ ...athleteInfo, height_cm: e.target.value ? Number(e.target.value) : null })}
-                    placeholder="170"
-                    min="100"
-                    max="250"
-                    step="0.1"
+                    value={athleteInfo.age ?? ""}
+                    onChange={(e) =>
+                      setAthleteInfo({
+                        ...athleteInfo,
+                        age: e.target.value
+                          ? Number(e.target.value)
+                          : null,
+                      })
+                    }
+                    placeholder="25"
+                    min="1"
+                    max="120"
                     style={{
-                      width: '100%',
-                      padding: '12px',
-                      fontSize: '1rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '8px',
-                      outline: 'none'
+                      width: "100%",
+                      padding: "12px",
+                      fontSize: "1rem",
+                      border: "1px solid #d1d5db",
+                      borderRadius: "8px",
+                      outline: "none",
                     }}
                   />
-                  <p style={{ fontSize: '0.85rem', color: '#6b7280', marginTop: '4px' }}>
-                    ※ ストライド比の計算に使用されます
-                  </p>
                 </div>
 
-                {/* 現在の記録と目標記録 */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', color: '#374151' }}>
-                      現在の記録（任意）
-                    </label>
-                    <input
-                      type="text"
-                      value={athleteInfo.current_record}
-                      onChange={(e) => setAthleteInfo({ ...athleteInfo, current_record: e.target.value })}
-                      placeholder="12.50秒"
-                      style={{
-                        width: '100%',
-                        padding: '12px',
-                        fontSize: '1rem',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '8px',
-                        outline: 'none'
-                      }}
-                    />
-                  </div>
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      fontWeight: "bold",
+                      marginBottom: "8px",
+                      color: "#374151",
+                    }}
+                  >
+                    性別 <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <select
+                    value={athleteInfo.gender ?? ""}
+                    onChange={(e) =>
+                      setAthleteInfo({
+                        ...athleteInfo,
+                        gender: e.target.value
+                          ? (e.target.value as
+                              | "male"
+                              | "female"
+                              | "other")
+                          : null,
+                      })
+                    }
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      fontSize: "1rem",
+                      border: "1px solid #d1d5db",
+                      borderRadius: "8px",
+                      outline: "none",
+                    }}
+                  >
+                    <option value="">選択してください</option>
+                    <option value="male">男性</option>
+                    <option value="female">女性</option>
+                    <option value="other">その他</option>
+                  </select>
+                </div>
+              </div>
 
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', color: '#374151' }}>
-                      目標記録（任意）
-                    </label>
-                    <input
-                      type="text"
-                      value={athleteInfo.target_record}
-                      onChange={(e) => setAthleteInfo({ ...athleteInfo, target_record: e.target.value })}
-                      placeholder="12.00秒"
-                      style={{
-                        width: '100%',
-                        padding: '12px',
-                        fontSize: '1rem',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '8px',
-                        outline: 'none'
-                      }}
-                    />
-                    <p style={{ fontSize: '0.85rem', color: '#6b7280', marginTop: '4px' }}>
-                      ※ AIアドバイスに使用されます
-                    </p>
-                  </div>
+              {/* 所属 */}
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontWeight: "bold",
+                    marginBottom: "8px",
+                    color: "#374151",
+                  }}
+                >
+                  所属（任意）
+                </label>
+                <input
+                  type="text"
+                  value={athleteInfo.affiliation}
+                  onChange={(e) =>
+                    setAthleteInfo({
+                      ...athleteInfo,
+                      affiliation: e.target.value,
+                    })
+                  }
+                  placeholder="〇〇高校陸上部"
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    fontSize: "1rem",
+                    border: "1px solid #d1d5db",
+                    borderRadius: "8px",
+                    outline: "none",
+                  }}
+                />
+              </div>
+
+              {/* 身長 */}
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontWeight: "bold",
+                    marginBottom: "8px",
+                    color: "#374151",
+                  }}
+                >
+                  身長（cm） <span style={{ color: "#ef4444" }}>*</span>
+                </label>
+                <input
+                  type="number"
+                  value={athleteInfo.height_cm ?? ""}
+                  onChange={(e) =>
+                    setAthleteInfo({
+                      ...athleteInfo,
+                      height_cm: e.target.value
+                        ? Number(e.target.value)
+                        : null,
+                    })
+                  }
+                  placeholder="170"
+                  min="100"
+                  max="250"
+                  step="0.1"
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    fontSize: "1rem",
+                    border: "1px solid #d1d5db",
+                    borderRadius: "8px",
+                    outline: "none",
+                  }}
+                />
+                <p
+                  style={{
+                    fontSize: "0.85rem",
+                    color: "#6b7280",
+                    marginTop: "4px",
+                  }}
+                >
+                  ※ ストライド比の計算に使用されます
+                </p>
+              </div>
+
+              {/* 現在の記録と目標記録 */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "16px",
+                }}
+              >
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      fontWeight: "bold",
+                      marginBottom: "8px",
+                      color: "#374151",
+                    }}
+                  >
+                    現在の記録（任意）
+                  </label>
+                  <input
+                    type="text"
+                    value={athleteInfo.current_record}
+                    onChange={(e) =>
+                      setAthleteInfo({
+                        ...athleteInfo,
+                        current_record: e.target.value,
+                      })
+                    }
+                    placeholder="12.50秒"
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      fontSize: "1rem",
+                      border: "1px solid #d1d5db",
+                      borderRadius: "8px",
+                      outline: "none",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      fontWeight: "bold",
+                      marginBottom: "8px",
+                      color: "#374151",
+                    }}
+                  >
+                    目標記録（任意）
+                  </label>
+                  <input
+                    type="text"
+                    value={athleteInfo.target_record}
+                    onChange={(e) =>
+                      setAthleteInfo({
+                        ...athleteInfo,
+                        target_record: e.target.value,
+                      })
+                    }
+                    placeholder="12.00秒"
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      fontSize: "1rem",
+                      border: "1px solid #d1d5db",
+                      borderRadius: "8px",
+                      outline: "none",
+                    }}
+                  />
+                  <p
+                    style={{
+                      fontSize: "0.85rem",
+                      color: "#6b7280",
+                      marginTop: "4px",
+                    }}
+                  >
+                    ※ AIアドバイスに使用されます
+                  </p>
                 </div>
               </div>
             </div>
-
-            <div className="wizard-nav">
-              <div></div>
-              <button
-                className="btn-primary-large"
-                onClick={() => setWizardStep(1)}
-                disabled={!athleteInfo.name || !athleteInfo.age || !athleteInfo.gender || !athleteInfo.height_cm}
-              >
-                次へ：動画アップロード
-              </button>
-            </div>
           </div>
-        );
+
+          <div className="wizard-nav">
+            <div></div>
+            <button
+              className="btn-primary-large"
+              onClick={() => setWizardStep(1)}
+              disabled={
+                !athleteInfo.name ||
+                !athleteInfo.age ||
+                !athleteInfo.gender ||
+                !athleteInfo.height_cm
+              }
+            >
+              次へ：動画アップロード
+            </button>
+          </div>
+        </div>
+      );
+
 
       case 1:
         return (
@@ -7996,59 +8429,97 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
         </div>
       )}
 
-      {/* ヘッダー - ステップ1のみ表示 */}
-      {wizardStep === 1 && (
-        <header className="app-header-new">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-            <div>
-              <h1 className="app-title-new">🏃‍♂️ Running Analysis Studio</h1>
-              <p className="app-subtitle-new">
-                フレーム抽出・姿勢推定・関節角度とステップ指標を一括解析
-              </p>
-            </div>
-            <div>
-              {userProfile && (
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  <button
-                    onClick={() => {
-                      setShowTutorial(true);
-                      setTutorialStep(0);
-                    }}
-                    style={{
-                      padding: '8px 16px',
-                      borderRadius: '8px',
-                      border: '2px solid rgba(255,255,255,0.3)',
-                      background: 'rgba(255,255,255,0.1)',
-                      color: 'white',
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                      fontSize: '0.9rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
-                    }}
-                  >
-                    <span>❓</span>
-                    <span>使い方</span>
-                  </button>
-                  <span style={{ fontSize: '0.9rem', opacity: 0.8 }}>
-                    👤 {userProfile.name}
-                  </span>
-                  <span style={{ 
-                    fontSize: '0.75rem', 
-                    padding: '4px 8px', 
-                    background: 'rgba(255,255,255,0.2)', 
-                    borderRadius: '4px',
-                    fontWeight: 'bold'
-                  }}>
-                    デベロッパー版 (12月末まで無料)
-                  </span>
-                </div>
-              )}
-            </div>
+    {/* ヘッダー - ステップ1のみ表示 */}
+    {wizardStep === 1 && (
+      <header className="app-header-new">
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            width: "100%",
+          }}
+        >
+          {/* 左側：タイトル */}
+          <div>
+            <h1 className="app-title-new">🏃 Running Analysis Studio</h1>
+            <p className="app-subtitle-new">
+              フレーム抽出・姿勢推定・関節角度とステップ指標を一括解析
+            </p>
           </div>
-        </header>
-      )}
+
+          {/* 右側：チュートリアル＋新しい解析ボタン＋ユーザー名 */}
+          {userProfile && (
+            <div
+              style={{
+                display: "flex",
+                gap: "12px",
+                alignItems: "center",
+              }}
+            >
+              {/* 使い方ボタン（チュートリアル） */}
+              <button
+                onClick={() => {
+                  setShowTutorial(true);
+                  setTutorialStep(0);
+                }}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "8px",
+                  border: "2px solid rgba(59,130,246,0.3)",
+                  background: "rgba(59,130,246,0.1)",
+                  color: "white",
+                  fontWeight: "bold",
+                  fontSize: "0.9rem",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <span>？</span>
+                <span>使い方</span>
+              </button>
+
+              {/* ★ 新しい解析を開始ボタン */}
+              <button
+                type="button"
+                onClick={handleStartNewAnalysis}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 999,
+                  border: "none",
+                  background:
+                    "linear-gradient(135deg, #22c55e 0%, #4ade80 50%, #22c55e 100%)",
+                  color: "white",
+                  fontSize: "0.9rem",
+                  fontWeight: 600,
+                  boxShadow: "0 8px 20px rgba(34,197,94,0.4)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                ＋ 新しい解析を開始
+              </button>
+
+              {/* ユーザー名表示（おまけ） */}
+              <span
+                style={{
+                  fontSize: "0.9rem",
+                  color: "#0f172a",
+                  opacity: 0.8,
+                }}
+              >
+                {userProfile.name}
+              </span>
+            </div>
+          )}
+        </div>
+      </header>
+    )}
+
 
       {/* ステップインジケーター */}
       <div className="step-progress">
