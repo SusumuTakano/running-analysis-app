@@ -3778,7 +3778,31 @@ const [notesInput, setNotesInput] = useState<string>("");
     canvas.width = w;
     canvas.height = h;
     
-    // canvas.style.widthとcanvas.style.heightは削除（CSSに任せる）
+    // iPad/タブレット対応: CSSサイズを明示的に設定してアスペクト比を保持
+    // これによりobject-fit: containと同様の効果を得ながら、座標のズレを防ぐ
+    const containerWidth = canvas.parentElement?.clientWidth || window.innerWidth;
+    const containerHeight = window.innerHeight * 0.4; // 画面の40%
+    
+    const videoAspectRatio = w / h;
+    const containerAspectRatio = containerWidth / containerHeight;
+    
+    let displayWidth, displayHeight;
+    
+    if (videoAspectRatio > containerAspectRatio) {
+      // 動画の方が横長: 幅に合わせる
+      displayWidth = containerWidth;
+      displayHeight = containerWidth / videoAspectRatio;
+    } else {
+      // 動画の方が縦長: 高さに合わせる
+      displayHeight = containerHeight;
+      displayWidth = containerHeight * videoAspectRatio;
+    }
+    
+    // CSSサイズを設定（これによりスケルトンの座標が正しく表示される）
+    canvas.style.width = `${displayWidth}px`;
+    canvas.style.height = `${displayHeight}px`;
+    canvas.style.maxWidth = '100%';
+    canvas.style.maxHeight = '40vh';
 
     if (!footZoomEnabled) {
       ctx.drawImage(offscreen, 0, 0, w, h, 0, 0, w, h);

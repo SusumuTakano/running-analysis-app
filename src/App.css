@@ -375,6 +375,9 @@ body {
   /* iPad/ノートPC対応: 最大高さを制限 */
   max-height: 50vh; /* 画面の50%に制限 */
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* iPad/タブレット専用のスタイル (768px〜1024px) */
@@ -396,6 +399,9 @@ body {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
     border-radius: 8px;
     overflow: hidden;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
   
   .wizard-step-5 .wizard-content,
@@ -428,6 +434,9 @@ body {
     pointer-events: auto; /* クリック可能に */
     background: rgba(0, 0, 0, 0.95); /* 半透明背景 */
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); /* 影を追加 */
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
 
   /* ステップ5, 6: キャンバス固定時のコンテンツ余白調整 */
@@ -439,10 +448,11 @@ body {
 
 .preview-canvas {
   display: block;
-  width: 100%;
-  height: auto;
+  /* width: 100%; を削除 - JSで制御 */
+  /* height: auto; を削除 - JSで制御 */
   max-height: 40vh; /* iPad/ノートPC対応: 画面の40%に制限 */
-  object-fit: contain; /* アスペクト比を保持 */
+  /* object-fit: contain; を削除 - 座標のズレを防ぐため */
+  margin: 0 auto; /* 中央配置 */
 }
 
 /* モバイル用の追加調整 */
