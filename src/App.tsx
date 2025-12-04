@@ -2387,35 +2387,103 @@ const [notesInput, setNotesInput] = useState<string>("");
     setStatus("姿勢推定を実行中...");
 
     try {
+      // MediaPipeの存在を詳細にチェック
+      console.log('🔍 Checking MediaPipe availability...');
+      console.log('window.Pose:', typeof (window as any).Pose);
+      console.log('User Agent:', navigator.userAgent);
+      
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const Pose: any = (window as any).Pose;
 
       if (!Pose) {
-        throw new Error("MediaPipe Poseライブラリが読み込まれていません。");
+        // iPadでMediaPipeが読み込まれていない場合の詳細エラー
+        console.error('❌ MediaPipe Pose not found!');
+        console.error('Available globals:', Object.keys(window).filter(k => k.toLowerCase().includes('pose') || k.toLowerCase().includes('media')));
+        
+        // MediaPipeの手動読み込みを試みる
+        if (/iPad|iPhone/i.test(navigator.userAgent)) {
+          console.log('🔄 Attempting to reload MediaPipe for iOS...');
+          
+          // スクリプトの再読み込みを試みる
+          await new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.min.js';
+            script.crossOrigin = 'anonymous';
+            script.onload = () => {
+              console.log('✅ MediaPipe Pose script reloaded');
+              resolve(true);
+            };
+            script.onerror = (e) => {
+              console.error('❌ Failed to reload MediaPipe:', e);
+              reject(e);
+            };
+            document.head.appendChild(script);
+          });
+          
+          // 少し待ってから再チェック
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const PoseRetry: any = (window as any).Pose;
+          
+          if (!PoseRetry) {
+            throw new Error("MediaPipe PoseライブラリがiPadで読み込めませんでした。ページをリロードしてください。");
+          }
+        } else {
+          throw new Error("MediaPipe Poseライブラリが読み込まれていません。");
+        }
       }
 
-      const pose = new Pose({
-        locateFile: (file: string) =>
-          `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
+      // 再度Poseを取得（リロードした場合のため）
+      const PoseClass: any = (window as any).Pose || Pose;
+      
+      console.log('🎯 Creating Pose instance...');
+      const pose = new PoseClass({
+        locateFile: (file: string) => {
+          const url = `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`;
+          console.log(`📁 Loading MediaPipe file: ${file} from ${url}`);
+          return url;
+        },
       });
 
       // 🚀 デバイスに応じた設定（メモリ効率を考慮）
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const isIPad = /iPad/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
       
-      // 🔧 モバイルではメモリ節約のため精度を調整
-      const modelComplexity = isMobile ? 1 : 2; // モバイルは中精度、デスクトップは高精度
+      // 🔧 iPadは特別な設定を使用
+      let modelComplexity = 2; // デフォルトは高精度
+      let minConfidence = 0.1;
+      
+      if (isIPad) {
+        console.log('📱 iPad detected - using optimized settings');
+        modelComplexity = 0; // iPadは最軽量モデル
+        minConfidence = 0.3; // 閾値を少し上げる
+      } else if (isMobile) {
+        console.log('📱 Mobile device detected');
+        modelComplexity = 1; // モバイルは中精度
+        minConfidence = 0.2;
+      } else {
+        console.log('💻 Desktop detected');
+      }
+      
+      console.log(`🔧 Setting options: modelComplexity=${modelComplexity}, confidence=${minConfidence}`);
       
       pose.setOptions({
         modelComplexity: modelComplexity,
         smoothLandmarks: true,
         enableSegmentation: false,
         smoothSegmentation: false,
-        minDetectionConfidence: 0.1, // 検出閾値（メモリ効率のため少し上げる）
-        minTrackingConfidence: 0.1,
+        minDetectionConfidence: minConfidence,
+        minTrackingConfidence: minConfidence,
+        selfieMode: false, // 明示的にselfieモードを無効化
       });
       
-      console.log(`🚀 Pose estimation config: mobile=${isMobile}, iOS=${isIOS}, modelComplexity=${modelComplexity}`);
+      console.log(`🚀 Pose estimation config: mobile=${isMobile}, iOS=${isIOS}, iPad=${isIPad}, modelComplexity=${modelComplexity}`);
+      
+      // iPadでは初期化を待つ
+      if (isIPad) {
+        console.log('⏳ Waiting for MediaPipe initialization on iPad...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
 
       const results: (FramePoseData | null)[] = [];
       const totalFrames = framesRef.current.length;
@@ -2435,6 +2503,38 @@ const [notesInput, setNotesInput] = useState<string>("");
       const batchSize = isMobile ? 5 : 20; // モバイルは5フレームごと、デスクトップは20フレームごと
       const timeoutDuration = isMobile ? 10000 : 5000; // モバイルは10秒、デスクトップは5秒
 
+      // 最初のフレームで動作確認
+      if (totalFrames > 0) {
+        console.log('🧪 Testing pose estimation on first frame...');
+        tempCtx.putImageData(framesRef.current[0], 0, 0);
+        
+        try {
+          const testResult = await new Promise<any>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              console.error('❌ Test frame timeout');
+              reject(new Error("Test timeout"));
+            }, 5000);
+            
+            pose.onResults((r: any) => {
+              clearTimeout(timeout);
+              console.log('✅ Test frame processed:', r.poseLandmarks ? 'Landmarks found' : 'No landmarks');
+              resolve(r);
+            });
+            
+            pose.send({ image: tempCanvas }).catch((e: any) => {
+              console.error('❌ Test frame send error:', e);
+              reject(e);
+            });
+          });
+          
+          if (!testResult.poseLandmarks) {
+            console.warn('⚠️ First frame test: No landmarks detected');
+          }
+        } catch (e) {
+          console.error('❌ First frame test failed:', e);
+        }
+      }
+
       for (let i = 0; i < totalFrames; i++) {
         const frame = framesRef.current[i];
 
@@ -2444,16 +2544,25 @@ const [notesInput, setNotesInput] = useState<string>("");
         try {
           const result = await new Promise<any>((resolve, reject) => {
             const timeout = setTimeout(
-              () => reject(new Error("Timeout")),
+              () => {
+                console.warn(`⏱️ Frame ${i} timeout after ${timeoutDuration}ms`);
+                reject(new Error("Timeout"));
+              },
               timeoutDuration
             );
 
             pose.onResults((r: any) => {
               clearTimeout(timeout);
+              if (i < 3 || i % 50 === 0) {
+                console.log(`📊 Frame ${i} result:`, r.poseLandmarks ? 'Detected' : 'Not detected');
+              }
               resolve(r);
             });
 
-            pose.send({ image: tempCanvas }).catch(reject);
+            pose.send({ image: tempCanvas }).catch((e: any) => {
+              console.error(`❌ Frame ${i} send error:`, e);
+              reject(e);
+            });
           });
 
           if (result.poseLandmarks) {
