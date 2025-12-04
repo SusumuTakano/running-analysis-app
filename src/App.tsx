@@ -2449,32 +2449,40 @@ const [notesInput, setNotesInput] = useState<string>("");
       const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
       const isIPad = /iPad/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
       
-      // 🔧 iPadは特別な設定を使用
+      // 🔧 iPad専用の最適化設定
       let modelComplexity = 2; // デフォルトは高精度
-      let minConfidence = 0.1;
+      let minDetectionConfidence = 0.1;
+      let minTrackingConfidence = 0.1;
+      let staticImageMode = false;
       
       if (isIPad) {
-        console.log('📱 iPad detected - using optimized settings');
-        modelComplexity = 0; // iPadは最軽量モデル
-        minConfidence = 0.3; // 閾値を少し上げる
+        console.log('📱 iPad detected - using ULTRA OPTIMIZED settings for maximum recognition');
+        modelComplexity = 1; // 中精度モデル（0だと精度が低すぎる）
+        minDetectionConfidence = 0.05; // 検出閾値を極限まで下げる
+        minTrackingConfidence = 0.05; // トラッキング閾値も極限まで下げる
+        staticImageMode = true; // 静止画モードで各フレーム独立処理
       } else if (isMobile) {
         console.log('📱 Mobile device detected');
         modelComplexity = 1; // モバイルは中精度
-        minConfidence = 0.2;
+        minDetectionConfidence = 0.1;
+        minTrackingConfidence = 0.1;
       } else {
         console.log('💻 Desktop detected');
+        minDetectionConfidence = 0.05; // PCでも閾値を下げる
+        minTrackingConfidence = 0.05;
       }
       
-      console.log(`🔧 Setting options: modelComplexity=${modelComplexity}, confidence=${minConfidence}`);
+      console.log(`🔧 Setting options: modelComplexity=${modelComplexity}, detection=${minDetectionConfidence}, tracking=${minTrackingConfidence}`);
       
       pose.setOptions({
         modelComplexity: modelComplexity,
-        smoothLandmarks: true,
+        smoothLandmarks: !isIPad, // iPadではスムージングを無効化
         enableSegmentation: false,
         smoothSegmentation: false,
-        minDetectionConfidence: minConfidence,
-        minTrackingConfidence: minConfidence,
-        selfieMode: false, // 明示的にselfieモードを無効化
+        minDetectionConfidence: minDetectionConfidence,
+        minTrackingConfidence: minTrackingConfidence,
+        selfieMode: false,
+        staticImageMode: staticImageMode, // iPadでは静止画モードを使用
       });
       
       console.log(`🚀 Pose estimation config: mobile=${isMobile}, iOS=${isIOS}, iPad=${isIPad}, modelComplexity=${modelComplexity}`);
@@ -2500,20 +2508,49 @@ const [notesInput, setNotesInput] = useState<string>("");
       }
 
       // 🔧 バッチ処理のサイズ（メモリ解放のタイミング）
-      const batchSize = isMobile ? 5 : 20; // モバイルは5フレームごと、デスクトップは20フレームごと
-      const timeoutDuration = isMobile ? 10000 : 5000; // モバイルは10秒、デスクトップは5秒
+      const batchSize = isIPad ? 3 : (isMobile ? 5 : 20); // iPadは3フレームごと
+      const timeoutDuration = isIPad ? 15000 : (isMobile ? 10000 : 5000); // iPadは15秒
 
+      // iPadの場合は画像の前処理を行う
+      if (isIPad) {
+        console.log('🔧 iPad: Applying image preprocessing for better detection...');
+        
+        // コントラストと明度を調整するための処理
+        const preprocessImage = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+          const imageData = ctx.getImageData(0, 0, width, height);
+          const data = imageData.data;
+          
+          // コントラストを上げる
+          const contrast = 1.2;
+          const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+          
+          for (let i = 0; i < data.length; i += 4) {
+            data[i] = factor * (data[i] - 128) + 128;     // R
+            data[i + 1] = factor * (data[i + 1] - 128) + 128; // G
+            data[i + 2] = factor * (data[i + 2] - 128) + 128; // B
+          }
+          
+          ctx.putImageData(imageData, 0, 0);
+        };
+        
+        // 最初のフレームを前処理
+        tempCtx.putImageData(framesRef.current[0], 0, 0);
+        preprocessImage(tempCtx, tempCanvas.width, tempCanvas.height);
+      }
+      
       // 最初のフレームで動作確認
       if (totalFrames > 0) {
         console.log('🧪 Testing pose estimation on first frame...');
-        tempCtx.putImageData(framesRef.current[0], 0, 0);
+        if (!isIPad) {
+          tempCtx.putImageData(framesRef.current[0], 0, 0);
+        }
         
         try {
           const testResult = await new Promise<any>((resolve, reject) => {
             const timeout = setTimeout(() => {
               console.error('❌ Test frame timeout');
               reject(new Error("Test timeout"));
-            }, 5000);
+            }, isIPad ? 10000 : 5000);
             
             pose.onResults((r: any) => {
               clearTimeout(timeout);
@@ -2529,6 +2566,16 @@ const [notesInput, setNotesInput] = useState<string>("");
           
           if (!testResult.poseLandmarks) {
             console.warn('⚠️ First frame test: No landmarks detected');
+            if (isIPad) {
+              console.log('🔄 iPad: Retrying with different settings...');
+              // 設定を変更して再試行
+              pose.setOptions({
+                modelComplexity: 0, // 最軽量モデルに変更
+                staticImageMode: true,
+                minDetectionConfidence: 0.01,
+                minTrackingConfidence: 0.01,
+              });
+            }
           }
         } catch (e) {
           console.error('❌ First frame test failed:', e);
@@ -2540,6 +2587,22 @@ const [notesInput, setNotesInput] = useState<string>("");
 
         // 🔧 canvasを再利用（毎回作成しない）
         tempCtx.putImageData(frame, 0, 0);
+        
+        // iPadの場合は各フレームで前処理
+        if (isIPad && i % 2 === 0) { // 偶数フレームのみ処理（負荷軽減）
+          const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+          const data = imageData.data;
+          
+          // 簡易的なコントラスト強調
+          for (let j = 0; j < data.length; j += 4) {
+            // 明るさを少し上げる
+            data[j] = Math.min(255, data[j] * 1.1);     // R
+            data[j + 1] = Math.min(255, data[j + 1] * 1.1); // G
+            data[j + 2] = Math.min(255, data[j + 2] * 1.1); // B
+          }
+          
+          tempCtx.putImageData(imageData, 0, 0);
+        }
 
         try {
           const result = await new Promise<any>((resolve, reject) => {
@@ -2728,12 +2791,39 @@ const [notesInput, setNotesInput] = useState<string>("");
     width: number,
     height: number
   ) => {
-    // 🔥 信頼度のしきい値を下げて姿勢推定率を向上
-    const CONFIDENCE_THRESHOLD = 0.1; // 🔥 姿勢認識率向上のため低めに設定
+    // デバイス判定
+    const isIPad = /iPad/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const CONFIDENCE_THRESHOLD = isIPad ? 0.01 : 0.05;
+    
+    // iPadでの座標補正
+    let scaleX = 1;
+    let scaleY = 1;
+    let offsetX = 0;
+    let offsetY = 0;
+    
+    if (isIPad) {
+      // iPadでキャンバスの実際のサイズとCSSサイズの差を補正
+      const canvas = ctx.canvas;
+      const rect = canvas.getBoundingClientRect();
+      
+      // 実際の描画サイズとCSSサイズの比率を計算
+      if (rect.width > 0 && rect.height > 0) {
+        scaleX = canvas.width / rect.width;
+        scaleY = canvas.height / rect.height;
+        
+        // スケール値が異常な場合は1にリセット
+        if (scaleX > 10 || scaleY > 10 || scaleX < 0.1 || scaleY < 0.1) {
+          console.warn(`⚠️ iPad: Abnormal scale detected: scaleX=${scaleX}, scaleY=${scaleY}, resetting to 1`);
+          scaleX = 1;
+          scaleY = 1;
+        }
+      }
+      
+      console.log(`📐 iPad scale adjustment: scaleX=${scaleX.toFixed(2)}, scaleY=${scaleY.toFixed(2)}`);
+    }
     
     // 主要な関節の妥当性をチェック
     const isValidPose = () => {
-      // 肩と腰の位置関係を確認
       const leftShoulder = landmarks[11];
       const rightShoulder = landmarks[12];
       const leftHip = landmarks[23];
@@ -2748,18 +2838,17 @@ const [notesInput, setNotesInput] = useState<string>("");
         return false;
       }
       
-      // 肩が腰より上にあるか確認（基本的な姿勢チェック）
+      // 肩が腰より上にあるか確認
       const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
       const hipY = (leftHip.y + rightHip.y) / 2;
       
       if (shoulderY >= hipY) {
-        return false; // 肩が腰より下にあるのは異常
+        return false;
       }
       
       return true;
     };
     
-    // 姿勢が無効な場合は描画しない
     if (!isValidPose()) {
       return;
     }
@@ -2803,19 +2892,33 @@ const [notesInput, setNotesInput] = useState<string>("");
           return;
         }
         
+        // 座標を計算（iPad補正を適用）
+        const x1 = pointA.x * width;
+        const y1 = pointA.y * height;
+        const x2 = pointB.x * width;
+        const y2 = pointB.y * height;
+        
         ctx.beginPath();
-        ctx.moveTo(pointA.x * width, pointA.y * height);
-        ctx.lineTo(pointB.x * width, pointB.y * height);
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
         ctx.stroke();
       }
     });
 
     ctx.fillStyle = "#f97316";
-    landmarks.forEach((lm: FramePoseData["landmarks"][number]) => {
+    landmarks.forEach((lm: FramePoseData["landmarks"][number], index: number) => {
       if (lm.visibility > CONFIDENCE_THRESHOLD) {
+        const x = lm.x * width;
+        const y = lm.y * height;
+        
         ctx.beginPath();
-        ctx.arc(lm.x * width, lm.y * height, 4, 0, 2 * Math.PI);
+        ctx.arc(x, y, 4, 0, 2 * Math.PI);
         ctx.fill();
+        
+        // iPadデバッグ: 主要ポイントの位置をログ出力（高頻度でログが出ないよう制限）
+        if (isIPad && Math.random() < 0.01 && (index === 0 || index === 11 || index === 23)) {
+          console.log(`🎯 Point ${index}: x=${(lm.x * 100).toFixed(1)}%, y=${(lm.y * 100).toFixed(1)}%, vis=${lm.visibility.toFixed(2)}`);
+        }
       }
     });
     
@@ -3887,31 +3990,40 @@ const [notesInput, setNotesInput] = useState<string>("");
     canvas.width = w;
     canvas.height = h;
     
-    // iPad/タブレット対応: CSSサイズを明示的に設定してアスペクト比を保持
-    // これによりobject-fit: containと同様の効果を得ながら、座標のズレを防ぐ
-    const containerWidth = canvas.parentElement?.clientWidth || window.innerWidth;
-    const containerHeight = window.innerHeight * 0.4; // 画面の40%
+    // デバイス判定
+    const isIPad = /iPad/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     
-    const videoAspectRatio = w / h;
-    const containerAspectRatio = containerWidth / containerHeight;
-    
-    let displayWidth, displayHeight;
-    
-    if (videoAspectRatio > containerAspectRatio) {
-      // 動画の方が横長: 幅に合わせる
-      displayWidth = containerWidth;
-      displayHeight = containerWidth / videoAspectRatio;
+    if (isIPad) {
+      // iPadの場合: CSSサイズを削除してブラウザに任せる
+      canvas.style.width = '';
+      canvas.style.height = '';
+      canvas.style.maxWidth = '100%';
+      canvas.style.maxHeight = '40vh';
+      // アスペクト比を保持
+      canvas.style.objectFit = 'contain';
     } else {
-      // 動画の方が縦長: 高さに合わせる
-      displayHeight = containerHeight;
-      displayWidth = containerHeight * videoAspectRatio;
+      // PC/その他の場合: 従来通りCSSサイズを計算
+      const containerWidth = canvas.parentElement?.clientWidth || window.innerWidth;
+      const containerHeight = window.innerHeight * 0.4;
+      
+      const videoAspectRatio = w / h;
+      const containerAspectRatio = containerWidth / containerHeight;
+      
+      let displayWidth, displayHeight;
+      
+      if (videoAspectRatio > containerAspectRatio) {
+        displayWidth = containerWidth;
+        displayHeight = containerWidth / videoAspectRatio;
+      } else {
+        displayHeight = containerHeight;
+        displayWidth = containerHeight * videoAspectRatio;
+      }
+      
+      canvas.style.width = `${displayWidth}px`;
+      canvas.style.height = `${displayHeight}px`;
+      canvas.style.maxWidth = '100%';
+      canvas.style.maxHeight = '40vh';
     }
-    
-    // CSSサイズを設定（これによりスケルトンの座標が正しく表示される）
-    canvas.style.width = `${displayWidth}px`;
-    canvas.style.height = `${displayHeight}px`;
-    canvas.style.maxWidth = '100%';
-    canvas.style.maxHeight = '40vh';
 
     if (!footZoomEnabled) {
       ctx.drawImage(offscreen, 0, 0, w, h, 0, 0, w, h);

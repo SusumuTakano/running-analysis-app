@@ -448,11 +448,18 @@ body {
 
 .preview-canvas {
   display: block;
-  /* width: 100%; を削除 - JSで制御 */
-  /* height: auto; を削除 - JSで制御 */
   max-height: 40vh; /* iPad/ノートPC対応: 画面の40%に制限 */
-  /* object-fit: contain; を削除 - 座標のズレを防ぐため */
   margin: 0 auto; /* 中央配置 */
+}
+
+/* iPad専用の調整 */
+@supports (-webkit-touch-callout: none) {
+  .preview-canvas {
+    /* iPadではobject-fitを使用 */
+    object-fit: contain;
+    width: auto !important;
+    height: auto !important;
+  }
 }
 
 /* モバイル用の追加調整 */
