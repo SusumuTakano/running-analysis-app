@@ -7,7 +7,6 @@ import React, {
 } from "react";
 import "./App.css";
 import "./App_mobile_fix.css";
-import "./App_mobile_critical_fix.css";
 import "./styles/mobile-fixes.css";
 import { supabase } from "./lib/supabaseClient";
 import Chart from "chart.js/auto";
@@ -16,7 +15,6 @@ import MultiCameraRunSetup from './components/MultiCameraRunSetup';
 import { Run, RunSegment } from './types/multiCamera';
 import { combineSegmentSteps, calculateMultiCameraStats } from './utils/multiCameraUtils';
 import { ApplyAllMobileFixes } from './components/MobileResponsiveFix';
-import ForceResponsiveFix from './components/ForceResponsiveFix';
 
 /** ウィザードのステップ */
 type WizardStep = 0 | 1 | 2 | 3 | 3.5 | 4 | 5 | 5.5 | 6 | 6.5 | 7 | 8 | 9;
@@ -9005,7 +9003,6 @@ const [notesInput, setNotesInput] = useState<string>("");
     <div className={`app-container wizard-step-${wizardStep}`}>
       {/* モバイル用の修正を適用 */}
       <ApplyAllMobileFixes />
-      <ForceResponsiveFix />
       {/* チュートリアルモーダル */}
       {showTutorial && (
         <div style={{
