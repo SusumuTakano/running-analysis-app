@@ -107,6 +107,22 @@ const UserDashboardPage: React.FC = () => {
   // 詳細表示
   const handleViewDetails = async (session: RunningAnalysisSession) => {
     console.log("Viewing session details:", session);
+
+    const parseJsonField = (value: any): any => {
+      if (!value) return null;
+      if (typeof value === "string") {
+        try {
+          return JSON.parse(value);
+        } catch (parseError) {
+          console.warn("JSONフィールドの解析に失敗:", parseError, value);
+          return null;
+        }
+      }
+      return value;
+    };
+
+    const analysisData = parseJsonField(session.session_data);
+    const sessionMetadata = parseJsonField(session.metadata);
     
     // 詳細データを取得（step_metrics, three_phase_angles, step_summaries）
     let stepMetrics = null;
@@ -149,6 +165,18 @@ const UserDashboardPage: React.FC = () => {
     } catch (e) {
       console.warn("詳細データの取得に失敗:", e);
     }
+
+    if ((!stepMetrics || stepMetrics.length === 0) && analysisData?.stepMetrics?.length) {
+      stepMetrics = analysisData.stepMetrics;
+    }
+
+    if ((!threePhaseAngles || threePhaseAngles.length === 0) && analysisData?.threePhaseAngles?.length) {
+      threePhaseAngles = analysisData.threePhaseAngles;
+    }
+
+    if (!stepSummary && analysisData?.stepSummary) {
+      stepSummary = analysisData.stepSummary;
+    }
     
     // セッション全体をローカルストレージに保存
     const sessionDataToView = {
@@ -188,8 +216,8 @@ const UserDashboardPage: React.FC = () => {
       stepSummary,
       
       // JSONデータ（session_dataやmetadata）
-      session_data: session.session_data,
-      metadata: session.metadata,
+      session_data: analysisData,
+      metadata: sessionMetadata,
       
       // すべてのデータ（念のため）
       _raw: session
@@ -203,6 +231,138 @@ const UserDashboardPage: React.FC = () => {
     const resultUrl = `/dashboard/session/${session.id}`;
     
     // 結果表示用の簡易HTMLページを生成
+    const escapeHtml = (text: string) =>
+      text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+    const formatForDisplay = (value: any): string => {
+      if (value === null || value === undefined) return '';
+      if (typeof value === 'number') {
+        if (!Number.isFinite(value)) return String(value);
+        return Number.isInteger(value) ? value.toString() : value.toFixed(2);
+      }
+      if (typeof value === 'object') {
+        try {
+          return JSON.stringify(value, null, 2);
+        } catch {
+          return String(value);
+        }
+      }
+      return String(value);
+    };
+
+    const aiEvaluationSection = analysisData?.aiEvaluation
+      ? `
+    <div class="section">
+      <h2>🤖 AI評価</h2>
+      <div style="background: #f0f9ff; border: 2px solid #0ea5e9; border-radius: 8px; padding: 20px; white-space: pre-wrap; line-height: 1.8; color: #0c4a6e;">
+${escapeHtml(String(analysisData.aiEvaluation))}
+      </div>
+    </div>
+    `
+      : '';
+
+    const targetAdviceSection = analysisData?.targetAdvice
+      ? `
+    <div class="section">
+      <h2>🎯 100m目標記録アドバイス</h2>
+      <div style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px; padding: 20px; white-space: pre-wrap; line-height: 1.8; color: #78350f;">
+${escapeHtml(String(analysisData.targetAdvice))}
+      </div>
+    </div>
+    `
+      : '';
+
+    const analysisMetaItems: { label: string; value: string }[] = [];
+    if (analysisData?.analysisType) {
+      const label = analysisData.analysisType === 'acceleration' ? '加速局面（スタート）' : analysisData.analysisType === 'topSpeed' ? 'トップスピード局面' : String(analysisData.analysisType);
+      analysisMetaItems.push({ label: '解析モード', value: label });
+    }
+    if (sessionMetadata?.analysis_type && !analysisMetaItems.find(i => i.label === '解析モード')) {
+      analysisMetaItems.push({ label: '解析モード', value: String(sessionMetadata.analysis_type) });
+    }
+    if (analysisData?.timestamp) {
+      analysisMetaItems.push({ label: '保存時刻', value: new Date(analysisData.timestamp).toLocaleString('ja-JP') });
+    }
+    if (typeof analysisData?.avgSpeed === 'number') {
+      analysisMetaItems.push({ label: '保存時の平均速度', value: `${analysisData.avgSpeed.toFixed(2)} m/s` });
+    } else if (analysisData?.avgSpeed) {
+      analysisMetaItems.push({ label: '保存時の平均速度', value: `${analysisData.avgSpeed} m/s` });
+    }
+    if (analysisData?.distance !== undefined && analysisData?.distance !== null) {
+      analysisMetaItems.push({ label: '解析距離', value: `${analysisData.distance} m` });
+    }
+    if (analysisData?.sectionTime !== undefined && analysisData?.sectionTime !== null) {
+      analysisMetaItems.push({ label: '区間時間', value: `${analysisData.sectionTime} 秒` });
+    }
+
+    const analysisMetaSection = analysisMetaItems.length
+      ? `
+    <div class="section">
+      <h2>🧾 解析メタ情報</h2>
+      <div class="metrics">
+        ${analysisMetaItems
+          .map(
+            (item) => `
+        <div class="metric-card">
+          <div class="metric-label">${escapeHtml(item.label)}</div>
+          <div class="metric-value">${escapeHtml(item.value)}</div>
+        </div>`
+          )
+          .join('')}
+      </div>
+    </div>
+    `
+      : '';
+
+    const athleteInfoEntries = analysisData?.athleteInfo
+      ? Object.entries(analysisData.athleteInfo).filter(([_, value]) => value !== null && value !== undefined && value !== '')
+      : [];
+
+    const athleteInfoSection = athleteInfoEntries.length
+      ? `
+    <div class="section">
+      <h2>👤 選手情報</h2>
+      <div class="metrics">
+        ${athleteInfoEntries
+          .map(
+            ([key, value]) => `
+        <div class="metric-card">
+          <div class="metric-label">${escapeHtml(key)}</div>
+          <div class="metric-value">${escapeHtml(formatForDisplay(value))}</div>
+        </div>`
+          )
+          .join('')}
+      </div>
+    </div>
+    `
+      : '';
+
+    const metadataEntries = sessionMetadata
+      ? Object.entries(sessionMetadata).filter(([_, value]) => value !== null && value !== undefined && value !== '')
+      : [];
+
+    const metadataSection = metadataEntries.length
+      ? `
+    <div class="section">
+      <h2>📂 メタデータ</h2>
+      <div class="metrics">
+        ${metadataEntries
+          .map(
+            ([key, value]) => `
+        <div class="metric-card">
+          <div class="metric-label">${escapeHtml(key)}</div>
+          <div class="metric-value">${escapeHtml(formatForDisplay(value))}</div>
+        </div>`
+          )
+          .join('')}
+      </div>
+    </div>
+    `
+      : '';
+
     const resultHtml = `
 <!DOCTYPE html>
 <html lang="ja">
@@ -404,7 +564,7 @@ const UserDashboardPage: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            ${stepMetrics.slice(0, 10).map((metric, idx) => `
+            ${stepMetrics.slice(0, 10).map((metric: any, idx: number) => `
             <tr>
               <td style="padding: 8px; border: 1px solid #e2e8f0;">#${idx + 1}</td>
               <td style="padding: 8px; border: 1px solid #e2e8f0;">${metric.contact_time ? (metric.contact_time * 1000).toFixed(1) : '-'} ms</td>
@@ -435,8 +595,8 @@ const UserDashboardPage: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            ${['contact', 'mid_support', 'toe_off'].map(phase => {
-              const phaseData = threePhaseAngles.find(a => a.phase === phase);
+            ${['contact', 'mid_support', 'toe_off'].map((phase: string) => {
+              const phaseData = threePhaseAngles.find((a: any) => a.phase === phase);
               const phaseName = phase === 'contact' ? '接地' : phase === 'mid_support' ? '中間支持' : '離地';
               return phaseData ? `
               <tr>
@@ -454,23 +614,11 @@ const UserDashboardPage: React.FC = () => {
     </div>
     ` : ''}
     
-    ${session.session_data?.aiEvaluation ? `
-    <div class="section">
-      <h2>🤖 AI評価</h2>
-      <div style="background: #f0f9ff; border: 2px solid #0ea5e9; border-radius: 8px; padding: 20px; white-space: pre-wrap; line-height: 1.8; color: #0c4a6e;">
-${session.session_data.aiEvaluation.replace(/</g, '&lt;').replace(/>/g, '&gt;')}
-      </div>
-    </div>
-    ` : ''}
-    
-    ${session.session_data?.targetAdvice ? `
-    <div class="section">
-      <h2>🎯 100m目標記録アドバイス</h2>
-      <div style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px; padding: 20px; white-space: pre-wrap; line-height: 1.8; color: #78350f;">
-${session.session_data.targetAdvice.replace(/</g, '&lt;').replace(/>/g, '&gt;')}
-      </div>
-    </div>
-    ` : ''}
+    ${analysisMetaSection}
+    ${athleteInfoSection}
+    ${aiEvaluationSection}
+    ${targetAdviceSection}
+    ${metadataSection}
     
     ${session.notes ? `
     <div class="section">
