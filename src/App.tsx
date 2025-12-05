@@ -664,13 +664,56 @@ useEffect(() => {
 
 
   // チュートリアル
-  const [showTutorial, setShowTutorial] = useState(true); // 初回表示フラグ
+  // チュートリアルの表示設定をローカルストレージから取得
+  const [showTutorial, setShowTutorial] = useState(() => {
+    const savedPreference = localStorage.getItem('hideTutorial');
+    return savedPreference !== 'true'; // 'true'の場合は表示しない
+  });
   const [tutorialStep, setTutorialStep] = useState(0); // 現在のステップ
-  // 「次回から表示しない」が押されていなければ、初回だけ自動で開く
+  // チュートリアルステップをリセットする関数
+  const resetTutorialStep = () => {
+    setTutorialStep(0);
+  };
+
+  // URLパラメータからセッションビューモードを確認
   useEffect(() => {
-    const hidden = localStorage.getItem("runningAnalysisHideTutorial");
-    if (!hidden) {
-      setShowTutorial(true);
+    const urlParams = new URLSearchParams(window.location.search);
+    const viewMode = urlParams.get('viewMode');
+    const sessionId = urlParams.get('sessionId');
+    const step = urlParams.get('step');
+    
+    if (viewMode === 'true' && sessionId) {
+      // ローカルストレージからセッションデータを読み込む
+      const storedData = localStorage.getItem('viewSessionData');
+      const fullSession = localStorage.getItem('viewFullSession');
+      
+      if (storedData) {
+        try {
+          const sessionData = JSON.parse(storedData);
+          console.log('Loading session data for viewing:', sessionData);
+          
+          // データを復元（実装は後で調整）
+          if (step === '6' && sessionData) {
+            // ステップ6（結果表示）へジャンプ
+            setWizardStep(6);
+            
+            // セッションデータから各種データを復元
+            // Note: ステート更新関数が存在する場合のみ実行
+            // これは読み取り専用モードのため、将来的な実装として残す
+            console.log('Session data loaded for viewing:', {
+              hasStepMetrics: !!sessionData.stepMetrics,
+              hasThreePhaseAngles: !!sessionData.threePhaseAngles,
+              hasStepSummary: !!sessionData.stepSummary,
+              hasAthleteInfo: !!sessionData.athleteInfo
+            });
+            
+            // URLをクリーンにする
+            window.history.replaceState({}, document.title, '/');
+          }
+        } catch (e) {
+          console.error('Failed to load session data:', e);
+        }
+      }
     }
   }, []);
 
@@ -2344,35 +2387,113 @@ const [notesInput, setNotesInput] = useState<string>("");
     setStatus("姿勢推定を実行中...");
 
     try {
+      // MediaPipeの存在を詳細にチェック
+      console.log('🔍 Checking MediaPipe availability...');
+      console.log('window.Pose:', typeof (window as any).Pose);
+      console.log('User Agent:', navigator.userAgent);
+      
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const Pose: any = (window as any).Pose;
 
       if (!Pose) {
-        throw new Error("MediaPipe Poseライブラリが読み込まれていません。");
+        // iPadでMediaPipeが読み込まれていない場合の詳細エラー
+        console.error('❌ MediaPipe Pose not found!');
+        console.error('Available globals:', Object.keys(window).filter(k => k.toLowerCase().includes('pose') || k.toLowerCase().includes('media')));
+        
+        // MediaPipeの手動読み込みを試みる
+        if (/iPad|iPhone/i.test(navigator.userAgent)) {
+          console.log('🔄 Attempting to reload MediaPipe for iOS...');
+          
+          // スクリプトの再読み込みを試みる
+          await new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.min.js';
+            script.crossOrigin = 'anonymous';
+            script.onload = () => {
+              console.log('✅ MediaPipe Pose script reloaded');
+              resolve(true);
+            };
+            script.onerror = (e) => {
+              console.error('❌ Failed to reload MediaPipe:', e);
+              reject(e);
+            };
+            document.head.appendChild(script);
+          });
+          
+          // 少し待ってから再チェック
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const PoseRetry: any = (window as any).Pose;
+          
+          if (!PoseRetry) {
+            throw new Error("MediaPipe PoseライブラリがiPadで読み込めませんでした。ページをリロードしてください。");
+          }
+        } else {
+          throw new Error("MediaPipe Poseライブラリが読み込まれていません。");
+        }
       }
 
-      const pose = new Pose({
-        locateFile: (file: string) =>
-          `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
+      // 再度Poseを取得（リロードした場合のため）
+      const PoseClass: any = (window as any).Pose || Pose;
+      
+      console.log('🎯 Creating Pose instance...');
+      const pose = new PoseClass({
+        locateFile: (file: string) => {
+          const url = `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`;
+          console.log(`📁 Loading MediaPipe file: ${file} from ${url}`);
+          return url;
+        },
       });
 
       // 🚀 デバイスに応じた設定（メモリ効率を考慮）
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const isIPad = /iPad/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
       
-      // 🔧 モバイルではメモリ節約のため精度を調整
-      const modelComplexity = isMobile ? 1 : 2; // モバイルは中精度、デスクトップは高精度
+      // 🔧 デバイスごとの最適化設定
+      let modelComplexity = 2; // デフォルトは高精度
+      let minDetectionConfidence = 0.1;
+      let minTrackingConfidence = 0.1;
+      let staticImageMode = false;
+      let smoothLandmarks = true;
+      
+      if (isIPad) {
+        console.log('📱 iPad detected - applying mobile optimized settings');
+        modelComplexity = 1; // 中精度モデル
+        minDetectionConfidence = 0.05; // 検出閾値を下げる
+        minTrackingConfidence = 0.05;
+        staticImageMode = false; // ストリーミング処理で追従性を向上
+        smoothLandmarks = true; // 滑らかな骨格追従
+      } else if (isMobile) {
+        console.log('📱 Mobile device detected');
+        modelComplexity = 1;
+        minDetectionConfidence = 0.08;
+        minTrackingConfidence = 0.08;
+      } else {
+        console.log('💻 Desktop detected');
+        minDetectionConfidence = 0.05;
+        minTrackingConfidence = 0.05;
+      }
+      
+      console.log(`🔧 Setting options: modelComplexity=${modelComplexity}, detection=${minDetectionConfidence}, tracking=${minTrackingConfidence}`);
       
       pose.setOptions({
-        modelComplexity: modelComplexity,
-        smoothLandmarks: true,
+        modelComplexity,
+        smoothLandmarks,
         enableSegmentation: false,
         smoothSegmentation: false,
-        minDetectionConfidence: 0.1, // 検出閾値（メモリ効率のため少し上げる）
-        minTrackingConfidence: 0.1,
+        minDetectionConfidence,
+        minTrackingConfidence,
+        selfieMode: false,
+        staticImageMode,
       });
       
-      console.log(`🚀 Pose estimation config: mobile=${isMobile}, iOS=${isIOS}, modelComplexity=${modelComplexity}`);
+      console.log(`🚀 Pose estimation config: mobile=${isMobile}, iOS=${isIOS}, iPad=${isIPad}, modelComplexity=${modelComplexity}`);
+      
+      // iPadでは初期化を待つ
+      if (isIPad) {
+        console.log('⏳ Waiting for MediaPipe initialization on iPad...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
 
       const results: (FramePoseData | null)[] = [];
       const totalFrames = framesRef.current.length;
@@ -2388,29 +2509,109 @@ const [notesInput, setNotesInput] = useState<string>("");
         throw new Error("Canvas context の作成に失敗しました");
       }
 
+      // MediaPipe入力用に縮小したキャンバスを用意
+      const maxPoseWidth = isIPad ? 540 : 960;
+      const poseScale = Math.min(1, maxPoseWidth / tempCanvas.width);
+      const poseCanvas = document.createElement("canvas");
+      poseCanvas.width = Math.max(1, Math.round(tempCanvas.width * poseScale));
+      poseCanvas.height = Math.max(1, Math.round(tempCanvas.height * poseScale));
+      const poseCtx = poseCanvas.getContext("2d", { willReadFrequently: true });
+      if (!poseCtx) {
+        throw new Error("Pose canvas context の作成に失敗しました");
+      }
+
+      const drawPoseInput = () => {
+        poseCtx.clearRect(0, 0, poseCanvas.width, poseCanvas.height);
+        poseCtx.drawImage(
+          tempCanvas,
+          0,
+          0,
+          tempCanvas.width,
+          tempCanvas.height,
+          0,
+          0,
+          poseCanvas.width,
+          poseCanvas.height
+        );
+      };
+
       // 🔧 バッチ処理のサイズ（メモリ解放のタイミング）
-      const batchSize = isMobile ? 5 : 20; // モバイルは5フレームごと、デスクトップは20フレームごと
-      const timeoutDuration = isMobile ? 10000 : 5000; // モバイルは10秒、デスクトップは5秒
+      const batchSize = isIPad ? 3 : (isMobile ? 5 : 20); // iPadは3フレームごと
+      const timeoutDuration = isIPad ? 15000 : (isMobile ? 10000 : 5000); // iPadは15秒
+
+      // 最初のフレームで動作確認
+      if (totalFrames > 0) {
+        console.log('🧪 Testing pose estimation on first frame...');
+        tempCtx.putImageData(framesRef.current[0], 0, 0);
+        
+        try {
+          const testResult = await new Promise<any>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              console.error('❌ Test frame timeout');
+              reject(new Error("Test timeout"));
+            }, isIPad ? 10000 : 5000);
+            
+            pose.onResults((r: any) => {
+              clearTimeout(timeout);
+              console.log('✅ Test frame processed:', r.poseLandmarks ? 'Landmarks found' : 'No landmarks');
+              resolve(r);
+            });
+            
+            drawPoseInput();
+            pose.send({ image: poseCanvas }).catch((e: any) => {
+              console.error('❌ Test frame send error:', e);
+              reject(e);
+            });
+          });
+          
+          if (!testResult.poseLandmarks) {
+            console.warn('⚠️ First frame test: No landmarks detected');
+            if (isIPad) {
+              console.log('🔄 iPad: Retrying with different settings...');
+              // 設定を変更して再試行
+              pose.setOptions({
+                modelComplexity: 0, // 最軽量モデルに変更
+                staticImageMode: true,
+                minDetectionConfidence: 0.01,
+                minTrackingConfidence: 0.01,
+              });
+            }
+          }
+        } catch (e) {
+          console.error('❌ First frame test failed:', e);
+        }
+      }
 
       for (let i = 0; i < totalFrames; i++) {
         const frame = framesRef.current[i];
 
         // 🔧 canvasを再利用（毎回作成しない）
         tempCtx.putImageData(frame, 0, 0);
+        
 
         try {
           const result = await new Promise<any>((resolve, reject) => {
             const timeout = setTimeout(
-              () => reject(new Error("Timeout")),
+              () => {
+                console.warn(`⏱️ Frame ${i} timeout after ${timeoutDuration}ms`);
+                reject(new Error("Timeout"));
+              },
               timeoutDuration
             );
 
             pose.onResults((r: any) => {
               clearTimeout(timeout);
+              if (i < 3 || i % 50 === 0) {
+                console.log(`📊 Frame ${i} result:`, r.poseLandmarks ? 'Detected' : 'Not detected');
+              }
               resolve(r);
             });
 
-            pose.send({ image: tempCanvas }).catch(reject);
+            drawPoseInput();
+            pose.send({ image: poseCanvas }).catch((e: any) => {
+              console.error(`❌ Frame ${i} send error:`, e);
+              reject(e);
+            });
           });
 
           if (result.poseLandmarks) {
@@ -2475,6 +2676,8 @@ const [notesInput, setNotesInput] = useState<string>("");
       // 🔧 tempCanvasの参照をクリア
       tempCanvas.width = 0;
       tempCanvas.height = 0;
+      poseCanvas.width = 0;
+      poseCanvas.height = 0;
 
       // MediaPipe Pose インスタンスを明示的にクローズ（メモリ解放）
       try {
@@ -2526,22 +2729,11 @@ const [notesInput, setNotesInput] = useState<string>("");
         setStatus(`✅ 姿勢推定完了！（成功率: ${interpolatedRateStr}%、補間前: ${successRateStr}%）`);
       }
       
-      // 🔧 メモリ解放: 姿勢推定が完了したらフレームデータを圧縮
-      // モバイルデバイスでは積極的にメモリを解放
+      // 🔧 モバイル端末でもフレームと姿勢データのインデックスを一致させるため、
+      //     解析後のフレーム間引きは行わない（表示のズレを防止）
       const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      if (isMobileDevice && framesRef.current.length > 100) {
-        console.log('🧹 Mobile: Reducing frame data to save memory...');
-        // フレームデータを間引いて保持（表示用に最低限のみ）
-        const reducedFrames: ImageData[] = [];
-        const keepEvery = Math.ceil(framesRef.current.length / 100); // 最大100フレームに削減
-        for (let i = 0; i < framesRef.current.length; i += keepEvery) {
-          reducedFrames.push(framesRef.current[i]);
-        }
-        // 元のフレームデータをクリア
-        framesRef.current.length = 0;
-        // 削減されたフレームを設定
-        framesRef.current = reducedFrames;
-        console.log(`🧹 Reduced frames: ${reducedFrames.length} frames kept`);
+      if (isMobileDevice) {
+        console.log(`📱 Mobile device detected → keeping all ${framesRef.current.length} frames for accurate overlay`);
       }
       
       // 自動で次のステップへ（区間設定）
@@ -2576,12 +2768,12 @@ const [notesInput, setNotesInput] = useState<string>("");
     width: number,
     height: number
   ) => {
-    // 🔥 信頼度のしきい値を下げて姿勢推定率を向上
-    const CONFIDENCE_THRESHOLD = 0.1; // 🔥 姿勢認識率向上のため低めに設定
+    // デバイス判定
+    const isIPad = /iPad/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const CONFIDENCE_THRESHOLD = isIPad ? 0.01 : 0.05;
     
     // 主要な関節の妥当性をチェック
     const isValidPose = () => {
-      // 肩と腰の位置関係を確認
       const leftShoulder = landmarks[11];
       const rightShoulder = landmarks[12];
       const leftHip = landmarks[23];
@@ -2596,18 +2788,17 @@ const [notesInput, setNotesInput] = useState<string>("");
         return false;
       }
       
-      // 肩が腰より上にあるか確認（基本的な姿勢チェック）
+      // 肩が腰より上にあるか確認
       const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
       const hipY = (leftHip.y + rightHip.y) / 2;
       
       if (shoulderY >= hipY) {
-        return false; // 肩が腰より下にあるのは異常
+        return false;
       }
       
       return true;
     };
     
-    // 姿勢が無効な場合は描画しない
     if (!isValidPose()) {
       return;
     }
@@ -2651,19 +2842,33 @@ const [notesInput, setNotesInput] = useState<string>("");
           return;
         }
         
+        // 座標を計算（iPad補正を適用）
+        const x1 = pointA.x * width;
+        const y1 = pointA.y * height;
+        const x2 = pointB.x * width;
+        const y2 = pointB.y * height;
+        
         ctx.beginPath();
-        ctx.moveTo(pointA.x * width, pointA.y * height);
-        ctx.lineTo(pointB.x * width, pointB.y * height);
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
         ctx.stroke();
       }
     });
 
     ctx.fillStyle = "#f97316";
-    landmarks.forEach((lm: FramePoseData["landmarks"][number]) => {
+    landmarks.forEach((lm: FramePoseData["landmarks"][number], index: number) => {
       if (lm.visibility > CONFIDENCE_THRESHOLD) {
+        const x = lm.x * width;
+        const y = lm.y * height;
+        
         ctx.beginPath();
-        ctx.arc(lm.x * width, lm.y * height, 4, 0, 2 * Math.PI);
+        ctx.arc(x, y, 4, 0, 2 * Math.PI);
         ctx.fill();
+        
+        // iPadデバッグ: 主要ポイントの位置をログ出力（高頻度でログが出ないよう制限）
+        if (isIPad && Math.random() < 0.01 && (index === 0 || index === 11 || index === 23)) {
+          console.log(`🎯 Point ${index}: x=${(lm.x * 100).toFixed(1)}%, y=${(lm.y * 100).toFixed(1)}%, vis=${lm.visibility.toFixed(2)}`);
+        }
       }
     });
     
@@ -2848,7 +3053,7 @@ const [notesInput, setNotesInput] = useState<string>("");
     URL.revokeObjectURL(url);
   };
 
-  // ------------ Supabase 関連 ------------
+  // ------------ サーバー保存関連 ------------
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<string | null>(null);
 
@@ -2863,32 +3068,273 @@ const [notesInput, setNotesInput] = useState<string>("");
 
     try {
       setSaving(true);
-      const payload = {
+      
+      // ステップサマリーから追加データを取得
+      const avgStride = stepSummary?.avgStride ?? null;
+      const avgCadence = stepSummary?.avgStepPitch ?? null;
+      const avgContactTime = stepSummary?.avgContact ?? null;
+      const avgFlightTime = stepSummary?.avgFlight ?? null;
+      
+      // 基本データを保存（存在するカラムのみ）
+      const payload: any = {
         source_video_name: videoName,
         distance_m,
-        frames_count: framesCount || null,
-        section_start_frame: sectionRange.start,
-        section_end_frame: sectionRange.end,
-        section_frame_count,
         section_time_s,
         avg_speed_mps,
         target_fps: usedTargetFps,
         label: labelInput || null,
         notes: notesInput || null,
       };
+      
+      // オプションカラム（存在する場合のみ追加）
+      if (framesCount) payload.frames_count = framesCount;
+      if (framesCount) payload.frame_count = framesCount;
+      if (sectionRange.start !== null) payload.section_start_frame = sectionRange.start;
+      if (sectionRange.end !== null) payload.section_end_frame = sectionRange.end;
+      if (section_frame_count) payload.section_frame_count = section_frame_count;
+      if (avgStride) payload.avg_stride_m = avgStride;
+      if (avgCadence) payload.avg_cadence_hz = avgCadence;
+      if (avgContactTime) payload.avg_contact_time_s = avgContactTime;
+      if (avgFlightTime) payload.avg_flight_time_s = avgFlightTime;
+      if (videoRef.current?.duration) payload.source_video_duration_s = videoRef.current.duration;
+      
+      // video_filenameカラムが存在する場合
+      payload.video_filename = videoName;
+      
+      // section_typeカラムが存在する場合
+      payload.section_start_type = "manual";
+      payload.section_end_type = "manual";
 
-      const { data, error } = await supabase
-        .from("running_analysis_sessions")
-        .insert(payload)
-        .select()
-        .single();
+      // まず最小限のデータで保存を試みる
+      let sessionData: any = null;
+      let sessionError: any = null;
+      
+      try {
+        const result = await supabase
+          .from("running_analysis_sessions")
+          .insert(payload)
+          .select()
+          .single();
+        
+        sessionData = result.data;
+        sessionError = result.error;
+      } catch (insertError: any) {
+        // カラムエラーの場合、最小限のデータで再試行
+        if (insertError?.message?.includes("column")) {
+          console.warn("一部のカラムが存在しません。基本データのみ保存します。");
+          
+          const minimalPayload = {
+            source_video_name: videoName,
+            distance_m,
+            section_time_s,
+            avg_speed_mps,
+            label: labelInput || null,
+            notes: notesInput || null,
+          };
+          
+          const result = await supabase
+            .from("running_analysis_sessions")
+            .insert(minimalPayload)
+            .select()
+            .single();
+          
+          sessionData = result.data;
+          sessionError = result.error;
+        } else {
+          throw insertError;
+        }
+      }
 
-      if (error) throw error;
+      if (sessionError) throw sessionError;
+      
+      const sessionId = (sessionData as any).id;
+      
+      // ステップメトリクスを保存（別テーブルが存在する場合）
+      if (stepMetrics && stepMetrics.length > 0) {
+        try {
+          const metricsPayload = stepMetrics.map((metric, index) => ({
+            session_id: sessionId,
+            step_index: index,
+            contact_frame: metric.contactFrame,
+            toe_off_frame: metric.toeOffFrame,
+            next_contact_frame: metric.nextContactFrame,
+            contact_time: metric.contactTime,
+            flight_time: metric.flightTime,
+            step_time: metric.stepTime,
+            stride_length: metric.stride,
+            speed: metric.speedMps,
+          }));
+          
+          const { error: metricsError } = await supabase
+            .from("step_metrics")
+            .insert(metricsPayload);
+          
+          if (metricsError) {
+            console.warn("ステップメトリクスの保存に失敗（テーブルが存在しない可能性）:", metricsError);
+          }
+        } catch (e) {
+          console.warn("ステップメトリクスの保存をスキップ:", e);
+        }
+      }
+      
+      // 3局面角度データを保存（別テーブルが存在する場合）
+      if (threePhaseAngles && threePhaseAngles.length > 0) {
+        try {
+          const anglesPayload: any[] = [];
+          threePhaseAngles.forEach((angles, stepIndex) => {
+            // 各局面のデータを保存
+            ['contact', 'midSupport', 'toeOff'].forEach(phase => {
+              const phaseData = angles[phase as keyof typeof angles];
+              if (phaseData && typeof phaseData === 'object' && 'hip' in phaseData) {
+                anglesPayload.push({
+                  session_id: sessionId,
+                  step_index: stepIndex,
+                  phase: phase === 'midSupport' ? 'mid_support' : phase === 'toeOff' ? 'toe_off' : phase,
+                  hip_angle: (phaseData as any).hip,
+                  knee_angle: (phaseData as any).knee,
+                  ankle_angle: (phaseData as any).ankle,
+                  trunk_angle: (phaseData as any).trunk,
+                  shoulder_angle: (phaseData as any).shoulder,
+                  elbow_angle: (phaseData as any).elbow,
+                });
+              }
+            });
+          });
+          
+          if (anglesPayload.length > 0) {
+            const { error: anglesError } = await supabase
+              .from("three_phase_angles")
+              .insert(anglesPayload);
+            
+            if (anglesError) {
+              console.warn("3局面角度データの保存に失敗（テーブルが存在しない可能性）:", anglesError);
+            }
+          }
+        } catch (e) {
+          console.warn("3局面角度データの保存をスキップ:", e);
+        }
+      }
+      
+      // ステップサマリーを保存（別テーブルが存在する場合）
+      if (stepSummary) {
+        try {
+          const summaryPayload = {
+            session_id: sessionId,
+            avg_stride_length: stepSummary.avgStride,
+            avg_contact_time: stepSummary.avgContact,
+            avg_flight_time: stepSummary.avgFlight,
+            avg_speed: stepSummary.avgSpeedMps,
+            avg_cadence: avgCadence,
+            total_steps: stepMetrics?.length || 0,
+          };
+          
+          const { error: summaryError } = await supabase
+            .from("step_summaries")
+            .insert(summaryPayload);
+          
+          if (summaryError) {
+            console.warn("ステップサマリーの保存に失敗（テーブルが存在しない可能性）:", summaryError);
+          }
+        } catch (e) {
+          console.warn("ステップサマリーの保存をスキップ:", e);
+        }
+      }
+      
+      // AIアドバイスと全データをJSONとしてセッションに保存
+      try {
+        // AI評価を生成
+        const runType = detectionMode === 1 ? "dash" : "full";
+        const analysisType: 'acceleration' | 'topSpeed' = runType === 'dash' ? 'acceleration' : 'topSpeed';
+        
+        // stepSummaryをrunningEvaluation用の型に変換
+        const evalSummary = {
+          avgContact: stepSummary?.avgContact ?? 0,
+          avgFlight: stepSummary?.avgFlight ?? 0,
+          avgStepPitch: stepSummary?.avgStepPitch ?? 0,
+          avgStride: stepSummary?.avgStride ?? 0,
+          avgSpeed: stepSummary?.avgSpeedMps ?? 0,
+        };
+        
+        const aiEvaluation = generateRunningEvaluation(stepMetrics, threePhaseAngles, evalSummary, analysisType, {
+          heightCm: athleteInfo?.height_cm,
+          gender: athleteInfo?.gender as 'male' | 'female' | 'other' | null,
+        });
+        
+        // 100m目標記録アドバイスを生成（目標記録が設定されている場合）
+        let targetAdvice = null;
+        if (athleteInfo?.target_record) {
+          const targetTime = parseFloat(athleteInfo.target_record);
+          if (!isNaN(targetTime) && targetTime > 0) {
+            targetAdvice = generateTargetAdvice(targetTime, analysisType);
+          }
+        }
+        
+        // すべての解析データをまとめる
+        const fullAnalysisData = {
+          // 基本情報
+          athleteInfo,
+          analysisType,
+          
+          // ステップデータ
+          stepMetrics,
+          stepSummary,
+          threePhaseAngles,
+          
+          // 解析結果
+          distance: distanceValue,
+          sectionTime,
+          avgSpeed,
+          
+          // フレーム情報
+          sectionRange,
+          usedTargetFps,
+          framesCount,
+          
+          // AI評価とアドバイス
+          aiEvaluation,
+          targetAdvice,
+          
+          // メタデータ
+          timestamp: new Date().toISOString(),
+          version: "1.0",
+        };
+        
+        // セッションテーブルに追加データとして保存
+        const { error: updateError } = await supabase
+          .from("running_analysis_sessions")
+          .update({
+            session_data: fullAnalysisData,
+            metadata: {
+              has_ai_evaluation: !!aiEvaluation,
+              has_target_advice: !!targetAdvice,
+              analysis_type: analysisType,
+              athlete_name: athleteInfo?.name || null,
+            }
+          })
+          .eq('id', sessionId);
+          
+        if (updateError) {
+          console.warn("追加データの保存に失敗:", updateError);
+        }
+      } catch (e) {
+        console.warn("AIアドバイスの保存をスキップ:", e);
+      }
 
-      setSaveResult(`✅ 保存成功: id=${(data as any).id ?? ""}`);
+      setSaveResult(`✅ 保存成功: セッションID=${sessionId}\n詳細データとAIアドバイスも保存されました。`);
     } catch (e: any) {
-      console.error(e);
-      setSaveResult(`❌ 保存エラー: ${e.message ?? String(e)}`);
+      console.error("保存エラー詳細:", e);
+      // エラーメッセージを分かりやすく
+      let errorMsg = "❌ 保存エラー: ";
+      if (e.message?.includes("column")) {
+        errorMsg += "データベースの構造に問題があります。管理者にお問い合わせください。";
+      } else if (e.message?.includes("permission") || e.message?.includes("policy")) {
+        errorMsg += "権限エラーです。ログインし直してください。";
+      } else if (e.message?.includes("network")) {
+        errorMsg += "ネットワークエラーです。接続を確認してください。";
+      } else {
+        errorMsg += e.message || "不明なエラーが発生しました。";
+      }
+      setSaveResult(errorMsg);
     } finally {
       setSaving(false);
     }
@@ -3494,7 +3940,40 @@ const [notesInput, setNotesInput] = useState<string>("");
     canvas.width = w;
     canvas.height = h;
     
-    // canvas.style.widthとcanvas.style.heightは削除（CSSに任せる）
+    // デバイス判定
+    const isIPad = /iPad/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    
+    if (isIPad) {
+      // iPadの場合: CSSサイズを削除してブラウザに任せる
+      canvas.style.width = '';
+      canvas.style.height = '';
+      canvas.style.maxWidth = '100%';
+      canvas.style.maxHeight = '40vh';
+      // アスペクト比を保持
+      canvas.style.objectFit = 'contain';
+    } else {
+      // PC/その他の場合: 従来通りCSSサイズを計算
+      const containerWidth = canvas.parentElement?.clientWidth || window.innerWidth;
+      const containerHeight = window.innerHeight * 0.4;
+      
+      const videoAspectRatio = w / h;
+      const containerAspectRatio = containerWidth / containerHeight;
+      
+      let displayWidth, displayHeight;
+      
+      if (videoAspectRatio > containerAspectRatio) {
+        displayWidth = containerWidth;
+        displayHeight = containerWidth / videoAspectRatio;
+      } else {
+        displayHeight = containerHeight;
+        displayWidth = containerHeight * videoAspectRatio;
+      }
+      
+      canvas.style.width = `${displayWidth}px`;
+      canvas.style.height = `${displayHeight}px`;
+      canvas.style.maxWidth = '100%';
+      canvas.style.maxHeight = '40vh';
+    }
 
     if (!footZoomEnabled) {
       ctx.drawImage(offscreen, 0, 0, w, h, 0, 0, w, h);
@@ -5164,7 +5643,15 @@ const [notesInput, setNotesInput] = useState<string>("");
             <div></div>
             <button
               className="btn-primary-large"
-              onClick={() => setWizardStep(1)}
+              onClick={() => {
+                setWizardStep(1);
+                // ローカルストレージの設定を確認してチュートリアルを表示
+                const savedPreference = localStorage.getItem('hideTutorial');
+                if (savedPreference !== 'true') {
+                  setShowTutorial(true);
+                  setTutorialStep(0);
+                }
+              }}
               disabled={
                 !athleteInfo.name ||
                 !athleteInfo.age ||
@@ -6223,15 +6710,29 @@ const [notesInput, setNotesInput] = useState<string>("");
                   </div>
                   <div style={{ fontSize: '0.9rem', color: '#4b5563', lineHeight: '1.6' }}>
                     {calibrationType === 3 ? (
-                      <>
-                        <kbd style={{ background: '#e5e7eb', padding: '2px 6px', borderRadius: '4px' }}>Space</kbd>キーで<strong>接地</strong>→<strong>離地</strong>→<strong>接地</strong>→... の順にマーク<br/>
-                        <span style={{ color: '#059669' }}>💡 下のマーカー一覧から1歩目含めすべて修正可能</span>
-                      </>
+                      isMobile ? (
+                        <>
+                          📱 画面下の<strong>「接地 / 離地マーク」ボタン</strong>をタップして、<strong>接地</strong>→<strong>離地</strong>→<strong>接地</strong>→... の順にマーク<br/>
+                          <span style={{ color: '#059669' }}>💡 マーカー一覧から1歩目を含めて自由に修正できます</span>
+                        </>
+                      ) : (
+                        <>
+                          <kbd style={{ background: '#e5e7eb', padding: '2px 6px', borderRadius: '4px' }}>Space</kbd>キーで<strong>接地</strong>→<strong>離地</strong>→<strong>接地</strong>→... の順にマーク<br/>
+                          <span style={{ color: '#059669' }}>💡 下のマーカー一覧から1歩目含めすべて修正可能</span>
+                        </>
+                      )
                     ) : (
-                      <>
-                        <kbd style={{ background: '#e5e7eb', padding: '2px 6px', borderRadius: '4px' }}>Space</kbd>キーで<strong>接地</strong>をマーク（離地は自動検出）<br/>
-                        <span style={{ color: '#3b82f6' }}>💡 下のマーカー一覧から修正可能</span>
-                      </>
+                      isMobile ? (
+                        <>
+                          📱 画面下の<strong>「接地マーク」ボタン</strong>をタップすると<strong>接地</strong>を登録（離地は自動検出）<br/>
+                          <span style={{ color: '#3b82f6' }}>💡 マーカー一覧から修正できます</span>
+                        </>
+                      ) : (
+                        <>
+                          <kbd style={{ background: '#e5e7eb', padding: '2px 6px', borderRadius: '4px' }}>Space</kbd>キーで<strong>接地</strong>をマーク（離地は自動検出）<br/>
+                          <span style={{ color: '#3b82f6' }}>💡 下のマーカー一覧から修正可能</span>
+                        </>
+                      )
                     )}
                   </div>
                 </div>
@@ -6910,9 +7411,61 @@ const [notesInput, setNotesInput] = useState<string>("");
                 ステップ解析結果とグラフを確認できます。スライダーで各フレームの角度を確認できます。
               </p>
             </div>
+            
+            {/* スクロールボタン（iPad/モバイル用） */}
+            <div style={{
+              position: 'fixed',
+              bottom: '20px',
+              right: '20px',
+              zIndex: 10000,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}>
+              <button
+                onClick={() => document.getElementById('frame-viewer')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                style={{
+                  width: '50px',
+                  height: '50px',
+                  borderRadius: '50%',
+                  background: 'rgba(103, 126, 234, 0.9)',
+                  color: 'white',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title="フレームビューアーへ"
+              >
+                ↑
+              </button>
+              <button
+                onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })}
+                style={{
+                  width: '50px',
+                  height: '50px',
+                  borderRadius: '50%',
+                  background: 'rgba(118, 75, 162, 0.9)',
+                  color: 'white',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title="ページ下部へ"
+              >
+                ↓
+              </button>
+            </div>
 
             {/* フレームビューアー */}
-            <div className="result-viewer-card">
+            <div className="result-viewer-card" id="frame-viewer">
               <div className="viewer-controls">
                 <button
                   className={footZoomEnabled ? "toggle-btn active" : "toggle-btn"}
@@ -8093,7 +8646,7 @@ const [notesInput, setNotesInput] = useState<string>("");
                     onClick={handleSaveSession}
                     disabled={saving}
                   >
-                    💾 Supabaseに保存
+                    💾 サーバーに保存
                   </button>
 
                   <button
@@ -8368,21 +8921,53 @@ const [notesInput, setNotesInput] = useState<string>("");
               gap: '12px',
               justifyContent: 'space-between'
             }}>
-              <button
-                onClick={() => setShowTutorial(false)}
-                style={{
-                  padding: '12px 24px',
-                  borderRadius: '8px',
-                  border: '2px solid #e5e7eb',
-                  background: 'white',
-                  color: '#6b7280',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  fontSize: '1rem'
-                }}
-              >
-                スキップ
-              </button>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button
+                  onClick={() => setShowTutorial(false)}
+                  style={{
+                    padding: '12px 24px',
+                    borderRadius: '8px',
+                    border: '2px solid #e5e7eb',
+                    background: 'white',
+                    color: '#6b7280',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    fontSize: '1rem'
+                  }}
+                >
+                  スキップ
+                </button>
+                {tutorialStep === 0 && (
+                  <button
+                    onClick={() => {
+                      localStorage.setItem('hideTutorial', 'true');
+                      setShowTutorial(false);
+                    }}
+                    style={{
+                      padding: '12px 24px',
+                      borderRadius: '8px',
+                      border: '2px solid #f59e0b',
+                      background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                      color: '#92400e',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      fontSize: '1rem',
+                      transition: 'all 0.2s',
+                      boxShadow: '0 2px 4px rgba(251, 191, 36, 0.2)',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'linear-gradient(135deg, #fde68a 0%, #fcd34d 100%)';
+                      e.currentTarget.style.boxShadow = '0 4px 8px rgba(251, 191, 36, 0.3)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)';
+                      e.currentTarget.style.boxShadow = '0 2px 4px rgba(251, 191, 36, 0.2)';
+                    }}
+                  >
+                    🚫 次回から表示しない
+                  </button>
+                )}
+              </div>
               <div style={{ display: 'flex', gap: '12px' }}>
                 {tutorialStep > 0 && (
                   <button
@@ -8460,6 +9045,8 @@ const [notesInput, setNotesInput] = useState<string>("");
               {/* 使い方ボタン（チュートリアル） */}
               <button
                 onClick={() => {
+                  // 一時的にチュートリアルの非表示設定を解除して表示
+                  localStorage.removeItem('hideTutorial');
                   setShowTutorial(true);
                   setTutorialStep(0);
                 }}
