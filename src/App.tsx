@@ -12,6 +12,7 @@ import { generateRunningEvaluation, type RunningEvaluation } from "./runningEval
 import MultiCameraRunSetup from './components/MultiCameraRunSetup';
 import { Run, RunSegment } from './types/multiCamera';
 import { combineSegmentSteps, calculateMultiCameraStats } from './utils/multiCameraUtils';
+import MobileSimplifier from './components/MobileSimplifier';
 
 
 /** ウィザードのステップ */
@@ -5716,7 +5717,8 @@ const [notesInput, setNotesInput] = useState<string>("");
             </div>
           </div>
 
-          {/* 解析モード選択 */}
+          {/* 解析モード選択 - モバイルでは非表示 */}
+          {!isMobile && (
           <div style={{
             maxWidth: "600px",
             margin: "24px auto",
@@ -5787,6 +5789,7 @@ const [notesInput, setNotesInput] = useState<string>("");
               </div>
             )}
           </div>
+          )}
 
           <div className="wizard-nav">
             <div></div>
@@ -8999,6 +9002,8 @@ const [notesInput, setNotesInput] = useState<string>("");
 
   return (
     <div className={`app-container wizard-step-${wizardStep}`}>
+      {/* モバイル簡素化 */}
+      <MobileSimplifier />
       {/* モバイル用の修正を適用 */}
 
       {/* チュートリアルモーダル */}
