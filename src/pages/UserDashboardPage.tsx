@@ -23,6 +23,7 @@ type RunningAnalysisSession = {
   section_end_type?: string | null;
   section_start_frame?: number | null;
   section_end_frame?: number | null;
+  section_frame_count?: number | null;
   notes?: string | null;
   label: string | null;
   athlete_id?: string | null;
@@ -253,49 +254,175 @@ const UserDashboardPage: React.FC = () => {
       return String(value);
     };
 
-    const aiEvaluationSection = analysisData?.aiEvaluation
-      ? `
+    const renderMultilineText = (text: string) => {
+      if (!text) return '';
+      const normalized = escapeHtml(text).replace(/\r\n/g, '\n');
+      const paragraphs = normalized
+        .split(/\n{2,}/)
+        .map((paragraph) => {
+          const withBullets = paragraph.replace(/^- /gm, '• ');
+          return `<p>${withBullets.replace(/\n/g, '<br>')}</p>`;
+        })
+        .join('');
+      return `<div class="markdown">${paragraphs}</div>`;
+    };
+
+    const renderScoreTag = (score?: string) => {
+      if (!score) return '';
+      const normalized = score.toLowerCase();
+      const className = ['excellent', 'good', 'fair', 'poor'].includes(normalized)
+        ? normalized
+        : 'unknown';
+      return `<span class="ai-score-tag ${className}">${escapeHtml(score)}</span>`;
+    };
+
+    const aiEvaluationData = analysisData?.aiEvaluation;
+    const aiEvaluationSection = `
     <div class="section">
       <h2>🤖 AI評価</h2>
-      <div style="background: #f0f9ff; border: 2px solid #0ea5e9; border-radius: 8px; padding: 20px; white-space: pre-wrap; line-height: 1.8; color: #0c4a6e;">
-${escapeHtml(String(analysisData.aiEvaluation))}
+      ${
+        aiEvaluationData
+          ? `
+      <div class="ai-overall">
+        ${
+          aiEvaluationData.overallRating
+            ? `<div class="ai-rating-badge">${escapeHtml(aiEvaluationData.overallRating)}</div>`
+            : ''
+        }
+        ${
+          aiEvaluationData.avgScore !== undefined && aiEvaluationData.avgScore !== null
+            ? `<div class="ai-score">スコア: ${escapeHtml(formatForDisplay(aiEvaluationData.avgScore))}</div>`
+            : ''
+        }
+        ${
+          aiEvaluationData.overallMessage
+            ? `<p class="ai-overall-message">${escapeHtml(aiEvaluationData.overallMessage)}</p>`
+            : ''
+        }
       </div>
+      ${
+        Array.isArray(aiEvaluationData.evaluations) && aiEvaluationData.evaluations.length
+          ? `
+      <div class="ai-evaluation-grid">
+        ${aiEvaluationData.evaluations
+          .map((item: any) => `
+        <div class="ai-evaluation-card">
+          <div class="ai-evaluation-header">
+            ${item.icon ? `<span class="ai-icon">${escapeHtml(item.icon)}</span>` : ''}
+            <span class="ai-category">${escapeHtml(item.category ?? '')}</span>
+            ${renderScoreTag(item.score)}
+          </div>
+          ${item.message ? `<p class="ai-message">${escapeHtml(item.message)}</p>` : ''}
+          ${item.advice ? `<p class="ai-advice">${escapeHtml(item.advice)}</p>` : ''}
+        </div>
+        `)
+          .join('')}
+      </div>
+      `
+          : ''
+      }
+      `
+          : `<p class="empty-message">AI評価データは保存されていません。解析時にスケルトン表示とマーカー設定が完了しているかご確認ください。</p>`
+      }
     </div>
-    `
-      : '';
+    `;
 
-    const targetAdviceSection = analysisData?.targetAdvice
-      ? `
+    const targetAdviceText =
+      typeof analysisData?.targetAdvice === 'string' ? analysisData.targetAdvice : null;
+    const targetAdviceSection = `
     <div class="section">
       <h2>🎯 100m目標記録アドバイス</h2>
-      <div style="background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px; padding: 20px; white-space: pre-wrap; line-height: 1.8; color: #78350f;">
-${escapeHtml(String(analysisData.targetAdvice))}
-      </div>
+      ${
+        targetAdviceText && targetAdviceText.trim()
+          ? renderMultilineText(targetAdviceText)
+          : '<p class="empty-message">100m目標記録に基づくアドバイスは保存されていません。解析時に選手情報の目標記録を設定すると生成されます。</p>'
+      }
     </div>
-    `
-      : '';
+    `;
 
     const analysisMetaItems: { label: string; value: string }[] = [];
     if (analysisData?.analysisType) {
-      const label = analysisData.analysisType === 'acceleration' ? '加速局面（スタート）' : analysisData.analysisType === 'topSpeed' ? 'トップスピード局面' : String(analysisData.analysisType);
+      const label =
+        analysisData.analysisType === 'acceleration'
+          ? '加速局面（スタート）'
+          : analysisData.analysisType === 'topSpeed'
+          ? 'トップスピード局面'
+          : String(analysisData.analysisType);
       analysisMetaItems.push({ label: '解析モード', value: label });
     }
-    if (sessionMetadata?.analysis_type && !analysisMetaItems.find(i => i.label === '解析モード')) {
-      analysisMetaItems.push({ label: '解析モード', value: String(sessionMetadata.analysis_type) });
+    if (sessionMetadata?.analysis_type && !analysisMetaItems.find((i) => i.label === '解析モード')) {
+      analysisMetaItems.push({
+        label: '解析モード',
+        value: String(sessionMetadata.analysis_type),
+      });
     }
     if (analysisData?.timestamp) {
-      analysisMetaItems.push({ label: '保存時刻', value: new Date(analysisData.timestamp).toLocaleString('ja-JP') });
+      analysisMetaItems.push({
+        label: '保存時刻',
+        value: new Date(analysisData.timestamp).toLocaleString('ja-JP'),
+      });
     }
     if (typeof analysisData?.avgSpeed === 'number') {
-      analysisMetaItems.push({ label: '保存時の平均速度', value: `${analysisData.avgSpeed.toFixed(2)} m/s` });
+      analysisMetaItems.push({
+        label: '保存時の平均速度',
+        value: `${analysisData.avgSpeed.toFixed(2)} m/s`,
+      });
     } else if (analysisData?.avgSpeed) {
-      analysisMetaItems.push({ label: '保存時の平均速度', value: `${analysisData.avgSpeed} m/s` });
+      analysisMetaItems.push({
+        label: '保存時の平均速度',
+        value: `${analysisData.avgSpeed} m/s`,
+      });
     }
     if (analysisData?.distance !== undefined && analysisData?.distance !== null) {
       analysisMetaItems.push({ label: '解析距離', value: `${analysisData.distance} m` });
     }
     if (analysisData?.sectionTime !== undefined && analysisData?.sectionTime !== null) {
       analysisMetaItems.push({ label: '区間時間', value: `${analysisData.sectionTime} 秒` });
+    }
+    if (analysisData?.sectionRange) {
+      const range = analysisData.sectionRange;
+      if (range.start !== undefined && range.start !== null) {
+        analysisMetaItems.push({ label: '開始フレーム', value: `${range.start}` });
+      }
+      if (range.mid !== undefined && range.mid !== null) {
+        analysisMetaItems.push({ label: '中間フレーム', value: `${range.mid}` });
+      }
+      if (range.end !== undefined && range.end !== null) {
+        analysisMetaItems.push({ label: '終了フレーム', value: `${range.end}` });
+      }
+      if (range.count !== undefined && range.count !== null) {
+        analysisMetaItems.push({ label: '抽出フレーム数', value: `${range.count}` });
+      }
+    }
+    if (session.section_start_frame !== undefined && session.section_start_frame !== null) {
+      analysisMetaItems.push({
+        label: '保存済み開始フレーム',
+        value: `${session.section_start_frame}`,
+      });
+    }
+    if (session.section_end_frame !== undefined && session.section_end_frame !== null) {
+      analysisMetaItems.push({
+        label: '保存済み終了フレーム',
+        value: `${session.section_end_frame}`,
+      });
+    }
+    if (analysisData?.framesCount !== undefined && analysisData.framesCount !== null) {
+      analysisMetaItems.push({
+        label: '抽出フレーム総数',
+        value: `${analysisData.framesCount}`,
+      });
+    }
+    if (analysisData?.usedTargetFps !== undefined && analysisData.usedTargetFps !== null) {
+      analysisMetaItems.push({
+        label: '解析時ターゲットFPS',
+        value: `${analysisData.usedTargetFps} fps`,
+      });
+    }
+    if (session.section_frame_count !== undefined && session.section_frame_count !== null) {
+      analysisMetaItems.push({
+        label: 'セクションフレーム数',
+        value: `${session.section_frame_count}`,
+      });
     }
 
     const analysisMetaSection = analysisMetaItems.length
@@ -318,8 +445,24 @@ ${escapeHtml(String(analysisData.targetAdvice))}
       : '';
 
     const athleteInfoEntries = analysisData?.athleteInfo
-      ? Object.entries(analysisData.athleteInfo).filter(([_, value]) => value !== null && value !== undefined && value !== '')
+      ? Object.entries(analysisData.athleteInfo).filter(
+          ([, value]) => value !== null && value !== undefined && value !== ''
+        )
       : [];
+    if (
+      session.athlete_name &&
+      !athleteInfoEntries.find(
+        ([key]) => key === 'name' || key === 'full_name' || key === 'athlete_name'
+      )
+    ) {
+      athleteInfoEntries.unshift(['登録選手名', session.athlete_name]);
+    }
+    if (
+      session.athlete_id &&
+      !athleteInfoEntries.find(([key]) => key === 'athlete_id' || key === 'athleteId')
+    ) {
+      athleteInfoEntries.push(['Athlete ID', session.athlete_id]);
+    }
 
     const athleteInfoSection = athleteInfoEntries.length
       ? `
@@ -341,7 +484,9 @@ ${escapeHtml(String(analysisData.targetAdvice))}
       : '';
 
     const metadataEntries = sessionMetadata
-      ? Object.entries(sessionMetadata).filter(([_, value]) => value !== null && value !== undefined && value !== '')
+      ? Object.entries(sessionMetadata).filter(
+          ([, value]) => value !== null && value !== undefined && value !== ''
+        )
       : [];
 
     const metadataSection = metadataEntries.length
@@ -359,6 +504,88 @@ ${escapeHtml(String(analysisData.targetAdvice))}
           )
           .join('')}
       </div>
+    </div>
+    `
+      : '';
+
+    const storedStepMetrics = Array.isArray(analysisData?.stepMetrics)
+      ? analysisData.stepMetrics
+      : null;
+
+    const detailedStepMetricsSection =
+      storedStepMetrics && storedStepMetrics.length
+        ? (() => {
+            const keySet = storedStepMetrics.reduce((set: Set<string>, metric: any) => {
+              Object.entries(metric).forEach(([key, value]) => {
+                if (value === null || value === undefined) return;
+                if (typeof value === 'object') return;
+                set.add(key);
+              });
+              return set;
+            }, new Set<string>());
+            const columns: string[] = Array.from(keySet);
+            if (!columns.length) {
+              return '';
+            }
+            const limitedColumns = columns.slice(0, 12);
+            const headerCells = limitedColumns
+              .map(
+                (key) =>
+                  `<th style="padding: 8px; border: 1px solid #e2e8f0; text-align: left;">${escapeHtml(
+                    key
+                  )}</th>`
+              )
+              .join('');
+            const bodyRows = storedStepMetrics
+              .map(
+                (metric: any, idx: number) => `
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e2e8f0;">#${idx + 1}</td>
+            ${limitedColumns
+              .map((key) => {
+                const display = formatForDisplay(metric[key]);
+                return `<td style="padding: 8px; border: 1px solid #e2e8f0;">${
+                  display || '-'
+                }</td>`;
+              })
+              .join('')}
+          </tr>
+          `
+              )
+              .join('');
+            const moreNote = columns.length > limitedColumns.length
+              ? `<p class="section-note">※ 全${columns.length}項目のうち、代表的な12項目のみ表示しています。完全なデータは下部のJSON表示をご確認ください。</p>`
+              : '';
+            return `
+    <div class="section">
+      <h2>🧾 保存済みステップメトリクス（詳細）</h2>
+      ${moreNote}
+      <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr style="background: #f7fafc;">
+              <th style="padding: 8px; border: 1px solid #e2e8f0; text-align: left;">ステップ</th>
+              ${headerCells}
+            </tr>
+          </thead>
+          <tbody>
+            ${bodyRows}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    `;
+          })()
+        : '';
+
+    const rawAnalysisSection = analysisData
+      ? `
+    <div class="section">
+      <h2>🗄️ 保存済み解析データ (JSON)</h2>
+      <details>
+        <summary>クリックして展開</summary>
+        <pre class="json-view">${escapeHtml(JSON.stringify(analysisData, null, 2))}</pre>
+      </details>
     </div>
     `
       : '';
@@ -426,6 +653,155 @@ ${escapeHtml(String(analysisData.targetAdvice))}
       font-size: 0.875rem;
       color: #718096;
       margin-left: 4px;
+    }
+    .empty-message {
+      background: #f8fafc;
+      border: 1px dashed #cbd5f5;
+      border-radius: 12px;
+      padding: 16px;
+      color: #475569;
+      line-height: 1.6;
+    }
+    .markdown p {
+      margin: 0 0 12px;
+      line-height: 1.7;
+      color: #1f2937;
+    }
+    .markdown p:last-child {
+      margin-bottom: 0;
+    }
+    .markdown strong {
+      color: #1d4ed8;
+    }
+    .ai-overall {
+      background: #eef2ff;
+      border: 1px solid #c7d2fe;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .ai-rating-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #4338ca;
+      color: #fff;
+      font-weight: 600;
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      width: fit-content;
+    }
+    .ai-score {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #1d4ed8;
+    }
+    .ai-overall-message {
+      margin: 0;
+      color: #1e293b;
+      line-height: 1.6;
+    }
+    .ai-evaluation-grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+    .ai-evaluation-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .ai-evaluation-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      color: #1e293b;
+    }
+    .ai-icon {
+      font-size: 1.2rem;
+    }
+    .ai-category {
+      flex: 1;
+    }
+    .ai-score-tag {
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .ai-score-tag.excellent {
+      background: #dcfce7;
+      color: #166534;
+    }
+    .ai-score-tag.good {
+      background: #e0f2fe;
+      color: #075985;
+    }
+    .ai-score-tag.fair {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    .ai-score-tag.poor {
+      background: #fee2e2;
+      color: #b91c1c;
+    }
+    .ai-score-tag.unknown {
+      background: #e2e8f0;
+      color: #475569;
+    }
+    .ai-message {
+      margin: 0;
+      font-size: 0.9rem;
+      color: #334155;
+      line-height: 1.5;
+    }
+    .ai-advice {
+      margin: 0;
+      font-size: 0.85rem;
+      color: #0f172a;
+      line-height: 1.5;
+    }
+    .section-note {
+      margin-top: 0;
+      margin-bottom: 12px;
+      color: #64748b;
+      font-size: 0.9rem;
+    }
+    details {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 16px;
+    }
+    details summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: #1f2937;
+      outline: none;
+    }
+    details[open] summary {
+      margin-bottom: 12px;
+    }
+    .json-view {
+      margin-top: 12px;
+      max-height: 320px;
+      overflow: auto;
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 16px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      line-height: 1.4;
     }
     .back-button {
       display: inline-block;
@@ -618,7 +994,9 @@ ${escapeHtml(String(analysisData.targetAdvice))}
     ${athleteInfoSection}
     ${aiEvaluationSection}
     ${targetAdviceSection}
+    ${detailedStepMetricsSection}
     ${metadataSection}
+    ${rawAnalysisSection}
     
     ${session.notes ? `
     <div class="section">
@@ -658,16 +1036,21 @@ ${escapeHtml(String(analysisData.targetAdvice))}
 
   // ラベルの更新
   const updateSessionLabel = async (sessionId: string, newLabel: string) => {
+    const trimmed = newLabel.trim();
     const { error } = await supabase
       .from('running_analysis_sessions')
-      .update({ label: newLabel })
+      .update({ label: trimmed.length ? trimmed : null })
       .eq('id', sessionId);
     
     if (error) {
       alert('更新に失敗しました: ' + error.message);
     } else {
-      // リロード
-      window.location.reload();
+      setSessions((prev) =>
+        prev.map((item) =>
+          item.id === sessionId ? { ...item, label: trimmed.length ? trimmed : null } : item
+        )
+      );
+      alert('ラベルを更新しました。');
     }
   };
 
