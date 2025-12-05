@@ -2729,22 +2729,11 @@ const [notesInput, setNotesInput] = useState<string>("");
         setStatus(`✅ 姿勢推定完了！（成功率: ${interpolatedRateStr}%、補間前: ${successRateStr}%）`);
       }
       
-      // 🔧 メモリ解放: 姿勢推定が完了したらフレームデータを圧縮
-      // モバイルデバイスでは積極的にメモリを解放
+      // 🔧 モバイル端末でもフレームと姿勢データのインデックスを一致させるため、
+      //     解析後のフレーム間引きは行わない（表示のズレを防止）
       const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      if (isMobileDevice && framesRef.current.length > 100) {
-        console.log('🧹 Mobile: Reducing frame data to save memory...');
-        // フレームデータを間引いて保持（表示用に最低限のみ）
-        const reducedFrames: ImageData[] = [];
-        const keepEvery = Math.ceil(framesRef.current.length / 100); // 最大100フレームに削減
-        for (let i = 0; i < framesRef.current.length; i += keepEvery) {
-          reducedFrames.push(framesRef.current[i]);
-        }
-        // 元のフレームデータをクリア
-        framesRef.current.length = 0;
-        // 削減されたフレームを設定
-        framesRef.current = reducedFrames;
-        console.log(`🧹 Reduced frames: ${reducedFrames.length} frames kept`);
+      if (isMobileDevice) {
+        console.log(`📱 Mobile device detected → keeping all ${framesRef.current.length} frames for accurate overlay`);
       }
       
       // 自動で次のステップへ（区間設定）
