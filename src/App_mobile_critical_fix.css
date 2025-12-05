@@ -1,0 +1,379 @@
+/* 
+ * 緊急モバイル修正CSS - 最高優先度で適用
+ * !importantを使用して既存スタイルを強制的に上書き
+ */
+
+/* ============================================
+   iPhone/モバイル向け緊急修正
+   ============================================ */
+
+/* 全体のベース修正 */
+@media screen and (max-width: 768px) {
+  /* ボディとコンテナの基本設定 */
+  body {
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    width: 100vw !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .app-container {
+    width: 100% !important;
+    max-width: 100vw !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow-x: hidden !important;
+  }
+}
+
+/* ヘッダーの緊急修正 */
+@media screen and (max-width: 768px) {
+  .app-header-new {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: 120px !important;
+    z-index: 9999 !important;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    padding: 8px 5px !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3) !important;
+  }
+
+  /* ヘッダー内のレイアウト */
+  .app-header-new > div {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    gap: 4px !important;
+  }
+
+  /* タイトル部分 */
+  .app-header-new > div > div:first-child {
+    width: 100% !important;
+    text-align: center !important;
+    padding: 0 5px !important;
+  }
+
+  /* タイトルテキスト */
+  .app-title-new {
+    font-size: 1.1rem !important;
+    line-height: 1.2 !important;
+    margin: 0 !important;
+    padding: 2px 0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* サブタイトル */
+  .app-subtitle-new {
+    font-size: 0.65rem !important;
+    line-height: 1.1 !important;
+    margin: 0 !important;
+    padding: 2px 0 !important;
+    opacity: 0.9 !important;
+    white-space: normal !important;
+    word-break: keep-all !important;
+  }
+
+  /* ヘッダー内のボタン群 */
+  .app-header-new button {
+    font-size: 0.7rem !important;
+    padding: 4px 8px !important;
+    margin: 2px !important;
+    height: auto !important;
+    line-height: 1.2 !important;
+    white-space: nowrap !important;
+  }
+
+  /* ユーザー名は非表示 */
+  .app-header-new > div > div:last-child span:last-child {
+    display: none !important;
+  }
+
+  /* コンテンツのヘッダー分の余白 */
+  .wizard-main {
+    margin-top: 120px !important;
+    padding: 10px 5px 80px 5px !important;
+  }
+}
+
+/* ステップインジケーターの修正 */
+@media screen and (max-width: 768px) {
+  .step-progress {
+    position: sticky !important;
+    top: 120px !important;
+    z-index: 100 !important;
+    background: white !important;
+    display: flex !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding: 8px 5px !important;
+    gap: 5px !important;
+    margin: 0 !important;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1) !important;
+  }
+
+  .step-item {
+    flex: 0 0 auto !important;
+    min-width: 55px !important;
+    text-align: center !important;
+  }
+
+  .step-circle {
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 0.75rem !important;
+    margin: 0 auto !important;
+  }
+
+  .step-name {
+    font-size: 0.6rem !important;
+    margin-top: 2px !important;
+    white-space: nowrap !important;
+  }
+}
+
+/* マーカー配置テーブルの緊急修正 */
+@media screen and (max-width: 768px) {
+  /* テーブルのコンテナ */
+  .table-container,
+  .marker-table-container,
+  [class*="table"] {
+    width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    -webkit-overflow-scrolling: touch !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    position: relative !important;
+  }
+
+  /* テーブル本体 */
+  table {
+    min-width: 500px !important;
+    width: auto !important;
+    border-collapse: collapse !important;
+    margin: 0 !important;
+  }
+
+  /* テーブルのセル */
+  table th,
+  table td {
+    padding: 6px 4px !important;
+    font-size: 0.7rem !important;
+    white-space: nowrap !important;
+    border: 1px solid #ddd !important;
+    vertical-align: middle !important;
+    position: relative !important;
+    background: white !important;
+    z-index: 1 !important;
+  }
+
+  /* 入力フィールド */
+  table input[type="number"],
+  table input[type="text"] {
+    width: 45px !important;
+    max-width: 45px !important;
+    padding: 3px 2px !important;
+    font-size: 0.7rem !important;
+    margin: 0 !important;
+    border: 1px solid #ccc !important;
+    background: white !important;
+  }
+
+  /* ボタン */
+  table button {
+    padding: 3px 5px !important;
+    font-size: 0.65rem !important;
+    margin: 2px !important;
+    white-space: nowrap !important;
+    height: auto !important;
+    line-height: 1.1 !important;
+  }
+
+  /* 行の高さ制限 */
+  table tr {
+    height: auto !important;
+    max-height: 60px !important;
+  }
+
+  /* スクロールヒント */
+  .table-container::after,
+  .marker-table-container::after {
+    content: "← 左右にスワイプ →" !important;
+    display: block !important;
+    text-align: center !important;
+    font-size: 0.7rem !important;
+    color: #666 !important;
+    padding: 5px !important;
+    background: #f5f5f5 !important;
+  }
+}
+
+/* フレームコントロールの修正 */
+@media screen and (max-width: 768px) {
+  /* フレームコントロール全体 */
+  .frame-controls,
+  [class*="control"] {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    background: white !important;
+    border-top: 2px solid #333 !important;
+    padding: 8px 5px !important;
+    z-index: 9000 !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 5px !important;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.2) !important;
+  }
+
+  /* コントロールボタン */
+  .frame-controls button,
+  [class*="control"] button {
+    flex: 0 0 auto !important;
+    min-width: 40px !important;
+    padding: 6px 8px !important;
+    font-size: 0.7rem !important;
+    height: 32px !important;
+    line-height: 1 !important;
+  }
+
+  /* スライダー */
+  input[type="range"] {
+    width: 100% !important;
+    height: 30px !important;
+    margin: 5px 0 !important;
+  }
+
+  /* フレーム番号表示 */
+  .frame-number,
+  [class*="frame-info"] {
+    font-size: 0.7rem !important;
+    padding: 2px 5px !important;
+    background: #f0f0f0 !important;
+    border-radius: 3px !important;
+  }
+}
+
+/* モーダルとポップアップ */
+@media screen and (max-width: 768px) {
+  .modal,
+  [class*="modal"] {
+    padding: 10px !important;
+  }
+
+  .modal-content,
+  [class*="modal-content"] {
+    width: calc(100% - 20px) !important;
+    max-width: 100% !important;
+    max-height: calc(100vh - 40px) !important;
+    margin: 10px !important;
+    padding: 15px !important;
+    overflow-y: auto !important;
+  }
+
+  .modal-header {
+    font-size: 1rem !important;
+    padding: 10px 0 !important;
+  }
+
+  .modal-body {
+    font-size: 0.85rem !important;
+  }
+}
+
+/* フォーム要素の統一 */
+@media screen and (max-width: 768px) {
+  input,
+  select,
+  textarea,
+  button {
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    appearance: none !important;
+    font-size: 16px !important; /* iOSのズーム防止 */
+  }
+
+  /* ボタンの基本スタイル */
+  .btn-primary,
+  .btn-primary-large,
+  .btn-secondary,
+  button[type="submit"],
+  button[type="button"] {
+    width: 100% !important;
+    padding: 10px !important;
+    font-size: 0.9rem !important;
+    margin: 5px 0 !important;
+    height: auto !important;
+    line-height: 1.4 !important;
+  }
+
+  /* 小さいボタン */
+  .btn-small,
+  .btn-sm {
+    width: auto !important;
+    padding: 5px 10px !important;
+    font-size: 0.75rem !important;
+  }
+}
+
+/* キャンバスとビデオ */
+@media screen and (max-width: 768px) {
+  canvas,
+  video {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  .canvas-area,
+  .video-area {
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 10px 0 !important;
+  }
+}
+
+/* iOS特有の対策 */
+@supports (-webkit-touch-callout: none) {
+  /* タップハイライト無効化 */
+  * {
+    -webkit-tap-highlight-color: transparent !important;
+  }
+
+  /* 慣性スクロール */
+  .scrollable,
+  [class*="scroll"] {
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* 固定要素のちらつき対策 */
+  .app-header-new,
+  .frame-controls,
+  [class*="fixed"] {
+    -webkit-transform: translateZ(0) !important;
+    transform: translateZ(0) !important;
+  }
+}
+
+/* デバッグ用：問題のある要素を視覚化 */
+@media screen and (max-width: 768px) and (max-width: 0px) {
+  * {
+    outline: 1px solid red !important;
+  }
+}
