@@ -9,6 +9,9 @@ node_modules/
 dist/
 .wrangler/
 
+# Netlify
+.netlify/
+
 # Logs
 *.log
 
