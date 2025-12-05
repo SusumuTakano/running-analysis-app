@@ -6,7 +6,6 @@ import React, {
   ChangeEvent,
 } from "react";
 import "./App.css";
-import "./mobile-minimal.css";
 import { supabase } from "./lib/supabaseClient";
 import Chart from "chart.js/auto";
 import { generateRunningEvaluation, type RunningEvaluation } from "./runningEvaluation";

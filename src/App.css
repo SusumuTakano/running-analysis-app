@@ -78,68 +78,27 @@ body {
 /* モバイル用ヘッダー最適化 - コンパクト表示 */
 @media (max-width: 768px) {
   .app-header-new {
-    position: sticky !important;
+    position: fixed !important;
     top: 0 !important;
     left: 0 !important;
     right: 0 !important;
     z-index: 1001 !important;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    background: rgba(102, 126, 234, 0.95) !important;
     backdrop-filter: blur(10px);
-    padding: 8px 10px !important;
+    padding: 8px 12px !important;
     margin: 0 !important;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    overflow: hidden !important;
-  }
-  
-  .app-header-new > div {
-    flex-direction: column !important;
-    gap: 8px !important;
-    align-items: stretch !important;
-  }
-  
-  .app-header-new > div > div:first-child {
-    text-align: center !important;
-  }
-  
-  .app-header-new > div > div:last-child {
-    display: flex !important;
-    justify-content: center !important;
-    gap: 8px !important;
-    flex-wrap: wrap !important;
   }
   
   .app-title-new {
-    font-size: 1.1rem !important;
+    font-size: 1rem !important;
     margin: 0 !important;
     font-weight: 700;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-    white-space: normal !important;
-    line-height: 1.3 !important;
   }
   
   .app-subtitle-new {
     display: none !important;
-  }
-  
-  /* モバイル用コンテナとボタン調整 */
-  .app-container {
-    padding: 10px !important;
-    max-width: 100% !important;
-  }
-  
-  .app-header-new button {
-    font-size: 0.75rem !important;
-    padding: 6px 10px !important;
-  }
-  
-  /* マーカー入力エリアの修正 */
-  div[style*="position: fixed"][style*="bottom"] {
-    position: relative !important;
-    bottom: auto !important;
-    margin: 20px 0 !important;
-    width: calc(100% - 20px) !important;
-    left: 10px !important;
-    right: 10px !important;
   }
   
   /* ステップ6（マーキング時）のみヘッダー考慮が必要 */
@@ -168,37 +127,6 @@ body {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   position: relative;
-}
-
-/* モバイル用ステップインジケーター */
-@media (max-width: 768px) {
-  .step-progress {
-    padding: 8px !important;
-    gap: 4px !important;
-    margin-bottom: 16px !important;
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-  }
-  
-  .step-progress::before {
-    display: none !important;
-  }
-  
-  .step-item {
-    min-width: 45px !important;
-    padding: 4px !important;
-  }
-  
-  .step-circle {
-    width: 28px !important;
-    height: 28px !important;
-    font-size: 0.75rem !important;
-  }
-  
-  .step-name {
-    font-size: 0.6rem !important;
-    margin-top: 2px !important;
-  }
 }
 
 .step-progress::before {
@@ -444,115 +372,39 @@ body {
   overflow: hidden;
   background: #000;
   box-shadow: var(--shadow-md);
-  /* iPad/ノートPC対応: 最大高さを制限 */
-  max-height: 50vh; /* 画面の50%に制限 */
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* iPad/タブレット専用のスタイル (768px〜1024px) */
-@media (min-width: 768px) and (max-width: 1024px) {
-  .wizard-step-5 .canvas-area,
-  .wizard-step-6 .canvas-area,
-  .wizard-step-7 .canvas-area {
-    position: fixed !important;
-    top: 70px !important;
-    left: 10px !important;
-    right: 10px !important;
-    width: calc(100vw - 20px) !important;
-    max-width: none !important;
-    max-height: 35vh !important; /* iPadで画面の35%に制限 */
-    z-index: 9999 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: rgba(0, 0, 0, 0.98);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-    border-radius: 8px;
-    overflow: hidden;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-  }
-  
-  .wizard-step-5 .wizard-content,
-  .wizard-step-6 .wizard-content,
-  .wizard-step-7 .wizard-content {
-    padding-top: calc(35vh + 90px) !important;
-  }
-  
-  /* ステップ7の結果表示でも同様の制限 */
-  .result-viewer-card {
-    max-width: 100%;
-  }
 }
 
 /* PC版: ステップ5, 6でキャンバスを固定表示 */
-@media (min-width: 1025px) {
+@media (min-width: 769px) {
   /* ステップ5, 6共通: キャンバス固定 */
   .wizard-step-5 .canvas-area,
   .wizard-step-6 .canvas-area {
     position: fixed !important;
     top: 80px !important; /* ヘッダー分の余白 */
-    left: 50%; /* 中央配置 */
-    transform: translateX(-50%); /* 中央配置 */
-    width: 80vw !important; /* 画面幅の80%に制限 */
-    max-width: 1000px !important; /* 最大幅を制限 */
-    max-height: 45vh !important; /* 画面高さの45%に制限 */
+    left: 0;
+    right: 0;
+    width: 100vw !important; /* 横幅いっぱい */
+    max-width: 100vw !important; /* 横幅いっぱい */
     z-index: 9999 !important; /* 最前面に表示 */
     margin: 0 !important;
     padding: 0 !important;
     pointer-events: auto; /* クリック可能に */
-    background: rgba(0, 0, 0, 0.95); /* 半透明背景 */
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); /* 影を追加 */
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
   }
 
   /* ステップ5, 6: キャンバス固定時のコンテンツ余白調整 */
   .wizard-step-5 .wizard-content,
   .wizard-step-6 .wizard-content {
-    padding-top: calc(45vh + 100px); /* キャンバス高さ + ヘッダー + 余白 */
+    padding-top: calc(70vh + 40px); /* キャンバス高さ + 余白 */
   }
 }
 
 .preview-canvas {
   display: block;
-  max-height: 40vh; /* iPad/ノートPC対応: 画面の40%に制限 */
-  margin: 0 auto; /* 中央配置 */
-}
-
-/* iPad専用の調整 */
-@supports (-webkit-touch-callout: none) {
-  .preview-canvas {
-    /* iPadではobject-fitを使用 */
-    object-fit: contain;
-    width: auto !important;
-    height: auto !important;
-  }
-}
-
-/* モバイル用の追加調整 */
-@media (max-width: 767px) {
-  .canvas-area {
-    max-height: 35vh; /* モバイルでは35%に制限 */
-    margin-bottom: 15px;
-  }
-  
-  .preview-canvas {
-    max-height: 35vh;
-  }
-  
-  .wizard-step-7 .canvas-area {
-    max-height: 35vh;
-  }
-  
-  /* フレームビューワーカードもコンパクトに */
-  .result-viewer-card {
-    padding: 15px;
-  }
+  width: 100%;
+  height: auto;
+  max-height: 80vh; /* PC版で画面の80%まで（より大きく） */
+  /* object-fit: contain を削除 - キャンバスは内部サイズと表示サイズを一致させる必要がある */
+  /* スケルトン描画座標がズレないようにアスペクト比はJSで管理 */
 }
 
 /* ========== フレームコントロール ========== */
@@ -1020,22 +872,6 @@ body {
   background: var(--gray-50);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
-  /* iPad/ノートPC対応 */
-  max-width: 100%;
-  overflow: hidden;
-}
-
-/* ステップ7の解析結果画面でもキャンバスサイズを制限 */
-.wizard-step-7 .canvas-area {
-  max-height: 40vh; /* 画面の40%に制限 */
-  background: #000;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.wizard-step-7 .preview-canvas {
-  max-height: 40vh;
-  object-fit: contain;
 }
 
 .viewer-controls {
@@ -1485,7 +1321,7 @@ body {
 
   /* ========== モバイル最適化：キャンバスを最大化、コントロールを最小化 ========== */
   
-  /* キャンバスエリア：デフォルト（ステップ5, 6以外） */
+  /* キャンバスエリア：デフォルト（ステップ5, 6以外では固定） */
   .canvas-area {
     position: relative !important;
     width: 100% !important;
@@ -1499,42 +1335,30 @@ body {
     border-radius: 8px;
     overflow: hidden;
   }
-
-  /* ★ステップ5（区間設定）用キャンバス：相対配置＆縦横比そのまま★ */
-  .wizard-content.step-5 .canvas-area {
-    position: relative !important;
-    top: auto !important;
-    left: auto !important;
-    right: auto !important;
-    width: 100% !important;
-    height: auto !important;
-    max-height: none !important;
-    margin: 0 0 12px 0 !important;
-    border-radius: 8px;
-  }
   
   /* ステップ6（マーキング）でのキャンバスは固定表示 */
-  .wizard-content.step-6 .canvas-area {
-    position: fixed !important;
-    top: 42px !important;
-    left: 0 !important;
-    right: 0 !important;
-    width: 100vw !important;
-    /* height/max-height はコメントアウトのまま */
-    /* height: 56.25vw !important; */
-    /* max-height: 50vh !important; */
-    z-index: 1000 !important;
-    margin: 0 !important;
-    border-radius: 0;
-  }
+.wizard-content.step-6 .canvas-area {
+  position: fixed !important;
+  top: 42px !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100vw !important;
+  /* ★ 縦横比を JS に任せるので、height/max-height を消す ★ */
+  /* height: 56.25vw !important; */
+  /* max-height: 50vh !important; */
+  z-index: 1000 !important;
+  margin: 0 !important;
+  border-radius: 0;
+}
 
-  .preview-canvas {
-    width: 100% !important;
-    height: auto !important;
-    object-fit: contain;
-    display: block;
-    margin: 0;
-  }
+.preview-canvas {
+  width: 100% !important;
+  height: auto !important;   /* ★ 100% → auto に変更 ★ */
+  object-fit: contain;
+  display: block;
+  margin: 0;
+}
+
 
   /* フレームコントロール（スライダー）：通常はドキュメントフロー内 */
   .frame-control {
