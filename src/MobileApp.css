@@ -1,0 +1,349 @@
+/* iPhone/モバイル専用スタイルシート - 完全書き換え版 */
+
+/* モバイルのみに適用（PCには影響なし） */
+@media only screen and (max-width: 768px) {
+  
+  /* === 基本リセット === */
+  * {
+    box-sizing: border-box !important;
+  }
+  
+  html, body {
+    width: 100% !important;
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* === メインコンテナ === */
+  .app-container {
+    width: 100% !important;
+    min-height: 100vh !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  }
+
+  /* === ヘッダー完全再設計 === */
+  .app-header-new {
+    width: 100% !important;
+    padding: 10px !important;
+    margin: 0 !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+    backdrop-filter: blur(10px) !important;
+    position: relative !important;
+  }
+
+  .app-header-new > div {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  .app-header-new > div > div:first-child {
+    text-align: center !important;
+    margin-bottom: 10px !important;
+  }
+
+  .app-title-new {
+    font-size: 18px !important;
+    line-height: 24px !important;
+    color: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-weight: bold !important;
+    display: block !important;
+  }
+
+  .app-subtitle-new {
+    font-size: 11px !important;
+    line-height: 16px !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+    margin: 4px 0 0 0 !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+
+  /* ヘッダーボタン群 */
+  .app-header-new button {
+    font-size: 12px !important;
+    padding: 8px 12px !important;
+    margin: 4px !important;
+    border-radius: 6px !important;
+    height: 36px !important;
+  }
+
+  .app-header-new > div > div:last-child {
+    display: flex !important;
+    justify-content: center !important;
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+
+  /* ユーザー名非表示 */
+  .app-header-new span:last-of-type {
+    display: none !important;
+  }
+
+  /* === ステップインジケーター === */
+  .step-progress {
+    width: 100% !important;
+    padding: 10px 0 !important;
+    margin: 0 !important;
+    background: white !important;
+    display: flex !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .step-item {
+    flex: 0 0 60px !important;
+    text-align: center !important;
+    padding: 5px !important;
+  }
+
+  .step-circle {
+    width: 30px !important;
+    height: 30px !important;
+    line-height: 30px !important;
+    font-size: 12px !important;
+    margin: 0 auto 4px !important;
+  }
+
+  .step-name {
+    font-size: 10px !important;
+    line-height: 12px !important;
+  }
+
+  /* === メインコンテンツエリア === */
+  .wizard-main {
+    width: 100% !important;
+    padding: 10px !important;
+    background: white !important;
+    min-height: calc(100vh - 200px) !important;
+  }
+
+  .wizard-content {
+    width: 100% !important;
+    padding: 10px !important;
+  }
+
+  .wizard-step-header {
+    margin-bottom: 15px !important;
+  }
+
+  .wizard-step-title {
+    font-size: 18px !important;
+    line-height: 24px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .wizard-step-desc {
+    font-size: 12px !important;
+    line-height: 18px !important;
+  }
+
+  /* === フォーム要素 === */
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="password"],
+  textarea,
+  select {
+    width: 100% !important;
+    font-size: 16px !important; /* iOS自動ズーム防止 */
+    padding: 10px !important;
+    margin: 5px 0 !important;
+    border: 1px solid #ddd !important;
+    border-radius: 4px !important;
+  }
+
+  /* === ボタン === */
+  button,
+  .btn-primary,
+  .btn-primary-large,
+  .btn-secondary {
+    width: 100% !important;
+    min-height: 44px !important; /* iOSタップ最小サイズ */
+    font-size: 14px !important;
+    padding: 10px !important;
+    margin: 5px 0 !important;
+    border-radius: 6px !important;
+    display: block !important;
+    text-align: center !important;
+  }
+
+  /* 小さいボタン */
+  .btn-sm,
+  button.small {
+    width: auto !important;
+    min-width: 60px !important;
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+    min-height: 36px !important;
+  }
+
+  /* === テーブル対応 === */
+  table {
+    width: 100% !important;
+    font-size: 12px !important;
+  }
+
+  .table-container,
+  .wizard-content > div > table,
+  div[style*="overflow"] > table {
+    display: block !important;
+    width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  table th,
+  table td {
+    padding: 8px 5px !important;
+    font-size: 11px !important;
+    white-space: nowrap !important;
+  }
+
+  /* テーブル内の入力フィールド */
+  table input[type="number"] {
+    width: 50px !important;
+    min-width: 50px !important;
+    padding: 4px !important;
+    font-size: 12px !important;
+  }
+
+  table button {
+    padding: 4px 8px !important;
+    font-size: 11px !important;
+    min-height: 30px !important;
+    width: auto !important;
+  }
+
+  /* === キャンバス・ビデオ === */
+  canvas,
+  video {
+    max-width: 100% !important;
+    width: 100% !important;
+    height: auto !important;
+    display: block !important;
+  }
+
+  .canvas-area,
+  .preview-canvas {
+    width: 100% !important;
+    margin: 10px 0 !important;
+  }
+
+  /* === フレームコントロール === */
+  .frame-controls,
+  div[style*="display: flex"][style*="gap"] {
+    width: 100% !important;
+    padding: 10px !important;
+    background: white !important;
+    border-top: 1px solid #ddd !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    gap: 5px !important;
+  }
+
+  .frame-controls button {
+    flex: 0 0 auto !important;
+    min-width: 50px !important;
+    padding: 8px !important;
+    font-size: 12px !important;
+  }
+
+  /* スライダー */
+  input[type="range"] {
+    width: 100% !important;
+    margin: 10px 0 !important;
+  }
+
+  /* === モーダル === */
+  .modal,
+  div[style*="position: fixed"][style*="z-index: 10000"] {
+    padding: 10px !important;
+  }
+
+  .modal-content,
+  div[style*="background: white"][style*="border-radius"] {
+    width: calc(100% - 20px) !important;
+    max-width: none !important;
+    margin: 10px !important;
+    padding: 15px !important;
+    max-height: calc(100vh - 40px) !important;
+    overflow-y: auto !important;
+  }
+
+  /* === アップロードエリア === */
+  .upload-area,
+  .upload-box {
+    width: 100% !important;
+    padding: 20px !important;
+    margin: 10px 0 !important;
+  }
+
+  /* === ナビゲーションバー === */
+  .wizard-nav {
+    width: 100% !important;
+    padding: 10px !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+  }
+
+  .wizard-nav button {
+    flex: 1 1 auto !important;
+    min-width: 100px !important;
+  }
+
+  /* === スペシャル修正 === */
+  
+  /* 入力グループ */
+  .input-group {
+    width: 100% !important;
+    margin: 10px 0 !important;
+  }
+
+  .input-label {
+    display: block !important;
+    width: 100% !important;
+    margin: 10px 0 !important;
+  }
+
+  .label-text {
+    display: block !important;
+    font-size: 13px !important;
+    margin-bottom: 5px !important;
+  }
+
+  /* アラート・通知 */
+  div[style*="background: #fef2f2"],
+  div[style*="background: #f0f9ff"] {
+    padding: 10px !important;
+    margin: 10px 0 !important;
+    font-size: 12px !important;
+  }
+
+  /* === パフォーマンス最適化 === */
+  * {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+  }
+
+  /* タップハイライト無効 */
+  * {
+    -webkit-tap-highlight-color: transparent !important;
+  }
+
+  /* スクロールバー非表示 */
+  ::-webkit-scrollbar {
+    display: none !important;
+  }
+}
