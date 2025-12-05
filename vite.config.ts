@@ -4,26 +4,28 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
-    minify: false, // エラーメッセージを詳細に表示
-    sourcemap: true // ソースマップを有効化
+    minify: true,
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          supabase: ['@supabase/supabase-js'],
+          mediapipe: ['@mediapipe/tasks-vision'],
+          charts: ['chart.js', 'react-chartjs-2']
+        }
+      }
+    }
   },
   server: {
     host: '0.0.0.0',
     port: 5173,
     strictPort: true,
-    hmr: false,
-    allowedHosts: [
-      '3000-iutfhg38ul7w1p11026dx-cc2fbc16.sandbox.novita.ai',
-      '.sandbox.novita.ai'
-    ]
+    hmr: false
   },
   preview: {
     host: '0.0.0.0',
     port: 5173,
-    strictPort: true,
-    allowedHosts: [
-      '3000-iutfhg38ul7w1p11026dx-cc2fbc16.sandbox.novita.ai',
-      '.sandbox.novita.ai'
-    ]
+    strictPort: true
   }
 })

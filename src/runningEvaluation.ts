@@ -15,6 +15,7 @@ export type RunningEvaluation = {
 };
 
 type PhaseAngles = {
+  stepIndex: number;
   phase: "initial" | "mid" | "late";
   frame: number;
   angles: {

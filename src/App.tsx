@@ -9,9 +9,15 @@ import "./App.css";
 import { supabase } from "./lib/supabaseClient";
 import Chart from "chart.js/auto";
 import { generateRunningEvaluation, type RunningEvaluation } from "./runningEvaluation";
+import MultiCameraRunSetup from './components/MultiCameraRunSetup';
+import { Run, RunSegment } from './types/multiCamera';
+import { combineSegmentSteps, calculateMultiCameraStats } from './utils/multiCameraUtils';
 
 /** ウィザードのステップ */
 type WizardStep = 0 | 1 | 2 | 3 | 3.5 | 4 | 5 | 5.5 | 6 | 6.5 | 7 | 8 | 9;
+
+/** 解析モード */
+type AnalysisMode = 'single' | 'multi' | 'panning'; // panningは非表示だが保持
 
 /** 測定者情報 */
 type AthleteInfo = {
@@ -108,6 +114,7 @@ type AngleData = {
 
 /** 3局面での角度データ */
 type PhaseAngles = {
+  stepIndex: number;
   phase: "initial" | "mid" | "late";
   frame: number;
   angles: Omit<AngleData, "frame">;
@@ -490,6 +497,10 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
 const [wizardStep, setWizardStep] = useState<WizardStep>(0);
   const [selectedFps, setSelectedFps] = useState<60 | 120>(120); // FPS選択: 60 or 120 (デフォルト120fps)
+  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('single');
+  const [currentRun, setCurrentRun] = useState<Run | null>(null);
+  const [runSegments, setRunSegments] = useState<RunSegment[]>([]);
+  const [isMultiCameraSetup, setIsMultiCameraSetup] = useState(false);
 
 // ------------- 測定者情報 -------------------
 const initialAthleteInfo: AthleteInfo = {
@@ -2230,6 +2241,7 @@ const [notesInput, setNotesInput] = useState<string>("");
     for (let i = 0; i + 1 < contactFrames.length; i += 2) {
       const contactFrame = contactFrames[i];
       const toeOffFrame = contactFrames[i + 1];
+      const stepIndex = Math.floor(i / 2);
 
       if (toeOffFrame <= contactFrame) continue;
 
@@ -2237,6 +2249,7 @@ const [notesInput, setNotesInput] = useState<string>("");
       if (poseResults[contactFrame]?.landmarks) {
         const angles = calculateAngles(poseResults[contactFrame]!.landmarks);
         results.push({
+          stepIndex,
           phase: "initial",
           frame: contactFrame,
           angles,
@@ -2267,6 +2280,7 @@ const [notesInput, setNotesInput] = useState<string>("");
       if (poseResults[midFrame]?.landmarks) {
         const angles = calculateAngles(poseResults[midFrame]!.landmarks);
         results.push({
+          stepIndex,
           phase: "mid",
           frame: midFrame,
           angles,
@@ -2277,6 +2291,7 @@ const [notesInput, setNotesInput] = useState<string>("");
       if (poseResults[toeOffFrame]?.landmarks) {
         const angles = calculateAngles(poseResults[toeOffFrame]!.landmarks);
         results.push({
+          stepIndex,
           phase: "late",
           frame: toeOffFrame,
           angles,
@@ -3074,6 +3089,65 @@ const [notesInput, setNotesInput] = useState<string>("");
       const avgCadence = stepSummary?.avgStepPitch ?? null;
       const avgContactTime = stepSummary?.avgContact ?? null;
       const avgFlightTime = stepSummary?.avgFlight ?? null;
+
+      const runMode: 'dash' | 'accel' = detectionMode === 1 ? 'dash' : 'accel';
+      const analysisType: 'acceleration' | 'topSpeed' =
+        runMode === 'dash' ? 'acceleration' : 'topSpeed';
+
+      const evalSummary = {
+        avgContact: stepSummary?.avgContact ?? 0,
+        avgFlight: stepSummary?.avgFlight ?? 0,
+        avgStepPitch: stepSummary?.avgStepPitch ?? 0,
+        avgStride: stepSummary?.avgStride ?? 0,
+        avgSpeed: stepSummary?.avgSpeedMps ?? 0,
+      };
+
+      const aiEvaluation = generateRunningEvaluation(
+        stepMetrics ?? [],
+        threePhaseAngles ?? [],
+        evalSummary,
+        analysisType,
+        {
+          heightCm: athleteInfo?.height_cm,
+          gender: athleteInfo?.gender as 'male' | 'female' | 'other' | null,
+        },
+        runMode
+      );
+
+      let targetAdvice: string | null = null;
+      if (athleteInfo?.target_record) {
+        const targetTime = parseFloat(athleteInfo.target_record);
+        if (!isNaN(targetTime) && targetTime > 0) {
+          targetAdvice = generateTargetAdvice(targetTime, analysisType);
+        }
+      }
+
+      const fullAnalysisData = {
+        athleteInfo,
+        analysisType,
+        runMode,
+        stepMetrics,
+        stepSummary,
+        threePhaseAngles,
+        distance: distanceValue,
+        sectionTime,
+        avgSpeed,
+        sectionRange,
+        usedTargetFps,
+        framesCount,
+        aiEvaluation,
+        targetAdvice,
+        timestamp: new Date().toISOString(),
+        version: "1.0",
+      };
+
+      const metadataPayload = {
+        has_ai_evaluation: !!aiEvaluation,
+        has_target_advice: !!targetAdvice,
+        analysis_type: analysisType,
+        athlete_name: athleteInfo?.name || null,
+        run_type: runMode,
+      };
       
       // 基本データを保存（存在するカラムのみ）
       const payload: any = {
@@ -3105,6 +3179,9 @@ const [notesInput, setNotesInput] = useState<string>("");
       payload.section_start_type = "manual";
       payload.section_end_type = "manual";
 
+      payload.session_data = fullAnalysisData;
+      payload.metadata = metadataPayload;
+
       // まず最小限のデータで保存を試みる
       let sessionData: any = null;
       let sessionError: any = null;
@@ -3130,6 +3207,8 @@ const [notesInput, setNotesInput] = useState<string>("");
             avg_speed_mps,
             label: labelInput || null,
             notes: notesInput || null,
+            session_data: fullAnalysisData,
+            metadata: metadataPayload,
           };
           
           const result = await supabase
@@ -3180,34 +3259,68 @@ const [notesInput, setNotesInput] = useState<string>("");
       // 3局面角度データを保存（別テーブルが存在する場合）
       if (threePhaseAngles && threePhaseAngles.length > 0) {
         try {
-          const anglesPayload: any[] = [];
-          threePhaseAngles.forEach((angles, stepIndex) => {
-            // 各局面のデータを保存
-            ['contact', 'midSupport', 'toeOff'].forEach(phase => {
-              const phaseData = angles[phase as keyof typeof angles];
-              if (phaseData && typeof phaseData === 'object' && 'hip' in phaseData) {
-                anglesPayload.push({
-                  session_id: sessionId,
-                  step_index: stepIndex,
-                  phase: phase === 'midSupport' ? 'mid_support' : phase === 'toeOff' ? 'toe_off' : phase,
-                  hip_angle: (phaseData as any).hip,
-                  knee_angle: (phaseData as any).knee,
-                  ankle_angle: (phaseData as any).ankle,
-                  trunk_angle: (phaseData as any).trunk,
-                  shoulder_angle: (phaseData as any).shoulder,
-                  elbow_angle: (phaseData as any).elbow,
-                });
-              }
-            });
-          });
-          
+          const phaseNameMap: Record<PhaseAngles["phase"], string> = {
+            initial: "contact",
+            mid: "mid_support",
+            late: "toe_off",
+          };
+
+          const averageValue = (values: Array<number | null | undefined>) => {
+            const valid = values.filter(
+              (value): value is number => typeof value === "number" && Number.isFinite(value)
+            );
+            if (!valid.length) {
+              return null;
+            }
+            return valid.reduce((sum, value) => sum + value, 0) / valid.length;
+          };
+
+          const normalizeNumeric = (value: number | null | undefined) =>
+            typeof value === "number" && Number.isFinite(value) ? value : null;
+
+          const anglesPayload = threePhaseAngles
+            .map((entry, idx) => {
+              const { stepIndex, phase, frame, angles } = entry;
+              const dbStepIndex =
+                typeof stepIndex === "number" && Number.isFinite(stepIndex)
+                  ? stepIndex
+                  : Math.floor(idx / 3);
+
+              return {
+                session_id: sessionId,
+                step_index: dbStepIndex,
+                phase: phaseNameMap[phase] ?? phase,
+                frame_number: typeof frame === "number" ? frame : null,
+                trunk_angle: normalizeNumeric(angles.trunkAngle),
+                hip_angle: normalizeNumeric(
+                  averageValue([angles.hipAnkleAngle.left, angles.hipAnkleAngle.right])
+                ),
+                knee_angle: normalizeNumeric(
+                  averageValue([angles.kneeFlex.left, angles.kneeFlex.right])
+                ),
+                ankle_angle: normalizeNumeric(
+                  averageValue([angles.ankleFlex.left, angles.ankleFlex.right])
+                ),
+                shoulder_angle: null,
+                elbow_angle: normalizeNumeric(
+                  averageValue([angles.elbowAngle.left, angles.elbowAngle.right])
+                ),
+              };
+            })
+            .filter((item) => item.phase && typeof item.step_index === "number");
+
           if (anglesPayload.length > 0) {
+            await supabase.from("three_phase_angles").delete().eq("session_id", sessionId);
+
             const { error: anglesError } = await supabase
               .from("three_phase_angles")
               .insert(anglesPayload);
-            
+
             if (anglesError) {
-              console.warn("3局面角度データの保存に失敗（テーブルが存在しない可能性）:", anglesError);
+              console.warn(
+                "3局面角度データの保存に失敗（テーブルが存在しない可能性）:",
+                anglesError
+              );
             }
           }
         } catch (e) {
@@ -3240,85 +3353,7 @@ const [notesInput, setNotesInput] = useState<string>("");
         }
       }
       
-      // AIアドバイスと全データをJSONとしてセッションに保存
-      try {
-        // AI評価を生成
-        const runType = detectionMode === 1 ? "dash" : "full";
-        const analysisType: 'acceleration' | 'topSpeed' = runType === 'dash' ? 'acceleration' : 'topSpeed';
-        
-        // stepSummaryをrunningEvaluation用の型に変換
-        const evalSummary = {
-          avgContact: stepSummary?.avgContact ?? 0,
-          avgFlight: stepSummary?.avgFlight ?? 0,
-          avgStepPitch: stepSummary?.avgStepPitch ?? 0,
-          avgStride: stepSummary?.avgStride ?? 0,
-          avgSpeed: stepSummary?.avgSpeedMps ?? 0,
-        };
-        
-        const aiEvaluation = generateRunningEvaluation(stepMetrics, threePhaseAngles, evalSummary, analysisType, {
-          heightCm: athleteInfo?.height_cm,
-          gender: athleteInfo?.gender as 'male' | 'female' | 'other' | null,
-        });
-        
-        // 100m目標記録アドバイスを生成（目標記録が設定されている場合）
-        let targetAdvice = null;
-        if (athleteInfo?.target_record) {
-          const targetTime = parseFloat(athleteInfo.target_record);
-          if (!isNaN(targetTime) && targetTime > 0) {
-            targetAdvice = generateTargetAdvice(targetTime, analysisType);
-          }
-        }
-        
-        // すべての解析データをまとめる
-        const fullAnalysisData = {
-          // 基本情報
-          athleteInfo,
-          analysisType,
-          
-          // ステップデータ
-          stepMetrics,
-          stepSummary,
-          threePhaseAngles,
-          
-          // 解析結果
-          distance: distanceValue,
-          sectionTime,
-          avgSpeed,
-          
-          // フレーム情報
-          sectionRange,
-          usedTargetFps,
-          framesCount,
-          
-          // AI評価とアドバイス
-          aiEvaluation,
-          targetAdvice,
-          
-          // メタデータ
-          timestamp: new Date().toISOString(),
-          version: "1.0",
-        };
-        
-        // セッションテーブルに追加データとして保存
-        const { error: updateError } = await supabase
-          .from("running_analysis_sessions")
-          .update({
-            session_data: fullAnalysisData,
-            metadata: {
-              has_ai_evaluation: !!aiEvaluation,
-              has_target_advice: !!targetAdvice,
-              analysis_type: analysisType,
-              athlete_name: athleteInfo?.name || null,
-            }
-          })
-          .eq('id', sessionId);
-          
-        if (updateError) {
-          console.warn("追加データの保存に失敗:", updateError);
-        }
-      } catch (e) {
-        console.warn("AIアドバイスの保存をスキップ:", e);
-      }
+      // session_data とメタデータは初回保存時に含めているため、ここでの追加更新は不要
 
       setSaveResult(`✅ 保存成功: セッションID=${sessionId}\n詳細データとAIアドバイスも保存されました。`);
     } catch (e: any) {
@@ -5229,7 +5264,48 @@ const [notesInput, setNotesInput] = useState<string>("");
   // 認証は AppWithAuth で処理済み
 
   // ------------ ウィザードステップの内容 ------------
+  // マルチカメラ解析開始時の処理
+  const handleMultiCameraStart = async (run: Run, segments: RunSegment[]) => {
+    console.log('マルチカメラ解析開始:', { run, segments });
+    
+    setCurrentRun(run);
+    setRunSegments(segments);
+    setIsMultiCameraSetup(false);
+    
+    // 各セグメントの解析処理
+    // TODO: 既存の解析ロジックを呼び出す
+    
+    // 結果表示へ
+    setWizardStep(6);
+  };
+  
+  // セグメント動画を処理する関数
+  const processSegmentVideo = async (video: File, segment: RunSegment): Promise<string> => {
+    // 既存の解析ロジックを使用
+    console.log(`Processing segment ${segment.segmentIndex}:`, video.name);
+    
+    // TODO: 実際の処理を実装
+    // 1. 動画をアップロード
+    // 2. フレーム抽出（既存のhandleExtractFrames相当）
+    // 3. 姿勢推定（既存のhandlePoseEstimation相当）
+    // 4. セッションIDを返す
+    
+    return `session_${segment.id}`; // 仮のセッションID
+  };
+
   const renderStepContent = () => {
+    // マルチカメラ設定画面を表示
+    if (isMultiCameraSetup) {
+      return (
+        <MultiCameraRunSetup
+          athleteId={selectedAthleteId || undefined}
+          onStartAnalysis={handleMultiCameraStart}
+          onCancel={() => setIsMultiCameraSetup(false)}
+          processSegmentVideo={processSegmentVideo}
+        />
+      );
+    }
+    
     switch (wizardStep) {
           case 0:
       return (
@@ -5639,17 +5715,95 @@ const [notesInput, setNotesInput] = useState<string>("");
             </div>
           </div>
 
+          {/* 解析モード選択 */}
+          <div style={{
+            maxWidth: "600px",
+            margin: "24px auto",
+            background: "white",
+            padding: "32px",
+            borderRadius: "12px",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+          }}>
+            <h3 style={{ marginBottom: '16px', fontSize: '1.2rem', fontWeight: 'bold' }}>
+              解析モードを選択
+            </h3>
+            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '12px 20px',
+                background: analysisMode === 'single' ? '#3b82f6' : '#f3f4f6',
+                color: analysisMode === 'single' ? 'white' : '#374151',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }}>
+                <input
+                  type="radio"
+                  name="analysisMode"
+                  value="single"
+                  checked={analysisMode === 'single'}
+                  onChange={() => setAnalysisMode('single')}
+                  style={{ display: 'none' }}
+                />
+                📹 シングル固定カメラ
+              </label>
+              
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '12px 20px',
+                background: analysisMode === 'multi' ? '#3b82f6' : '#f3f4f6',
+                color: analysisMode === 'multi' ? 'white' : '#374151',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }}>
+                <input
+                  type="radio"
+                  name="analysisMode"
+                  value="multi"
+                  checked={analysisMode === 'multi'}
+                  onChange={() => setAnalysisMode('multi')}
+                  style={{ display: 'none' }}
+                />
+                📹📹 マルチ固定カメラ
+              </label>
+            </div>
+            
+            {analysisMode === 'multi' && (
+              <div style={{
+                marginTop: '16px',
+                padding: '12px',
+                background: '#fef3c7',
+                borderRadius: '8px',
+                fontSize: '0.9rem'
+              }}>
+                ⚠️ マルチカメラモードでは、10mごとに複数の動画を撮影し、
+                結合して解析します。
+              </div>
+            )}
+          </div>
+
           <div className="wizard-nav">
             <div></div>
             <button
               className="btn-primary-large"
               onClick={() => {
-                setWizardStep(1);
-                // ローカルストレージの設定を確認してチュートリアルを表示
-                const savedPreference = localStorage.getItem('hideTutorial');
-                if (savedPreference !== 'true') {
-                  setShowTutorial(true);
-                  setTutorialStep(0);
+                if (analysisMode === 'multi') {
+                  // マルチカメラモードの場合は専用UIへ
+                  setIsMultiCameraSetup(true);
+                } else {
+                  // シングルカメラモードは既存フローへ
+                  setWizardStep(1);
+                  // ローカルストレージの設定を確認してチュートリアルを表示
+                  const savedPreference = localStorage.getItem('hideTutorial');
+                  if (savedPreference !== 'true') {
+                    setShowTutorial(true);
+                    setTutorialStep(0);
+                  }
                 }
               }}
               disabled={
