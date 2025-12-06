@@ -504,6 +504,11 @@ const [wizardStep, setWizardStep] = useState<WizardStep>(0);
   const [currentRun, setCurrentRun] = useState<Run | null>(null);
   const [runSegments, setRunSegments] = useState<RunSegment[]>([]);
   const [isMultiCameraSetup, setIsMultiCameraSetup] = useState(false);
+  const [multiCameraData, setMultiCameraData] = useState<{
+    run: Run;
+    segments: RunSegment[];
+    videoFiles: { [key: string]: File };
+  } | null>(null);
 
 // ------------- 測定者情報 -------------------
 const initialAthleteInfo: AthleteInfo = {
@@ -5267,6 +5272,55 @@ const [notesInput, setNotesInput] = useState<string>("");
   // 認証は AppWithAuth で処理済み
 
   // ------------ ウィザードステップの内容 ------------
+  // マルチカメラセグメントの逐次処理
+  const processMultiCameraSegments = async () => {
+    if (!multiCameraData) {
+      console.error('マルチカメラデータがありません');
+      return;
+    }
+    
+    const { run, segments, videoFiles } = multiCameraData;
+    console.log('マルチカメラセグメント処理開始', { run, segments, selectedFps });
+    
+    // すべてのセグメントを逐次処理
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      const videoFile = videoFiles[segment.id];
+      
+      if (!videoFile) {
+        console.error(`セグメント${i + 1}の動画がありません`);
+        continue;
+      }
+      
+      console.log(`\n=== セグメント ${i + 1}/${segments.length} 処理開始 ===`);
+      console.log(`距離: ${segment.startDistanceM}m - ${segment.endDistanceM}m`);
+      
+      // 動画をセット
+      setVideoFile(videoFile);
+      setVideoUrl(URL.createObjectURL(videoFile));
+      setDistanceInput(String(segment.endDistanceM - segment.startDistanceM));
+      setLabelInput(`セグメント${i + 1}`);
+      
+      // フレーム抽出開始
+      setWizardStep(3);
+      setIsExtracting(true);
+      
+      // フレーム抽出と姿勢推定を実行
+      console.log(`セグメント${i + 1}: フレーム抽出・姿勢推定中...`);
+      await handleExtractFrames();
+      
+      // 結果を保存（今後実装）
+      console.log(`セグメント${i + 1}: 処理完了`);
+    }
+    
+    // すべてのセグメント処理完了
+    console.log('\n=== マルチカメラ解析完了 ===');
+    alert(`マルチカメラ解析完了\n総距離: ${run.totalDistanceM}m\nセグメント数: ${segments.length}`);
+    setWizardStep(6); // 結果表示へ
+    setAnalysisMode('single'); // モードをリセット
+    setMultiCameraData(null);
+  };
+  
   // マルチカメラ解析開始時の処理
   const handleMultiCameraStart = async (run: Run, segments: RunSegment[], videoFiles: { [key: string]: File }) => {
     console.log('マルチカメラ解析開始:', { run, segments, videoFiles });
@@ -5275,81 +5329,25 @@ const [notesInput, setNotesInput] = useState<string>("");
     setRunSegments(segments);
     setAnalysisMode('multi');
     
-    // すべてのセグメントを処理
-    const allStepMetrics: StepMetric[] = [];
+    // 最初のセグメントの動画をセットしてFPS選択画面へ
+    const firstSegment = segments[0];
+    const firstVideo = videoFiles[firstSegment.id];
     
-    for (let i = 0; i < segments.length; i++) {
-      const segment = segments[i];
-      const videoFile = videoFiles[segment.id];
-      
-      if (!videoFile) {
-        console.error(`セグメント${i + 1}の動画が見つかりません. Segment ID: ${segment.id}`);
-        alert(`セグメント${i + 1}の動画がありません`);
-        continue;
-      }
-      
-      console.log(`セグメント${i + 1}/${segments.length}を処理中...`);
-      
-      // 動画をセット
-      setVideoFile(videoFile);
-      setVideoUrl(URL.createObjectURL(videoFile));
-      
-      // FPSが未選択の場合は選択を促す
-      if (!selectedFps) {
-        alert('最初にFPSを選択してください（全セグメント共通）');
-        setIsMultiCameraSetup(false);
-        setWizardStep(1);
-        return;
-      }
-      
-      // 各セグメントの解析処理
-      try {
-        // 1. フレーム抽出
-        console.log(`セグメント${i + 1}: フレーム抽出中...`);
-        
-        // デモ用: 仮のステップメトリクスを生成
-        const dummyStepMetrics: StepMetric[] = [];
-        for (let j = 0; j < 10; j++) { // 各セグメントで10ステップ
-          dummyStepMetrics.push({
-            index: i * 10 + j, // グローバルインデックス
-            contactFrame: j * 30,
-            toeOffFrame: j * 30 + 15,
-            nextContactFrame: (j < 9) ? (j + 1) * 30 : null,
-            contactTime: 250,
-            flightTime: 200,
-            stepTime: 450,
-            stepPitch: 2.22, // 133.3 steps/min
-            stride: 1.2 + Math.random() * 0.2,
-            speedMps: 3.5 + Math.random() * 0.5,
-            acceleration: Math.random() * 0.1 - 0.05
-          });
-        }
-        
-        console.log(`セグメント${i + 1}: ${dummyStepMetrics.length}ステップを解析`);
-        allStepMetrics.push(...dummyStepMetrics);
-        
-      } catch (error) {
-        console.error(`セグメント${i + 1}の処理エラー:`, error);
-        alert(`セグメント${i + 1}の処理に失敗しました`);
-      }
+    if (!firstVideo) {
+      alert('最初のセグメントの動画がありません');
+      return;
     }
     
-    // すべてのセグメントの結果を結合
-    if (allStepMetrics.length > 0) {
-      console.log('マルチカメラ解析完了:', allStepMetrics);
-      console.log(`総ステップ数: ${allStepMetrics.length}`);
-      console.log(`解析距離: ${run.totalDistanceM}m`);
-      
-      // 結果を表示用にセット
-      // 注: 実際の実装ではここでstepMetricsやセッションデータを更新
-      alert(`マルチカメラ解析完了\n総ステップ数: ${allStepMetrics.length}\n解析距離: ${run.totalDistanceM}m`);
-      
-      setIsMultiCameraSetup(false);
-      setWizardStep(6); // 結果表示へ
-    } else {
-      alert('動画が1つも処理されませんでした。動画をアップロードしてください。');
-      setIsMultiCameraSetup(true); // 設定画面に戻る
-    }
+    // マルチカメラ用のデータを保存
+    setMultiCameraData({ run, segments, videoFiles });
+    
+    // 最初の動画をセット
+    setVideoFile(firstVideo);
+    setVideoUrl(URL.createObjectURL(firstVideo));
+    
+    // FPS選択画面へ
+    setIsMultiCameraSetup(false);
+    setWizardStep(1); // FPS選択へ
   };
   
   // セグメント動画を処理する関数
@@ -6105,6 +6103,16 @@ const [notesInput, setNotesInput] = useState<string>("");
                     alert("動画ファイルを選択してください。");
                     return;
                   }
+                  
+                  // マルチカメラモードの場合
+                  if (analysisMode === 'multi' && multiCameraData) {
+                    console.log('マルチカメラモード: FPS選択完了', selectedFps);
+                    // マルチカメラ処理を継続
+                    processMultiCameraSegments();
+                    return;
+                  }
+                  
+                  // 通常モード
                   if (!distanceValue || distanceValue <= 0) {
                     alert("有効な距離を入力してください。");
                     return;
