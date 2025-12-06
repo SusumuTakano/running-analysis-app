@@ -5310,7 +5310,8 @@ const [notesInput, setNotesInput] = useState<string>("");
     
     // すべてのセグメントの結果を結合
     if (allStepMetrics.length > 0) {
-      setStepMetrics(allStepMetrics);
+      // TODO: マルチカメラの結果を表示する処理
+      console.log('マルチカメラ解析完了:', allStepMetrics);
       setIsMultiCameraSetup(false);
       setWizardStep(6); // 結果表示へ
     }
