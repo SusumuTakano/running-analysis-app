@@ -28,3 +28,19 @@ body {
   max-width: 100%;
   overflow-x: hidden;
 }
+
+/* ===== スマホでヘッダーが邪魔にならないようにする応急処置 ===== */
+@media (max-width: 768px) {
+  /* ヘッダー全体の高さと文字サイズを抑える */
+  header {
+    max-height: 44px;
+    overflow: hidden;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  /* ヘッダーの中のメニュー（nav）があれば消す */
+  header nav {
+    display: none;
+  }
+}
