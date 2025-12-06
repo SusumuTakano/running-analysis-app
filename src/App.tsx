@@ -12,8 +12,8 @@ import { generateRunningEvaluation, type RunningEvaluation } from "./runningEval
 import MultiCameraRunSetup from './components/MultiCameraRunSetup';
 import { Run, RunSegment } from './types/multiCamera';
 import { combineSegmentSteps, calculateMultiCameraStats } from './utils/multiCameraUtils';
-import MobileSimplifierFixed from './components/MobileSimplifierFixed';
-import MobileHeaderFixed from './components/MobileHeaderFixed';
+import MobileHeaderUltimate from './components/MobileHeaderUltimate';
+import MobileLayoutFix from './components/MobileLayoutFix';
 
 
 /** ウィザードのステップ */
@@ -9003,10 +9003,9 @@ const [notesInput, setNotesInput] = useState<string>("");
 
   return (
     <div className={`app-container wizard-step-${wizardStep}`}>
-      {/* モバイル簡素化 */}
-      <MobileSimplifierFixed />
-      {/* モバイル用ハンバーガーメニュー（常に表示） */}
-      <MobileHeaderFixed
+      {/* モバイル用最強修正 */}
+      <MobileLayoutFix />
+      <MobileHeaderUltimate
         userProfile={userProfile ? { name: userProfile.name } : undefined}
         onNewAnalysis={handleStartNewAnalysis}
         onShowTutorial={() => {
