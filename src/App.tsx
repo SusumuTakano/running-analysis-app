@@ -12,8 +12,8 @@ import { generateRunningEvaluation, type RunningEvaluation } from "./runningEval
 import MultiCameraRunSetup from './components/MultiCameraRunSetup';
 import { Run, RunSegment } from './types/multiCamera';
 import { combineSegmentSteps, calculateMultiCameraStats } from './utils/multiCameraUtils';
-import MobileSimplifier from './components/MobileSimplifier';
-import MobileHeader from './components/MobileHeader';
+import MobileSimplifierFixed from './components/MobileSimplifierFixed';
+import MobileHeaderFixed from './components/MobileHeaderFixed';
 
 
 /** ウィザードのステップ */
@@ -9004,19 +9004,17 @@ const [notesInput, setNotesInput] = useState<string>("");
   return (
     <div className={`app-container wizard-step-${wizardStep}`}>
       {/* モバイル簡素化 */}
-      <MobileSimplifier />
-      {/* モバイル用ハンバーガーメニュー */}
-      {isMobile && (
-        <MobileHeader 
-          userProfile={userProfile ? { name: userProfile.name } : undefined}
-          onNewAnalysis={handleStartNewAnalysis}
-          onShowTutorial={() => {
-            localStorage.removeItem('hideTutorial');
-            setShowTutorial(true);
-            setTutorialStep(0);
-          }}
-        />
-      )}
+      <MobileSimplifierFixed />
+      {/* モバイル用ハンバーガーメニュー（常に表示） */}
+      <MobileHeaderFixed
+        userProfile={userProfile ? { name: userProfile.name } : undefined}
+        onNewAnalysis={handleStartNewAnalysis}
+        onShowTutorial={() => {
+          localStorage.removeItem('hideTutorial');
+          setShowTutorial(true);
+          setTutorialStep(0);
+        }}
+      />
       {/* モバイル用の修正を適用 */}
 
       {/* チュートリアルモーダル */}
