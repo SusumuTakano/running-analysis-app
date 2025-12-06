@@ -1,161 +1,259 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>認証テスト</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <style>
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      max-width: 500px;
-      margin: 50px auto;
-      padding: 20px;
-      background: #f5f5f5;
-    }
-    .container {
-      background: white;
-      padding: 30px;
-      border-radius: 10px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    }
-    input {
-      width: 100%;
-      padding: 12px;
-      margin: 10px 0;
-      border: 1px solid #ddd;
-      border-radius: 5px;
-      box-sizing: border-box;
-    }
-    button {
-      width: 100%;
-      padding: 12px;
-      background: #0066cc;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      font-size: 16px;
-      margin-top: 10px;
-    }
-    button:hover {
-      background: #0052a3;
-    }
-    .status {
-      margin-top: 20px;
-      padding: 15px;
-      border-radius: 5px;
-      font-size: 14px;
-    }
-    .success { background: #d4edda; color: #155724; }
-    .error { background: #f8d7da; color: #721c24; }
-    .info { background: #d1ecf1; color: #0c5460; }
-    pre {
-      background: #f8f9fa;
-      padding: 10px;
-      border-radius: 5px;
-      overflow-x: auto;
-      font-size: 12px;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ログインテスト - デバッグモード</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; margin-bottom: 20px; font-size: 24px; }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .log {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-item {
+            padding: 5px 0;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .log-item:last-child { border-bottom: none; }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .info { color: #17a2b8; }
+        .warning { color: #ffc107; }
+        .step { font-weight: bold; color: #6c757d; }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            display: none;
+        }
+        .result.show { display: block; }
+        .result.success { background: #d4edda; color: #155724; }
+        .result.error { background: #f8d7da; color: #721c24; }
+    </style>
 </head>
 <body>
-  <div class="container">
-    <h1>🔐 Supabase認証テスト</h1>
-    
-    <div id="config-status"></div>
-    
-    <form id="login-form">
-      <input type="email" id="email" placeholder="メールアドレス" value="8460susumu@gmail.com" required>
-      <input type="password" id="password" placeholder="パスワード" type="password" required>
-      <button type="submit">ログイン</button>
-    </form>
-    
-    <div id="status"></div>
-  </div>
+    <div class="container">
+        <h1>🔍 ログインデバッグツール</h1>
+        <p style="color: #666; margin-bottom: 20px;">各ステップの詳細ログを表示します</p>
 
-  <script type="module">
-    const SUPABASE_URL = 'https://fiertkuxlafeeqycywjh.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpZXJ0a3V4bGFmZWVxeWN5d2poIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQyNzc5MzAsImV4cCI6MjA1OTg1MzkzMH0.VB4afTl9wLxtdodrf7klAyCQIVMuLc2I1gRwh1v23tg';
-
-    const configStatus = document.getElementById('config-status');
-    const statusDiv = document.getElementById('status');
-    const loginForm = document.getElementById('login-form');
-
-    // 設定確認
-    configStatus.innerHTML = `
-      <div class="status info">
-        <strong>✅ 設定確認:</strong><br>
-        URL: ${SUPABASE_URL}<br>
-        Key: ${SUPABASE_ANON_KEY.substring(0, 30)}...
-      </div>
-    `;
-
-    // Supabaseクライアント初期化
-    let supabase;
-    try {
-      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      console.log('✅ Supabase client initialized');
-    } catch (error) {
-      statusDiv.innerHTML = `<div class="status error">❌ 初期化エラー: ${error.message}</div>`;
-    }
-
-    // 初期セッション確認
-    (async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        
-        if (session) {
-          statusDiv.innerHTML = `
-            <div class="status success">
-              <strong>✅ 既存セッションあり</strong><br>
-              Email: ${session.user.email}
+        <form id="loginForm">
+            <div class="form-group">
+                <label>メールアドレス</label>
+                <input type="email" id="email" value="8468ususu@gmail.com" required>
             </div>
-          `;
-        } else {
-          statusDiv.innerHTML = `<div class="status info">ℹ️ セッションなし。ログインしてください。</div>`;
-        }
-      } catch (error) {
-        statusDiv.innerHTML = `<div class="status error">❌ セッション確認エラー: ${error.message}</div>`;
-      }
-    })();
+            <div class="form-group">
+                <label>パスワード</label>
+                <input type="password" id="password" required>
+            </div>
+            <button type="submit" id="loginBtn">ログインテスト実行</button>
+        </form>
 
-    // ログインフォーム
-    loginForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
-      
-      statusDiv.innerHTML = '<div class="status info">🔄 ログイン中...</div>';
-      
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password
+        <div id="result" class="result"></div>
+
+        <div class="log">
+            <h3 style="margin-bottom: 10px;">📋 実行ログ</h3>
+            <div id="logContainer"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        const SUPABASE_URL = 'https://fiertkuxlafeeqycywjh.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpZXJ0a3V4bGFmZWVxeWN5d2poIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQyNzc5MzAsImV4cCI6MjA1OTg1MzkzMH0.VB4afTl9wLxtdodrf7klAyCQIVMuLc2I1gRwh1v23tg';
+
+        const logContainer = document.getElementById('logContainer');
+        const resultDiv = document.getElementById('result');
+        const loginBtn = document.getElementById('loginBtn');
+
+        let stepNumber = 0;
+
+        function log(message, type = 'info') {
+            stepNumber++;
+            const timestamp = new Date().toLocaleTimeString('ja-JP');
+            const item = document.createElement('div');
+            item.className = `log-item ${type}`;
+            item.innerHTML = `<span class="step">[${stepNumber}]</span> ${timestamp} - ${message}`;
+            logContainer.appendChild(item);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        function showResult(message, isSuccess) {
+            resultDiv.textContent = message;
+            resultDiv.className = `result show ${isSuccess ? 'success' : 'error'}`;
+        }
+
+        async function testLogin(email, password) {
+            log('=== ログインテスト開始 ===', 'step');
+            log(`メールアドレス: ${email}`, 'info');
+            
+            try {
+                // Step 1: 環境変数チェック
+                log('Step 1: 環境変数を確認中...', 'step');
+                log(`SUPABASE_URL: ${SUPABASE_URL}`, 'info');
+                log(`ANON_KEY: ${SUPABASE_ANON_KEY.substring(0, 20)}...`, 'info');
+
+                // Step 2: Supabaseクライアント初期化チェック
+                log('Step 2: Supabaseクライアント初期化中...', 'step');
+                const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+                const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                log('✅ Supabaseクライアント初期化成功', 'success');
+
+                // Step 3: ネットワーク接続テスト
+                log('Step 3: Supabaseサーバーへの接続テスト...', 'step');
+                const startTime = Date.now();
+                
+                // Step 4: ログイン実行（タイムアウト付き）
+                log('Step 4: ログイン処理を実行中...', 'step');
+                log('タイムアウト: 15秒', 'info');
+
+                const loginPromise = supabase.auth.signInWithPassword({
+                    email: email,
+                    password: password
+                });
+
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('LOGIN_TIMEOUT')), 15000);
+                });
+
+                const { data, error } = await Promise.race([loginPromise, timeoutPromise]);
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+                log(`応答時間: ${elapsed}秒`, 'info');
+
+                if (error) {
+                    log(`❌ 認証エラー: ${error.message}`, 'error');
+                    if (error.message.includes('Invalid login credentials')) {
+                        log('⚠️ メールアドレスまたはパスワードが間違っています', 'warning');
+                    } else if (error.message.includes('Email not confirmed')) {
+                        log('⚠️ メールアドレスが確認されていません', 'warning');
+                    }
+                    showResult(`ログイン失敗: ${error.message}`, false);
+                    return;
+                }
+
+                log('✅ 認証成功', 'success');
+                log(`ユーザーID: ${data.user.id}`, 'info');
+                log(`メール: ${data.user.email}`, 'info');
+
+                // Step 5: プロフィール取得
+                log('Step 5: ユーザープロフィールを取得中...', 'step');
+                const profileStart = Date.now();
+
+                const { data: profile, error: profileError } = await supabase
+                    .from('user_profiles')
+                    .select('*')
+                    .eq('id', data.user.id)
+                    .single();
+
+                const profileElapsed = ((Date.now() - profileStart) / 1000).toFixed(2);
+                log(`プロフィール取得時間: ${profileElapsed}秒`, 'info');
+
+                if (profileError) {
+                    log(`❌ プロフィール取得エラー: ${profileError.message}`, 'error');
+                    log(`エラーコード: ${profileError.code}`, 'error');
+                    if (profileError.code === 'PGRST116') {
+                        log('⚠️ RLSポリシーエラーの可能性があります', 'warning');
+                    }
+                    showResult(`プロフィール取得失敗: ${profileError.message}`, false);
+                    return;
+                }
+
+                if (!profile) {
+                    log('⚠️ プロフィールが見つかりませんでした', 'warning');
+                    showResult('プロフィールが存在しません', false);
+                    return;
+                }
+
+                log('✅ プロフィール取得成功', 'success');
+                log(`名前: ${profile.name || '(未設定)'}`, 'info');
+                log(`プロフィールデータ: ${JSON.stringify(profile, null, 2)}`, 'info');
+
+                const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
+                log(`=== 合計処理時間: ${totalTime}秒 ===`, 'step');
+                showResult('✅ ログイン成功！すべてのステップが正常に完了しました', true);
+
+            } catch (err) {
+                if (err.message === 'LOGIN_TIMEOUT') {
+                    log('❌ タイムアウト: 15秒以内に応答がありませんでした', 'error');
+                    log('ネットワーク接続を確認してください', 'warning');
+                    showResult('タイムアウトエラー: Supabaseサーバーに接続できませんでした', false);
+                } else {
+                    log(`❌ 予期しないエラー: ${err.message}`, 'error');
+                    log(`エラー詳細: ${err.stack}`, 'error');
+                    showResult(`エラー: ${err.message}`, false);
+                }
+            } finally {
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'ログインテスト実行';
+            }
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            logContainer.innerHTML = '';
+            resultDiv.className = 'result';
+            stepNumber = 0;
+
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'テスト実行中...';
+
+            await testLogin(email, password);
         });
-        
-        if (error) throw error;
-        
-        statusDiv.innerHTML = `
-          <div class="status success">
-            <strong>✅ ログイン成功！</strong><br>
-            Email: ${data.user.email}<br>
-            ID: ${data.user.id}<br>
-            <pre>${JSON.stringify(data.user, null, 2)}</pre>
-          </div>
-        `;
-      } catch (error) {
-        statusDiv.innerHTML = `
-          <div class="status error">
-            <strong>❌ ログイン失敗</strong><br>
-            ${error.message}<br>
-            <pre>${JSON.stringify(error, null, 2)}</pre>
-          </div>
-        `;
-      }
-    });
-  </script>
+
+        // 初期ログ
+        log('テストツールが準備完了しました', 'success');
+        log('メールアドレスとパスワードを入力して「ログインテスト実行」をクリックしてください', 'info');
+    </script>
 </body>
 </html>
