@@ -13,6 +13,7 @@ import MultiCameraRunSetup from './components/MultiCameraRunSetup';
 import { Run, RunSegment } from './types/multiCamera';
 import { combineSegmentSteps, calculateMultiCameraStats } from './utils/multiCameraUtils';
 import MobileSimplifier from './components/MobileSimplifier';
+import MobileHeader from './components/MobileHeader';
 
 
 /** ウィザードのステップ */
@@ -9004,6 +9005,18 @@ const [notesInput, setNotesInput] = useState<string>("");
     <div className={`app-container wizard-step-${wizardStep}`}>
       {/* モバイル簡素化 */}
       <MobileSimplifier />
+      {/* モバイル用ハンバーガーメニュー */}
+      {isMobile && (
+        <MobileHeader 
+          userProfile={userProfile ? { name: userProfile.name } : undefined}
+          onNewAnalysis={handleStartNewAnalysis}
+          onShowTutorial={() => {
+            localStorage.removeItem('hideTutorial');
+            setShowTutorial(true);
+            setTutorialStep(0);
+          }}
+        />
+      )}
       {/* モバイル用の修正を適用 */}
 
       {/* チュートリアルモーダル */}

@@ -61,30 +61,68 @@ export const MobileSimplifier: React.FC = () => {
             height: 32px !important;
           }
           
-          /* テーブルの修正 */
-          table {
+          /* Step 5 マーカーページの修正 */
+          .wizard-step-5 table,
+          .wizard-step-5 .table-container {
             display: block !important;
+            width: 100% !important;
             overflow-x: auto !important;
+            overflow-y: visible !important;
             -webkit-overflow-scrolling: touch !important;
-            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
           
-          table th,
-          table td {
-            padding: 6px 4px !important;
-            font-size: 0.75rem !important;
+          .wizard-step-5 table {
+            min-width: 600px !important;
+            border-collapse: collapse !important;
           }
           
-          table input[type="number"] {
-            width: 50px !important;
-            padding: 4px !important;
-            font-size: 14px !important;
+          .wizard-step-5 table th,
+          .wizard-step-5 table td {
+            padding: 8px 5px !important;
+            font-size: 11px !important;
+            white-space: nowrap !important;
+            border: 1px solid #ddd !important;
+            vertical-align: middle !important;
+            background: white !important;
+            position: relative !important;
+            z-index: 1 !important;
           }
           
-          table button {
+          .wizard-step-5 table input[type="number"] {
+            width: 45px !important;
+            max-width: 45px !important;
+            padding: 3px 2px !important;
+            font-size: 12px !important;
+            margin: 0 !important;
+            border: 1px solid #999 !important;
+            background: white !important;
+          }
+          
+          .wizard-step-5 table button {
             padding: 4px 6px !important;
-            font-size: 0.7rem !important;
-            min-height: 28px !important;
+            font-size: 10px !important;
+            min-height: 26px !important;
+            margin: 2px !important;
+            white-space: nowrap !important;
+          }
+          
+          /* マーカーテーブルのスクロールヒント */
+          .wizard-step-5::after {
+            content: "← 左右にスワイプしてスクロール →";
+            display: block;
+            text-align: center;
+            font-size: 11px;
+            color: #666;
+            padding: 8px;
+            background: #f5f5f5;
+            position: fixed;
+            bottom: 60px;
+            left: 10px;
+            right: 10px;
+            border-radius: 5px;
+            z-index: 100;
           }
           
           /* メインコンテンツの余白調整 */
