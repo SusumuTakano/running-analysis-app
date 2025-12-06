@@ -30,7 +30,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
             justify-content: space-between;
             align-items: center;
             box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-            height: 50px;
+            height: 40px;
           }
 
           .mobile-header-title {
@@ -77,7 +77,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
 
           .mobile-menu-overlay {
             position: fixed;
-            top: 50px;
+            top: 40px;
             left: 0;
             right: 0;
             bottom: 0;
@@ -92,7 +92,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
 
           .mobile-menu {
             position: fixed;
-            top: 50px;
+            top: 40px;
             right: -300px;
             width: 250px;
             height: auto;
@@ -139,7 +139,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
           /* コンテンツの上部余白 */
           .wizard-main,
           .app-container > div:first-of-type {
-            margin-top: 50px !important;
+            margin-top: 40px !important;
           }
         }
 
@@ -156,7 +156,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
       {window.innerWidth <= 768 && (
         <>
           <div className="mobile-header-container">
-            <h1 className="mobile-header-title">🏃 ランニング分析</h1>
+            <div style={{ flex: 1 }}></div>
             <button 
               className={`hamburger-button ${isMenuOpen ? 'open' : ''}`}
               onClick={() => setIsMenuOpen(!isMenuOpen)}
