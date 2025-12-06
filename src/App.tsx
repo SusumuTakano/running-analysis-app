@@ -6,6 +6,7 @@ import React, {
   ChangeEvent,
 } from "react";
 import "./App.css";
+import "./App_mobile_emergency.css";
 import { supabase } from "./lib/supabaseClient";
 import Chart from "chart.js/auto";
 import { generateRunningEvaluation, type RunningEvaluation } from "./runningEvaluation";
@@ -9186,9 +9187,9 @@ const [notesInput, setNotesInput] = useState<string>("");
         </div>
       )}
 
-    {/* ヘッダー - ステップ1のみ表示 */}
+    {/* PCヘッダー - モバイルでは自動的に非表示 */}
     {wizardStep === 1 && (
-      <header className="app-header-new">
+      <header className="app-header-new desktop-only">
         <div
           style={{
             display: "flex",

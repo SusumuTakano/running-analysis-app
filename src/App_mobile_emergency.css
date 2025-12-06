@@ -1,0 +1,277 @@
+/* 緊急モバイル修正 - 最高優先度で既存スタイルを上書き */
+
+@media screen and (max-width: 768px) {
+  /* 既存のヘッダーを完全に削除 */
+  .app-header-new,
+  header,
+  [class*="header"]:not(.mobile-header-ultimate) {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
+    position: absolute !important;
+    top: -9999px !important;
+    left: -9999px !important;
+    pointer-events: none !important;
+    z-index: -1 !important;
+  }
+
+  /* タイトルとサブタイトルを確実に隠す */
+  .app-title-new,
+  .app-subtitle-new,
+  h1, h2, h3,
+  [class*="title"]:not(.mobile-header-ultimate *) {
+    display: none !important;
+    font-size: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    line-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* モバイルヘッダーのみ表示 */
+  .mobile-header-ultimate {
+    display: flex !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: 40px !important;
+    background: #2d3748 !important;
+    z-index: 999999 !important;
+  }
+
+  /* コンテンツのマージン調整 */
+  .app-container {
+    margin-top: 45px !important;
+    padding-top: 0 !important;
+  }
+
+  .wizard-main {
+    margin-top: 0 !important;
+    padding: 10px !important;
+  }
+
+  /* マーカーテーブルの完全修正 */
+  .marker-table,
+  .marker-table-container,
+  table {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    -webkit-overflow-scrolling: touch !important;
+    position: relative !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* テーブル本体の幅を固定 */
+  .marker-table table,
+  table tbody,
+  table thead {
+    display: table !important;
+    width: auto !important;
+    min-width: 600px !important;
+    table-layout: fixed !important;
+  }
+
+  /* セルの設定 */
+  .marker-table td,
+  .marker-table th,
+  td, th {
+    padding: 4px 6px !important;
+    font-size: 12px !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    position: relative !important;
+    vertical-align: middle !important;
+    box-sizing: border-box !important;
+  }
+
+  /* 入力欄の固定 */
+  .marker-table input,
+  table input[type="number"],
+  table input[type="text"],
+  input[type="number"] {
+    width: 45px !important;
+    max-width: 45px !important;
+    min-width: 45px !important;
+    height: 28px !important;
+    padding: 2px 4px !important;
+    font-size: 16px !important; /* iOS zoom防止 */
+    border: 1px solid #ccc !important;
+    border-radius: 3px !important;
+    box-sizing: border-box !important;
+    -webkit-appearance: none !important;
+    margin: 0 !important;
+    display: inline-block !important;
+    vertical-align: middle !important;
+  }
+
+  /* 行の高さを固定 */
+  .marker-table tr,
+  table tr {
+    height: auto !important;
+    min-height: 36px !important;
+  }
+
+  /* 最初の列を固定 */
+  .marker-table td:first-child,
+  table td:first-child,
+  .marker-table th:first-child,
+  table th:first-child {
+    position: sticky !important;
+    left: 0 !important;
+    background: white !important;
+    z-index: 10 !important;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1) !important;
+  }
+
+  /* ボタンの最適化 */
+  button,
+  .button,
+  [type="button"],
+  [type="submit"] {
+    min-height: 44px !important;
+    min-width: 44px !important;
+    padding: 10px 15px !important;
+    font-size: 14px !important;
+    touch-action: manipulation !important;
+    -webkit-tap-highlight-color: transparent !important;
+  }
+
+  /* セレクトボックス */
+  select {
+    min-height: 44px !important;
+    font-size: 16px !important;
+    padding: 10px !important;
+    width: 100% !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") !important;
+    background-position: right 10px center !important;
+    background-repeat: no-repeat !important;
+    background-size: 20px !important;
+    padding-right: 40px !important;
+  }
+
+  /* テキストエリア */
+  textarea {
+    font-size: 16px !important;
+    width: 100% !important;
+    padding: 10px !important;
+  }
+
+  /* フレームコントロール */
+  .frame-controls,
+  .frame-control-panel {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    background: white !important;
+    border-top: 1px solid #e0e0e0 !important;
+    padding: 8px !important;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.1) !important;
+    z-index: 100 !important;
+    display: flex !important;
+    gap: 5px !important;
+    justify-content: center !important;
+    flex-wrap: wrap !important;
+  }
+
+  /* 全体のレイアウト調整 */
+  body {
+    overflow-x: hidden !important;
+    -webkit-text-size-adjust: 100% !important;
+    -webkit-font-smoothing: antialiased !important;
+  }
+
+  /* ステップインジケーター */
+  .step-progress,
+  .wizard-steps {
+    display: flex !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding: 10px !important;
+    gap: 10px !important;
+  }
+
+  /* モーダル */
+  .modal,
+  [class*="modal"] {
+    position: fixed !important;
+    top: 45px !important;
+    left: 5px !important;
+    right: 5px !important;
+    bottom: 5px !important;
+    width: auto !important;
+    margin: 0 !important;
+    padding: 10px !important;
+    max-width: calc(100vw - 10px) !important;
+    max-height: calc(100vh - 50px) !important;
+    overflow-y: auto !important;
+  }
+
+  /* スクロールヒント */
+  .scroll-hint {
+    position: fixed !important;
+    bottom: 60px !important;
+    right: 10px !important;
+    background: rgba(0,0,0,0.7) !important;
+    color: white !important;
+    padding: 5px 10px !important;
+    border-radius: 15px !important;
+    font-size: 11px !important;
+    pointer-events: none !important;
+    z-index: 1000 !important;
+    animation: pulse 2s infinite !important;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
+  }
+
+  /* z-indexの調整 */
+  .marker-table-wrapper {
+    position: relative !important;
+    z-index: 1 !important;
+  }
+
+  /* キャンバスエリア */
+  .canvas-area,
+  canvas {
+    max-width: 100% !important;
+    height: auto !important;
+    display: block !important;
+    margin: 0 auto !important;
+  }
+
+  /* ステップコンテンツ */
+  .step-content,
+  .wizard-content {
+    padding: 10px !important;
+    margin: 0 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+}
+
+/* さらに強力な上書き */
+@media screen and (max-width: 768px) {
+  body * {
+    max-width: 100vw !important;
+  }
+
+  /* ヘッダー関連を完全削除 */
+  body .app-header-new,
+  body header,
+  body [class*="header"]:not(.mobile-header-ultimate) {
+    display: none !important;
+  }
+}
