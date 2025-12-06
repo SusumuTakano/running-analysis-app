@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 interface MultiCameraRunSetupProps {
   athleteId?: string;
-  onStartAnalysis: (run: Run, segments: RunSegment[]) => void;
+  onStartAnalysis: (run: Run, segments: RunSegment[], videoFiles: { [key: string]: File }) => void;
   onCancel: () => void;
   // 既存の解析関数を受け取る
   processSegmentVideo?: (video: File, segment: RunSegment) => Promise<string>; // sessionIdを返す
@@ -85,7 +85,7 @@ export const MultiCameraRunSetup: React.FC<MultiCameraRunSetupProps> = ({
       }
     }
 
-    onStartAnalysis(runConfig, segments);
+    onStartAnalysis(runConfig, segments, selectedVideos);
   };
 
   return (
