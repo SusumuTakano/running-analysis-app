@@ -9002,6 +9002,16 @@ const [notesInput, setNotesInput] = useState<string>("");
     }
   ];
 
+  // モバイル判定
+  if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+    const AppMobile = React.lazy(() => import('./AppMobile'));
+    return (
+      <React.Suspense fallback={<div>Loading...</div>}>
+        <AppMobile />
+      </React.Suspense>
+    );
+  }
+
   return (
     <div className={`app-container wizard-step-${wizardStep}`}>
       {/* モバイル用最強修正 */}
@@ -9187,9 +9197,11 @@ const [notesInput, setNotesInput] = useState<string>("");
         </div>
       )}
 
-    {/* PCヘッダー - モバイルでは自動的に非表示 */}
-    {wizardStep === 1 && (
-      <header className="app-header-new desktop-only">
+    {/* ヘッダー - モバイルでは完全に非表示 */}
+    {wizardStep === 1 && window.innerWidth > 768 && (
+      <header className="app-header-new desktop-only" style={{
+        display: window.innerWidth <= 768 ? 'none' : 'block'
+      }}>
         <div
           style={{
             display: "flex",
@@ -9200,8 +9212,14 @@ const [notesInput, setNotesInput] = useState<string>("");
         >
           {/* 左側：タイトル */}
           <div>
-            <h1 className="app-title-new">🏃 Running Analysis Studio</h1>
-            <p className="app-subtitle-new">
+            <h1 className="app-title-new" style={{
+              fontSize: window.innerWidth <= 768 ? '14px' : 'inherit',
+              margin: window.innerWidth <= 768 ? '0' : 'inherit',
+              lineHeight: window.innerWidth <= 768 ? '1.2' : 'inherit'
+            }}>🏃 Running Analysis Studio</h1>
+            <p className="app-subtitle-new" style={{
+              display: window.innerWidth <= 768 ? 'none' : 'block'
+            }}>
               フレーム抽出・姿勢推定・関節角度とステップ指標を一括解析
             </p>
           </div>
