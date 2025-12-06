@@ -5273,22 +5273,46 @@ const [notesInput, setNotesInput] = useState<string>("");
     
     setCurrentRun(run);
     setRunSegments(segments);
+    setAnalysisMode('multi');
     
-    // 最初のセグメントの動画から処理を開始
-    const firstSegment = segments[0];
-    const videoFile = (firstSegment as any).videoFile;
+    // すべてのセグメントを処理
+    const allStepMetrics: StepMetric[] = [];
     
-    if (videoFile) {
-      // 通常の解析フローへ（ステップ1: 動画アップロード）
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      const videoFile = (segment as any).videoFile;
+      
+      if (!videoFile) {
+        alert(`セグメント${i + 1}の動画がありません`);
+        continue;
+      }
+      
+      console.log(`セグメント${i + 1}/${segments.length}を処理中...`);
+      
+      // 動画をセット
       setVideoFile(videoFile);
       setVideoUrl(URL.createObjectURL(videoFile));
-      setIsMultiCameraSetup(false);
-      setWizardStep(1); // FPS選択へ
       
-      // マルチカメラモードのフラグを立てる
-      setAnalysisMode('multi');
-    } else {
-      alert('動画ファイルが見つかりません');
+      // FPSが未選択の場合は選択を促す
+      if (!selectedFps) {
+        alert('最初にFPSを選択してください（全セグメント共通）');
+        setIsMultiCameraSetup(false);
+        setWizardStep(1);
+        return;
+      }
+      
+      // TODO: 各セグメントの解析処理
+      // 1. フレーム抽出
+      // 2. 姿勢推定  
+      // 3. ステップ解析
+      // 4. 結果をallStepMetricsに追加
+    }
+    
+    // すべてのセグメントの結果を結合
+    if (allStepMetrics.length > 0) {
+      setStepMetrics(allStepMetrics);
+      setIsMultiCameraSetup(false);
+      setWizardStep(6); // 結果表示へ
     }
   };
   
