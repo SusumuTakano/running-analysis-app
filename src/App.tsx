@@ -5273,27 +5273,63 @@ const [notesInput, setNotesInput] = useState<string>("");
     
     setCurrentRun(run);
     setRunSegments(segments);
-    setIsMultiCameraSetup(false);
     
-    // 各セグメントの解析処理
-    // TODO: 既存の解析ロジックを呼び出す
+    // 最初のセグメントの動画から処理を開始
+    const firstSegment = segments[0];
+    const videoFile = (firstSegment as any).videoFile;
     
-    // 結果表示へ
-    setWizardStep(6);
+    if (videoFile) {
+      // 通常の解析フローへ（ステップ1: 動画アップロード）
+      setVideoFile(videoFile);
+      setVideoUrl(URL.createObjectURL(videoFile));
+      setIsMultiCameraSetup(false);
+      setWizardStep(1); // FPS選択へ
+      
+      // マルチカメラモードのフラグを立てる
+      setAnalysisMode('multi');
+    } else {
+      alert('動画ファイルが見つかりません');
+    }
   };
   
   // セグメント動画を処理する関数
   const processSegmentVideo = async (video: File, segment: RunSegment): Promise<string> => {
-    // 既存の解析ロジックを使用
     console.log(`Processing segment ${segment.segmentIndex}:`, video.name);
     
-    // TODO: 実際の処理を実装
-    // 1. 動画をアップロード
-    // 2. フレーム抽出（既存のhandleExtractFrames相当）
-    // 3. 姿勢推定（既存のhandlePoseEstimation相当）
-    // 4. セッションIDを返す
+    // セグメント用の動画をセット
+    setVideoFile(video);
+    setVideoUrl(URL.createObjectURL(video));
     
-    return `session_${segment.id}`; // 仮のセッションID
+    // FPSの確認
+    if (!selectedFps) {
+      alert('FPSを選択してください');
+      setWizardStep(1); // FPS選択画面へ
+      return '';
+    }
+    
+    // フレーム抽出を開始
+    setWizardStep(2);
+    setIsExtracting(true);
+    
+    try {
+      // フレーム抽出（既存の処理を呼び出す）
+      // TODO: 実際のフレーム抽出処理
+      
+      // 姿勢推定を開始
+      setWizardStep(3);
+      // TODO: 実際の姿勢推定処理
+      
+      // セッションIDを生成（実際には保存処理も必要）
+      const sessionId = `session_${segment.id}_${Date.now()}`;
+      
+      // セグメント処理完了
+      console.log(`Segment ${segment.segmentIndex} completed:`, sessionId);
+      
+      return sessionId;
+    } catch (error) {
+      console.error('Segment processing error:', error);
+      return '';
+    }
   };
 
   const renderStepContent = () => {
