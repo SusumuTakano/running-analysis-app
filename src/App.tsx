@@ -15,6 +15,8 @@ import { MultiCameraProcessor } from './components/MultiCameraProcessor';
 import { MultiCameraResults } from './components/MultiCameraResults';
 import CanvasRoiSelector from './components/CanvasRoiSelector';
 import { CanvasRoi, getCanvasCoordinates, drawFrameWithOverlay, extractRoiForPoseEstimation } from './utils/canvasUtils';
+import { Step5Complete } from './components/Step5Complete';
+import Step5IntervalSetting, { Roi as Step5Roi } from './components/Step5IntervalSetting';
 import { 
   Run, 
   RunSegment, 
@@ -6821,6 +6823,55 @@ const [notesInput, setNotesInput] = useState<string>("");
         );
 
       case 5:
+        // 完全な新しいStep5コンポーネントを使用（座標系統一・手動人物選択機能付き）
+        return (
+          <Step5Complete
+            videoUrl={videoUrl || ''}
+            frames={framesRef.current.map(frame => {
+              // ImageDataをbase64文字列に変換
+              const canvas = document.createElement('canvas');
+              canvas.width = frame.width;
+              canvas.height = frame.height;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.putImageData(frame, 0, 0);
+              }
+              return canvas.toDataURL('image/png');
+            })}
+            fps={selectedFps}
+            startFrame={sectionStartFrame || 0}
+            finishFrame={sectionEndFrame || framesRef.current.length - 1}
+            midFrame={sectionMidFrame ?? undefined}
+            onChangeStartFrame={(frame) => {
+              setSectionStartFrame(frame);
+              setCurrentFrame(frame);
+            }}
+            onChangeFinishFrame={(frame) => {
+              setSectionEndFrame(frame);
+              setCurrentFrame(frame);
+            }}
+            onChangeMidFrame={(frame) => {
+              setSectionMidFrame(frame);
+              setCurrentFrame(frame);
+            }}
+            existingPoseData={(() => {
+              const map = new Map<number, any>();
+              poseResults.forEach((result, index) => {
+                if (result) map.set(index, result);
+              });
+              return map;
+            })()}
+            onPoseEstimated={(frame, landmarks) => {
+              // 姿勢推定結果を保存
+              const newPoseResults = [...poseResults];
+              newPoseResults[frame] = { 
+                landmarks: landmarks
+              };
+              setPoseResults(newPoseResults);
+            }}
+          />
+        );
+
         // マルチカメラモードの場合は区間設定をスキップ
         if (analysisMode === "multi") {
           // マルチカメラモードでは区間はすでに設定済みなのでスキップ
@@ -6967,7 +7018,7 @@ const [notesInput, setNotesInput] = useState<string>("");
                   💡 スライダーを動かすと、動画がその位置にジャンプします
                 </div>
                 {/* 姿勢認識状態の警告 */}
-                {sectionStartFrame !== null && !poseResults[sectionStartFrame]?.landmarks && (
+                {(typeof sectionStartFrame === 'number' && sectionStartFrame >= 0 && !poseResults[sectionStartFrame]?.landmarks) && (
                   <div style={{
                     fontSize: '0.85rem',
                     color: '#dc2626',
@@ -7136,13 +7187,13 @@ const [notesInput, setNotesInput] = useState<string>("");
                   <div>
                     <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '4px' }}>区間時間</div>
                     <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#374151' }}>
-                      {sectionTime != null ? sectionTime.toFixed(3) : "ー"} 秒
+                      {typeof sectionTime === 'number' ? sectionTime.toFixed(3) : "ー"} 秒
                     </div>
                   </div>
                   <div>
                     <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '4px' }}>平均速度</div>
                     <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#374151' }}>
-                      {avgSpeed != null ? avgSpeed.toFixed(3) : "ー"} m/s
+                      {typeof avgSpeed === 'number' ? avgSpeed.toFixed(3) : "ー"} m/s
                     </div>
                   </div>
                 </div>
