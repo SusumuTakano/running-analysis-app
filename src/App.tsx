@@ -15,6 +15,7 @@ import { MultiCameraProcessor } from './components/MultiCameraProcessor';
 import { MultiCameraResults } from './components/MultiCameraResults';
 import CanvasRoiSelector from './components/CanvasRoiSelector';
 import { CanvasRoi, getCanvasCoordinates, drawFrameWithOverlay, extractRoiForPoseEstimation } from './utils/canvasUtils';
+import { Step5Simple } from './components/Step5Simple';
 import { Step5Complete } from './components/Step5Complete';
 import Step5IntervalSetting, { Roi as Step5Roi } from './components/Step5IntervalSetting';
 import { 
@@ -6823,12 +6824,11 @@ const [notesInput, setNotesInput] = useState<string>("");
         );
 
       case 5:
-        // 完全な新しいStep5コンポーネントを使用（座標系統一・手動人物選択機能付き）
+        // 軽量版Step5コンポーネントを使用（パフォーマンス最適化）
         return (
-          <Step5Complete
-            videoUrl={videoUrl || ''}
+          <Step5Simple
             frames={framesRef.current.map(frame => {
-              // ImageDataをbase64文字列に変換
+              // ImageDataをbase64文字列に変換（軽量化のため一度だけ）
               const canvas = document.createElement('canvas');
               canvas.width = frame.width;
               canvas.height = frame.height;
@@ -6836,7 +6836,7 @@ const [notesInput, setNotesInput] = useState<string>("");
               if (ctx) {
                 ctx.putImageData(frame, 0, 0);
               }
-              return canvas.toDataURL('image/png');
+              return canvas.toDataURL('image/jpeg', 0.8); // JPEGで圧縮
             })}
             fps={selectedFps}
             startFrame={sectionStartFrame || 0}
@@ -6861,13 +6861,10 @@ const [notesInput, setNotesInput] = useState<string>("");
               });
               return map;
             })()}
-            onPoseEstimated={(frame, landmarks) => {
-              // 姿勢推定結果を保存
-              const newPoseResults = [...poseResults];
-              newPoseResults[frame] = { 
-                landmarks: landmarks
-              };
-              setPoseResults(newPoseResults);
+            onSelectRoi={(frame, roi) => {
+              // ROI選択時の処理（ここで実際のポーズ推定を実行可能）
+              console.log('ROI selected at frame', frame, roi);
+              setStatus(`ROI選択: フレーム${frame} (${roi.width.toFixed(2)} x ${roi.height.toFixed(2)})`);
             }}
           />
         );

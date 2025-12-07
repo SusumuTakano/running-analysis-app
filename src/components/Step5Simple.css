@@ -1,0 +1,171 @@
+.step5-simple {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.step5-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.step5-header h2 {
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+.step5-header p {
+  color: #666;
+  font-size: 14px;
+}
+
+.canvas-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto 20px;
+  background: #f0f0f0;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.main-canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.controls {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.frame-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.pose-ok {
+  color: #28a745;
+  font-weight: bold;
+}
+
+.pose-none {
+  color: #dc3545;
+}
+
+.roi-controls {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.btn-roi {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-right: 10px;
+}
+
+.btn-roi:hover {
+  background: #0056b3;
+}
+
+.roi-hint {
+  color: #dc3545;
+  font-size: 13px;
+  font-style: italic;
+}
+
+.sliders {
+  margin-top: 20px;
+}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 15px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 6px;
+}
+
+.slider-row label {
+  width: 100px;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.slider-row input[type="range"] {
+  flex: 1;
+  margin: 0 15px;
+}
+
+.slider-row span {
+  width: 50px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.slider-row.nav {
+  background: #e3f2fd;
+}
+
+.slider-row button {
+  margin-left: 10px;
+  padding: 5px 15px;
+  background: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.slider-row button:hover {
+  background: #545b62;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .step5-simple {
+    padding: 10px;
+  }
+  
+  .controls {
+    padding: 15px;
+  }
+  
+  .frame-info {
+    flex-direction: column;
+    gap: 5px;
+  }
+  
+  .slider-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .slider-row label {
+    width: 100%;
+    margin-bottom: 5px;
+  }
+  
+  .slider-row input[type="range"] {
+    margin: 10px 0;
+  }
+}
