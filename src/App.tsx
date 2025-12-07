@@ -3622,7 +3622,12 @@ const [notesInput, setNotesInput] = useState<string>("");
     setUsedTargetFps(targetFps);
 
     // 4K動画の検出と確認（両方の条件を満たす必要がある）
+    console.log(`🎬 動画解像度確認: ${video.videoWidth}x${video.videoHeight}`);
+    console.log(`🎬 HD判定: ${video.videoWidth === 1920 && video.videoHeight === 1080 ? 'HD (1920x1080)' : 
+                 video.videoWidth === 1280 && video.videoHeight === 720 ? 'HD (1280x720)' : 
+                 '他の解像度'}`);
     const is4K = video.videoWidth >= 3840 && video.videoHeight >= 2160;
+    console.log(`🎬 4K判定結果: ${is4K ? '4K動画' : '非4K動画'}`);
     const is240Fps = targetFps >= 240;
     
     let scale = Math.min(1, MAX_WIDTH / video.videoWidth);
@@ -5676,23 +5681,8 @@ const [notesInput, setNotesInput] = useState<string>("");
   };
 
   const renderStepContent = () => {
-    // マルチカメラモードの場合のみ、マルチカメラ画面を表示
-    if (analysisMode === 'multi') {
-      // マルチカメラ設定画面を表示
-      if (isMultiCameraSetup) {
-        return (
-          <MultiCameraSetup
-            athleteId={selectedAthleteId || undefined}
-            athleteName={athleteInfo.name || undefined}
-            onStartAnalysis={handleNewMultiCameraStart}
-            onCancel={() => {
-              setIsMultiCameraSetup(false);
-              setAnalysisMode('single'); // シングルモードに戻す
-            }}
-          />
-        );
-      }
-      
+    // マルチカメラモードの専用画面（isMultiCameraSetupがtrueの場合のみ）
+    if (analysisMode === 'multi' && isMultiCameraSetup) {
       // マルチカメラ処理画面を表示
       if (multiCameraProcessing && !multiCameraResult) {
         return (
@@ -5706,7 +5696,8 @@ const [notesInput, setNotesInput] = useState<string>("");
             }}
             onCancel={() => {
               setMultiCameraProcessing(false);
-              setIsMultiCameraSetup(true);
+              setIsMultiCameraSetup(false);
+              setAnalysisMode('single');
             }}
           />
         );
@@ -5724,8 +5715,22 @@ const [notesInput, setNotesInput] = useState<string>("");
           />
         );
       }
+
+      // マルチカメラ設定画面を表示
+      return (
+        <MultiCameraSetup
+          athleteId={selectedAthleteId || undefined}
+          athleteName={athleteInfo.name || undefined}
+          onStartAnalysis={handleNewMultiCameraStart}
+          onCancel={() => {
+            setIsMultiCameraSetup(false);
+            setAnalysisMode('single');
+          }}
+        />
+      );
     }
     
+    // 通常のシングルカメラモードのステップ処理
     switch (wizardStep) {
       case 0:
       return (
