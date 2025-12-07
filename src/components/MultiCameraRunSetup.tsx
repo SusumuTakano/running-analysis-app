@@ -7,15 +7,12 @@ interface MultiCameraRunSetupProps {
   athleteId?: string;
   onStartAnalysis: (run: Run, segments: RunSegment[], videoFiles: { [key: string]: File }) => void;
   onCancel: () => void;
-  // 既存の解析関数を受け取る
-  processSegmentVideo?: (video: File, segment: RunSegment) => Promise<string>; // sessionIdを返す
 }
 
 export const MultiCameraRunSetup: React.FC<MultiCameraRunSetupProps> = ({
   athleteId,
   onStartAnalysis,
-  onCancel,
-  processSegmentVideo
+  onCancel
 }) => {
   const [currentStep, setCurrentStep] = useState<'config' | 'upload' | 'calibrate'>('config');
   const [runConfig, setRunConfig] = useState<Run | null>(null);
@@ -66,23 +63,6 @@ export const MultiCameraRunSetup: React.FC<MultiCameraRunSetupProps> = ({
     if (!runConfig || segments.some(seg => seg.status !== 'uploaded' && seg.status !== 'completed')) {
       alert('すべてのセグメントに動画をアップロードしてください');
       return;
-    }
-
-    // 既存の解析処理を呼び出す
-    if (processSegmentVideo) {
-      for (const segment of segments) {
-        const video = selectedVideos[segment.id];
-        if (video) {
-          try {
-            const sessionId = await processSegmentVideo(video, segment);
-            segment.sessionId = sessionId;
-            segment.status = 'completed';
-          } catch (error) {
-            console.error(`セグメント${segment.segmentIndex}の処理エラー:`, error);
-            segment.status = 'error';
-          }
-        }
-      }
     }
 
     onStartAnalysis(runConfig, segments, selectedVideos);

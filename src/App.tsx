@@ -94,6 +94,24 @@ type StepMetric = {
   kneeFlexAtContact?: number | null;    // 接地時の膝角度（支持脚）
 };
 
+type MultiCameraState = {
+  run: Run;
+  segments: RunSegment[];
+  videoFiles: { [key: string]: File };
+  currentIndex: number;
+  segmentMetrics: Record<string, StepMetric[]>;
+};
+
+type MultiCameraSummary = {
+  totalDistance: number;
+  totalSegments: number;
+  totalSteps: number;
+  avgStride: number | null;
+  avgContact: number | null;
+  avgFlight: number | null;
+  avgSpeed: number | null;
+};
+
 /** 走行タイプ: accel=加速走（フライングスタート）, dash=スタートダッシュ */
 type RunType = 'accel' | 'dash';
 
@@ -133,7 +151,7 @@ const calculateAngles = (
   const getPoint = (idx: number) => landmarks[idx];
   
   // 主要なランドマークの信頼度をチェック
-  const CONFIDENCE_THRESHOLD = 0.1; // 🔥 閾値を極限まで下げて姿勢推定率を最大化
+  const CONFIDENCE_THRESHOLD = 0.01; // 🔥 閾値を極限まで下げて姿勢推定率を最大化（0.1→0.01に変更）
 
   const leftHip = getPoint(23);
   const rightHip = getPoint(24);
@@ -504,11 +522,8 @@ const [wizardStep, setWizardStep] = useState<WizardStep>(0);
   const [currentRun, setCurrentRun] = useState<Run | null>(null);
   const [runSegments, setRunSegments] = useState<RunSegment[]>([]);
   const [isMultiCameraSetup, setIsMultiCameraSetup] = useState(false);
-  const [multiCameraData, setMultiCameraData] = useState<{
-    run: Run;
-    segments: RunSegment[];
-    videoFiles: { [key: string]: File };
-  } | null>(null);
+  const [multiCameraData, setMultiCameraData] = useState<MultiCameraState | null>(null);
+  const [multiCameraSummary, setMultiCameraSummary] = useState<MultiCameraSummary | null>(null);
 
 // ------------- 測定者情報 -------------------
 const initialAthleteInfo: AthleteInfo = {
@@ -2473,28 +2488,28 @@ const [notesInput, setNotesInput] = useState<string>("");
       const isIPad = /iPad/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
       
       // 🔧 デバイスごとの最適化設定
-      let modelComplexity = 2; // デフォルトは高精度
-      let minDetectionConfidence = 0.1;
-      let minTrackingConfidence = 0.1;
+      let modelComplexity = 1; // 🔥 中精度をデフォルトに（速度と精度のバランス）
+      let minDetectionConfidence = 0.001; // 🔥 超極低閾値で姿勢認識率を最大化
+      let minTrackingConfidence = 0.001; // 🔥 超極低閾値
       let staticImageMode = false;
       let smoothLandmarks = true;
       
       if (isIPad) {
-        console.log('📱 iPad detected - applying mobile optimized settings');
-        modelComplexity = 1; // 中精度モデル
-        minDetectionConfidence = 0.05; // 検出閾値を下げる
-        minTrackingConfidence = 0.05;
-        staticImageMode = false; // ストリーミング処理で追従性を向上
-        smoothLandmarks = true; // 滑らかな骨格追従
+        console.log('📱 iPad detected - applying ultra-low threshold settings');
+        modelComplexity = 0; // 🔥 最速モデルで姿勢推定率を優先
+        minDetectionConfidence = 0.001; // 🔥 超極低閾値
+        minTrackingConfidence = 0.001; // 🔥 超極低閾値
+        staticImageMode = true; // 🔥 各フレームを独立処理（フレーム落ちを防ぐ）
+        smoothLandmarks = false; // 🔥 スムージングを無効化（速度優先）
       } else if (isMobile) {
-        console.log('📱 Mobile device detected');
-        modelComplexity = 1;
-        minDetectionConfidence = 0.08;
-        minTrackingConfidence = 0.08;
+        console.log('📱 Mobile device detected - ultra-low threshold settings');
+        modelComplexity = 0; // 🔥 最速モデル
+        minDetectionConfidence = 0.001; // 🔥 超極低閾値
+        minTrackingConfidence = 0.001; // 🔥 超極低閾値
       } else {
-        console.log('💻 Desktop detected');
-        minDetectionConfidence = 0.05;
-        minTrackingConfidence = 0.05;
+        console.log('💻 Desktop detected - ultra-low threshold for better detection');
+        minDetectionConfidence = 0.001; // 🔥 超極低閾値
+        minTrackingConfidence = 0.001; // 🔥 超極低閾値
       }
       
       console.log(`🔧 Setting options: modelComplexity=${modelComplexity}, detection=${minDetectionConfidence}, tracking=${minTrackingConfidence}`);
@@ -3667,9 +3682,16 @@ const [notesInput, setNotesInput] = useState<string>("");
         setCurrentFrame(0);
         setStatus(`✅ フレーム抽出完了（${framesRef.current.length} フレーム）`);
         
-        // 🎥 パン撮影モード選択画面へ（ステップ3.5）
+        // 🎥 マルチカメラモードの場合は直接姿勢推定へ、それ以外はパン撮影モード選択画面へ
         setTimeout(() => {
-          setWizardStep(3.5); // パン撮影モード選択
+          if (analysisMode === "multi") {
+            // マルチカメラモードは固定カメラなのでパン撮影選択をスキップ
+            setIsPanMode(false);
+            setWizardStep(4);
+            runPoseEstimation();
+          } else {
+            setWizardStep(3.5); // パン撮影モード選択
+          }
         }, 1000);
         return;
       }
@@ -5272,122 +5294,183 @@ const [notesInput, setNotesInput] = useState<string>("");
   // 認証は AppWithAuth で処理済み
 
   // ------------ ウィザードステップの内容 ------------
-  // マルチカメラセグメントの逐次処理
-  const processMultiCameraSegments = async () => {
-    if (!multiCameraData) {
-      console.error('マルチカメラデータがありません');
+  // マルチカメラ: 指定したセグメントの動画を読み込み、解析ステップを初期化
+  const loadMultiCameraSegment = async (data: MultiCameraState, index: number) => {
+    const targetSegment = data.segments[index];
+    if (!targetSegment) {
+      console.error("マルチカメラ: 無効なセグメントインデックスです", index, data.segments.length);
       return;
     }
+
+    const file = data.videoFiles[targetSegment.id];
+    if (!file) {
+      alert(`セグメント${index + 1}の動画ファイルが見つかりません。アップロードを確認してください。`);
+      return;
+    }
+
+    console.log(`📹 マルチカメラ: セグメント${index + 1}/${data.segments.length} (${targetSegment.startDistanceM}m〜${targetSegment.endDistanceM}m) を処理開始`);
     
-    const { run, segments, videoFiles } = multiCameraData;
-    console.log('マルチカメラセグメント処理開始', { run, segments, selectedFps });
+    // 状態をリセット
+    if (videoUrl) {
+      URL.revokeObjectURL(videoUrl);
+    }
+    framesRef.current = [];
+    setFramesCount(0);
+    setCurrentFrame(0);
+    setExtractProgress(0);
+    setUsedTargetFps(null);
+    setStatus("");
+    setSectionStartFrame(null);
+    setSectionMidFrame(null);
+    setSectionEndFrame(null);
+    setStartLineOffset(0);
+    setMidLineOffset(0);
+    setEndLineOffset(0);
+    setSavedStartHipX(null);
+    setSavedMidHipX(null);
+    setSavedEndHipX(null);
+    setSavedStartPixelX(null);
+    setSavedMidPixelX(null);
+    setSavedEndPixelX(null);
+    setManualContactFrames([]);
+    setAutoToeOffFrames([]);
+    setCalibrationMode(0);
+    setToeOffThreshold(null);
+    setBaseThreshold(null);
+    setPoseResults([]);
     
-    // すべてのセグメントを逐次処理
-    for (let i = 0; i < segments.length; i++) {
-      const segment = segments[i];
-      const videoFile = videoFiles[segment.id];
-      
-      if (!videoFile) {
-        console.error(`セグメント${i + 1}の動画がありません`);
-        continue;
-      }
-      
-      console.log(`\n=== セグメント ${i + 1}/${segments.length} 処理開始 ===`);
-      console.log(`距離: ${segment.startDistanceM}m - ${segment.endDistanceM}m`);
-      
-      // 動画をセット
-      setVideoFile(videoFile);
-      setVideoUrl(URL.createObjectURL(videoFile));
-      setDistanceInput(String(segment.endDistanceM - segment.startDistanceM));
-      setLabelInput(`セグメント${i + 1}`);
-      
-      // フレーム抽出開始
-      setWizardStep(3);
-      setIsExtracting(true);
-      
-      // フレーム抽出と姿勢推定を実行
-      console.log(`セグメント${i + 1}: フレーム抽出・姿勢推定中...`);
-      await handleExtractFrames();
-      
-      // 結果を保存（今後実装）
-      console.log(`セグメント${i + 1}: 処理完了`);
+    // 動画ファイルを設定
+    const url = URL.createObjectURL(file);
+    setVideoFile(file);
+    setVideoUrl(url);
+    
+    // ビデオ要素の事前ロード
+    if (videoRef.current) {
+      videoRef.current.src = url;
+      videoRef.current.load();
     }
     
-    // すべてのセグメント処理完了
-    console.log('\n=== マルチカメラ解析完了 ===');
-    alert(`マルチカメラ解析完了\n総距離: ${run.totalDistanceM}m\nセグメント数: ${segments.length}`);
-    setWizardStep(6); // 結果表示へ
-    setAnalysisMode('single'); // モードをリセット
-    setMultiCameraData(null);
-  };
-  
-  // マルチカメラ解析開始時の処理
-  const handleMultiCameraStart = async (run: Run, segments: RunSegment[], videoFiles: { [key: string]: File }) => {
-    console.log('マルチカメラ解析開始:', { run, segments, videoFiles });
+    // 距離とラベルを設定
+    setDistanceInput(String(targetSegment.endDistanceM - targetSegment.startDistanceM));
+    setLabelInput(`${targetSegment.startDistanceM}m〜${targetSegment.endDistanceM}m セグメント`);
+    setStatus(`セグメント${index + 1}/${data.segments.length} の処理を開始します...`);
     
+    // フレーム抽出を開始（FPS選択をスキップして直接処理）
+    setWizardStep(3);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    await handleExtractFrames();
+  };
+
+  // マルチカメラ解析を開始
+  const handleMultiCameraStart = (run: Run, segments: RunSegment[], videoFiles: { [key: string]: File }) => {
+    console.log("マルチカメラ解析開始:", { run, segments, videoFiles });
+
+    const availableSegments = segments.filter((segment) => videoFiles[segment.id]);
+    const missingSegments = segments.filter((segment) => !videoFiles[segment.id]);
+
+    if (availableSegments.length === 0) {
+      alert("動画がアップロードされているセグメントがありません。各セグメントに動画をアップロードしてください。");
+      return;
+    }
+
+    if (missingSegments.length > 0) {
+      console.warn("動画が未設定のセグメントがあります:", missingSegments.map((s) => s.segmentIndex));
+      alert("一部のセグメントに動画が設定されていません。アップロード済みのセグメントのみ解析を実行します。");
+    }
+
+    const nextState: MultiCameraState = {
+      run,
+      segments: availableSegments,
+      videoFiles,
+      currentIndex: 0,
+      segmentMetrics: {},
+    };
+
     setCurrentRun(run);
-    setRunSegments(segments);
-    setAnalysisMode('multi');
-    
-    // 最初のセグメントの動画をセットしてFPS選択画面へ
-    const firstSegment = segments[0];
-    const firstVideo = videoFiles[firstSegment.id];
-    
-    if (!firstVideo) {
-      alert('最初のセグメントの動画がありません');
+    setRunSegments(availableSegments);
+    setAnalysisMode("multi");
+    setIsMultiCameraSetup(false);
+    setMultiCameraSummary(null);
+    setMultiCameraData(nextState);
+
+    loadMultiCameraSegment(nextState, 0);
+  };
+
+  // マルチカメラ解析を中断して設定画面へ戻る
+  const handleCancelMultiCamera = () => {
+    setAnalysisMode("single");
+    setMultiCameraData(null);
+    setMultiCameraSummary(null);
+    setIsMultiCameraSetup(true);
+    setStatus("マルチカメラ設定に戻りました。");
+    setWizardStep(0);
+  };
+
+  // 現在のセグメントを保存し、次のセグメントまたは総合結果へ進む
+  const handleMultiSegmentNext = () => {
+    if (!multiCameraData) return;
+
+    const { currentIndex, segments, segmentMetrics, run } = multiCameraData;
+    const currentSegment = segments[currentIndex];
+    if (!currentSegment) {
+      console.error("現在のセグメント情報が取得できません", currentIndex);
       return;
     }
-    
-    // マルチカメラ用のデータを保存
-    setMultiCameraData({ run, segments, videoFiles });
-    
-    // 最初の動画をセット
-    setVideoFile(firstVideo);
-    setVideoUrl(URL.createObjectURL(firstVideo));
-    
-    // FPS選択画面へ
-    setIsMultiCameraSetup(false);
-    setWizardStep(1); // FPS選択へ
-  };
-  
-  // セグメント動画を処理する関数
-  const processSegmentVideo = async (video: File, segment: RunSegment): Promise<string> => {
-    console.log(`Processing segment ${segment.segmentIndex}:`, video.name);
-    
-    // セグメント用の動画をセット
-    setVideoFile(video);
-    setVideoUrl(URL.createObjectURL(video));
-    
-    // FPSの確認
-    if (!selectedFps) {
-      alert('FPSを選択してください');
-      setWizardStep(1); // FPS選択画面へ
-      return '';
+
+    const metricsSnapshot = stepMetrics.map((metric) => ({ ...metric }));
+    if (!metricsSnapshot.length) {
+      const shouldSkip = confirm(
+        "ステップデータが検出されていません。姿勢推定やマーカー設定が完了していない可能性があります。\nこのセグメントをスキップして次へ進みますか？"
+      );
+      if (!shouldSkip) {
+        return;
+      }
     }
-    
-    // フレーム抽出を開始
-    setWizardStep(2);
-    setIsExtracting(true);
-    
-    try {
-      // フレーム抽出（既存の処理を呼び出す）
-      // TODO: 実際のフレーム抽出処理
-      
-      // 姿勢推定を開始
-      setWizardStep(3);
-      // TODO: 実際の姿勢推定処理
-      
-      // セッションIDを生成（実際には保存処理も必要）
-      const sessionId = `session_${segment.id}_${Date.now()}`;
-      
-      // セグメント処理完了
-      console.log(`Segment ${segment.segmentIndex} completed:`, sessionId);
-      
-      return sessionId;
-    } catch (error) {
-      console.error('Segment processing error:', error);
-      return '';
+
+    const updatedMetrics: Record<string, StepMetric[]> = {
+      ...segmentMetrics,
+      [currentSegment.id]: metricsSnapshot,
+    };
+
+    const nextIndex = currentIndex + 1;
+    const hasNext = nextIndex < segments.length;
+
+    const updatedState: MultiCameraState = {
+      ...multiCameraData,
+      segmentMetrics: updatedMetrics,
+      currentIndex: hasNext ? nextIndex : currentIndex,
+    };
+
+    setMultiCameraData(updatedState);
+
+    if (hasNext) {
+      setStatus(`セグメント${currentIndex + 1}を保存しました。セグメント${nextIndex + 1}の動画を読み込みます。`);
+      loadMultiCameraSegment(updatedState, nextIndex);
+      return;
     }
+
+    const allMetrics = Object.values(updatedMetrics).flat();
+    const average = (values: Array<number | null | undefined>): number | null => {
+      const filtered = values.filter((v): v is number => typeof v === "number" && !Number.isNaN(v));
+      return filtered.length ? filtered.reduce((sum, value) => sum + value, 0) / filtered.length : null;
+    };
+
+    const totalDistance = segments.length
+      ? segments[segments.length - 1].endDistanceM - segments[0].startDistanceM
+      : run.totalDistanceM;
+
+    setMultiCameraSummary({
+      totalDistance,
+      totalSegments: segments.length,
+      totalSteps: allMetrics.length,
+      avgStride: average(allMetrics.map((m) => m.stride)),
+      avgContact: average(allMetrics.map((m) => m.contactTime)),
+      avgFlight: average(allMetrics.map((m) => m.flightTime)),
+      avgSpeed: average(allMetrics.map((m) => m.speedMps)),
+    });
+
+    setStatus("全てのセグメントの解析が完了しました。ページ下部の「マルチカメラ総合結果」をご確認ください。");
+    alert("全てのセグメントの解析が完了しました！\nページ下部に総合結果を表示しました。");
   };
 
   const renderStepContent = () => {
@@ -5398,13 +5481,12 @@ const [notesInput, setNotesInput] = useState<string>("");
           athleteId={selectedAthleteId || undefined}
           onStartAnalysis={handleMultiCameraStart}
           onCancel={() => setIsMultiCameraSetup(false)}
-          processSegmentVideo={processSegmentVideo}
         />
       );
     }
     
     switch (wizardStep) {
-          case 0:
+      case 0:
       return (
         <div className="wizard-content">
           <div className="wizard-step-header">
@@ -6103,28 +6185,21 @@ const [notesInput, setNotesInput] = useState<string>("");
                     alert("動画ファイルを選択してください。");
                     return;
                   }
-                  
-                  // マルチカメラモードの場合
-                  if (analysisMode === 'multi' && multiCameraData) {
-                    console.log('マルチカメラモード: FPS選択完了', selectedFps);
-                    // マルチカメラ処理を継続
-                    processMultiCameraSegments();
-                    return;
-                  }
-                  
-                  // 通常モード
-                  if (!distanceValue || distanceValue <= 0) {
+
+                  if (analysisMode !== "multi" && (!distanceValue || distanceValue <= 0)) {
                     alert("有効な距離を入力してください。");
                     return;
                   }
-                  
-                  // 直接ステップ3（フレーム抽出）に移動
+
                   setWizardStep(3);
                   setTimeout(() => {
                     handleExtractFrames();
                   }, 300);
                 }}
-                disabled={!videoFile || !distanceValue || distanceValue <= 0}
+                disabled={
+                  !videoFile ||
+                  (analysisMode !== "multi" && (!distanceValue || distanceValue <= 0))
+                }
               >
                 次へ：フレーム抽出（{selectedFps}fps）
               </button>
@@ -7665,7 +7740,31 @@ const [notesInput, setNotesInput] = useState<string>("");
           </div>
         );
 
-      case 7:
+      case 7: {
+        const isMultiModeActive = analysisMode === "multi" && multiCameraData;
+        const currentMultiSegment = isMultiModeActive
+          ? multiCameraData.segments[multiCameraData.currentIndex]
+          : null;
+        const hasNextSegment = isMultiModeActive
+          ? multiCameraData.currentIndex < multiCameraData.segments.length - 1
+          : false;
+        const segmentProgress = isMultiModeActive
+          ? multiCameraData.segments.map((segment, idx) => ({
+              segment,
+              steps: multiCameraData.segmentMetrics[segment.id]?.length ?? 0,
+              isCurrent: idx === multiCameraData.currentIndex,
+            }))
+          : [];
+        const isMultiCompleted =
+          isMultiModeActive && !hasNextSegment && multiCameraSummary !== null;
+        const totalSegments = isMultiModeActive ? multiCameraData.segments.length : 0;
+        const currentSegmentIndex = isMultiModeActive ? multiCameraData.currentIndex : -1;
+        const nextButtonLabel = hasNextSegment
+          ? `次のセグメントへ (${currentSegmentIndex + 2}/${totalSegments})`
+          : isMultiCompleted
+            ? "解析は完了しています"
+            : "マルチカメラ解析を完了する";
+
         return (
           <div className="wizard-content">
             <div className="wizard-step-header">
@@ -7674,6 +7773,88 @@ const [notesInput, setNotesInput] = useState<string>("");
                 ステップ解析結果とグラフを確認できます。スライダーで各フレームの角度を確認できます。
               </p>
             </div>
+
+            {isMultiModeActive && currentMultiSegment && (
+              <div
+                style={{
+                  border: "1px solid #bfdbfe",
+                  background: "#eff6ff",
+                  padding: "16px",
+                  borderRadius: "12px",
+                  marginBottom: "20px",
+                  color: "#1e3a8a",
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: "4px" }}>マルチカメラモード</div>
+                <div style={{ fontSize: "0.95rem", marginBottom: "4px" }}>
+                  セグメント {currentSegmentIndex + 1} / {totalSegments} （{currentMultiSegment.startDistanceM}m〜{currentMultiSegment.endDistanceM}m）
+                </div>
+                <div style={{ fontSize: "0.8rem", color: "#475569" }}>
+                  ステップのマーキングを完了したら、下のボタンで次のセグメントに進んでください。
+                </div>
+              </div>
+            )}
+
+            {isMultiModeActive && segmentProgress.length > 0 && (
+              <div
+                style={{
+                  border: "1px solid #e2e8f0",
+                  background: "#f8fafc",
+                  padding: "16px",
+                  borderRadius: "12px",
+                  marginBottom: "20px",
+                }}
+              >
+                <h4 style={{ margin: "0 0 8px", fontSize: "0.95rem", color: "#1e293b" }}>セグメント進捗</h4>
+                <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "0.9rem", color: "#1f2937" }}>
+                  {segmentProgress.map(({ segment, steps, isCurrent }, idx) => (
+                    <li key={segment.id}>
+                      セグメント {idx + 1} （{segment.startDistanceM}m〜{segment.endDistanceM}m）:
+                      ステップ {steps}件 {isCurrent ? "（解析中）" : steps > 0 ? "✓" : "未解析"}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {isMultiModeActive && multiCameraSummary && (
+              <div
+                style={{
+                  border: "1px solid #d1fae5",
+                  background: "#ecfdf5",
+                  padding: "16px",
+                  borderRadius: "12px",
+                  marginBottom: "20px",
+                  color: "#065f46",
+                }}
+              >
+                <h4 style={{ margin: "0 0 8px", fontSize: "0.95rem" }}>マルチカメラ総合結果</h4>
+                <div style={{ fontSize: "0.9rem" }}>
+                  <div>総距離: {multiCameraSummary.totalDistance.toFixed(1)}m</div>
+                  <div>セグメント数: {multiCameraSummary.totalSegments}</div>
+                  <div>総ステップ数: {multiCameraSummary.totalSteps}歩</div>
+                  <div>平均ストライド: {multiCameraSummary.avgStride != null ? `${multiCameraSummary.avgStride.toFixed(2)}m` : "ー"}</div>
+                  <div>平均接地時間: {multiCameraSummary.avgContact != null ? `${multiCameraSummary.avgContact.toFixed(3)}s` : "ー"}</div>
+                  <div>平均滞空時間: {multiCameraSummary.avgFlight != null ? `${multiCameraSummary.avgFlight.toFixed(3)}s` : "ー"}</div>
+                  <div>平均速度: {multiCameraSummary.avgSpeed != null ? `${multiCameraSummary.avgSpeed.toFixed(2)}m/s` : "ー"}</div>
+                </div>
+              </div>
+            )}
+
+            {isMultiModeActive && (
+              <div style={{ display: "flex", gap: "12px", marginBottom: "24px", flexWrap: "wrap" }}>
+                <button
+                  className="btn-primary-large"
+                  onClick={handleMultiSegmentNext}
+                  disabled={!hasNextSegment && !!isMultiCompleted}
+                >
+                  {nextButtonLabel}
+                </button>
+                <button className="btn-ghost" onClick={handleCancelMultiCamera}>
+                  マルチカメラ設定に戻る
+                </button>
+              </div>
+            )}
             
             {/* スクロールボタン（iPad/モバイル用） */}
             <div style={{
@@ -8223,6 +8404,7 @@ const [notesInput, setNotesInput] = useState<string>("");
             </div>
           </div>
         );
+      }
 
       case 8:
         return (
