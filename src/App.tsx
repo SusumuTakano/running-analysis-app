@@ -13,6 +13,7 @@ import { generateRunningEvaluation, type RunningEvaluation } from "./runningEval
 import { MultiCameraSetup } from './components/MultiCameraSetup';
 import { MultiCameraProcessor } from './components/MultiCameraProcessor';
 import { MultiCameraResults } from './components/MultiCameraResults';
+import ManualRoiSelector, { Roi } from './components/ManualRoiSelector';
 import { 
   Run, 
   RunSegment, 
@@ -894,9 +895,8 @@ const [notesInput, setNotesInput] = useState<string>("");
   
   // 👤 人物選択モード（姿勢推定が遅い場合の手動選択）
   const [isPersonSelectMode, setIsPersonSelectMode] = useState<boolean>(false);
-  const [personBoundingBox, setPersonBoundingBox] = useState<{x: number, y: number, width: number, height: number} | null>(null);
+  const [manualRoi, setManualRoi] = useState<Roi | null>(null);
   const [isSelectingPerson, setIsSelectingPerson] = useState<boolean>(false);
-  const [selectionStart, setSelectionStart] = useState<{x: number, y: number} | null>(null);
   
   // 🎓 1歩目学習データ（検出精度向上）
   const [learnedStepPattern, setLearnedStepPattern] = useState<{
@@ -6669,94 +6669,61 @@ const [notesInput, setNotesInput] = useState<string>("");
                 </p>
               </div>
               
-              <div style={{ position: 'relative', maxWidth: '800px', margin: '0 auto' }}>
+              <div className="video-wrapper">
                 <canvas
                   ref={canvasRef}
-                  style={{ 
-                    width: '100%', 
-                    cursor: 'crosshair',
-                    border: '2px solid #10b981'
-                  }}
-                  onMouseDown={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const x = (e.clientX - rect.left) * (e.currentTarget.width / rect.width);
-                    const y = (e.clientY - rect.top) * (e.currentTarget.height / rect.height);
-                    setSelectionStart({ x, y });
-                    setIsSelectingPerson(true);
-                  }}
-                  onMouseMove={(e) => {
-                    if (isSelectingPerson && selectionStart) {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const x = (e.clientX - rect.left) * (e.currentTarget.width / rect.width);
-                      const y = (e.clientY - rect.top) * (e.currentTarget.height / rect.height);
-                      
-                      const ctx = e.currentTarget.getContext('2d');
-                      if (ctx && framesRef.current[0]) {
-                        // 現在のフレームを再描画
-                        ctx.putImageData(framesRef.current[0], 0, 0);
-                        
-                        // 選択範囲を描画
-                        ctx.strokeStyle = '#10b981';
-                        ctx.lineWidth = 2;
-                        ctx.setLineDash([5, 5]);
-                        ctx.strokeRect(
-                          selectionStart.x, 
-                          selectionStart.y, 
-                          x - selectionStart.x, 
-                          y - selectionStart.y
-                        );
-                      }
+                  className="video-layer"
+                />
+                <ManualRoiSelector
+                  enabled={isSelectingPerson}
+                  onChangeRoi={(roi) => {
+                    setManualRoi(roi);
+                    setIsSelectingPerson(false);
+                    if (roi) {
+                      // ROIが設定されたら姿勢推定を開始
+                      setTimeout(() => {
+                        setIsPersonSelectMode(false);
+                        runPoseEstimation();
+                      }, 500);
                     }
                   }}
-                  onMouseUp={(e) => {
-                    if (isSelectingPerson && selectionStart) {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const x = (e.clientX - rect.left) * (e.currentTarget.width / rect.width);
-                      const y = (e.clientY - rect.top) * (e.currentTarget.height / rect.height);
-                      
-                      setPersonBoundingBox({
-                        x: Math.min(selectionStart.x, x),
-                        y: Math.min(selectionStart.y, y),
-                        width: Math.abs(x - selectionStart.x),
-                        height: Math.abs(y - selectionStart.y)
-                      });
-                      setIsSelectingPerson(false);
-                      setSelectionStart(null);
-                    }
+                  onCancel={() => {
+                    setIsSelectingPerson(false);
+                    setIsPersonSelectMode(false);
+                    setWizardStep(4);
                   }}
                 />
-                
-                {personBoundingBox && (
-                  <div style={{ marginTop: '1rem', textAlign: 'center' }}>
-                    <p style={{ color: '#10b981', fontWeight: 'bold' }}>
-                      ✅ 人物領域が選択されました
-                    </p>
-                  </div>
-                )}
               </div>
               
-              <div className="wizard-nav">
-                <button
-                  className="btn-secondary"
-                  onClick={() => {
-                    setIsPersonSelectMode(false);
-                    setPersonBoundingBox(null);
-                    setWizardStep(3);
-                  }}
-                >
-                  ← 戻る
-                </button>
-                <button
-                  className="btn-primary-large"
-                  onClick={() => {
-                    setIsPersonSelectMode(false);
-                    runPoseEstimation();
-                  }}
-                  disabled={!personBoundingBox}
-                >
-                  姿勢推定を開始 →
-                </button>
-              </div>
+              {!isSelectingPerson && (
+                <div className="wizard-nav">
+                  <button
+                    className="btn-secondary"
+                    onClick={() => {
+                      setIsPersonSelectMode(false);
+                      setManualRoi(null);
+                      setWizardStep(4);
+                    }}
+                  >
+                    ← 戻る
+                  </button>
+                  <button
+                    className="btn-primary-large"
+                    onClick={() => {
+                      // 最初のフレームを表示
+                      if (framesRef.current[0] && canvasRef.current) {
+                        const ctx = canvasRef.current.getContext('2d');
+                        if (ctx) {
+                          ctx.putImageData(framesRef.current[0], 0, 0);
+                        }
+                      }
+                      setIsSelectingPerson(true);
+                    }}
+                  >
+                    人物を選択 →
+                  </button>
+                </div>
+              )}
             </div>
           );
         }
@@ -6913,11 +6880,11 @@ const [notesInput, setNotesInput] = useState<string>("");
               </p>
             </div>
 
-            {/* キャンバスプレビュー */}
-            <div className="canvas-area" style={{ marginBottom: '2rem' }}>
+            {/* ビデオプレビュー - ChatGPT推奨のvideo-wrapper使用 */}
+            <div className="video-wrapper">
               <canvas 
                 ref={displayCanvasRef} 
-                className="preview-canvas"
+                className="video-layer"
               />
             </div>
 

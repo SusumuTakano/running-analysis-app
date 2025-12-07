@@ -2202,3 +2202,54 @@ body {
     min-height: 44px;
   }
 }
+
+/* ========================================
+   Video Wrapper - ChatGPT推奨の2画面問題修正
+   ======================================== */
+.video-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto 16px auto;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: #000;
+  border-radius: 12px;
+}
+
+.video-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: transparent;
+}
+
+/* ROI選択オーバーレイ（人物手動選択用） */
+.roi-overlay {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  z-index: 10;
+}
+
+.roi-overlay.disabled {
+  pointer-events: none;
+}
+
+.roi-rect {
+  position: absolute;
+  border: 3px solid #00ff88;
+  background: rgba(0, 255, 136, 0.1);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { border-color: #00ff88; }
+  50% { border-color: #00ffaa; }
+  100% { border-color: #00ff88; }
+}
