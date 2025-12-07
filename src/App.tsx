@@ -3526,17 +3526,28 @@ const [notesInput, setNotesInput] = useState<string>("");
           let correctedHeight = actualHeight;
           
           // 3840x2160が誤って報告される場合の修正
+          // iPhoneやiPadで撮影した動画は誤って4K報告されることがある
           if (actualWidth === 3840 && actualHeight === 2160) {
-            // ファイルサイズや他の指標から実際の解像度を推定
             const fileSizeMB = videoFile.size / (1024 * 1024);
             console.log(`📹 ファイルサイズ: ${fileSizeMB.toFixed(2)}MB`);
             
-            // 一般的にHD動画は100MB前後、4K動画は500MB以上
-            if (fileSizeMB < 200) {
-              console.log(`⚠️ ファイルサイズから推定: おそらくHD動画 (1920x1080)`);
+            // 200MB以下は確実にHD動画（4K動画は最低でも300MB以上）
+            if (fileSizeMB < 250) {
+              console.log(`⚠️ ファイルサイズ ${fileSizeMB.toFixed(0)}MB から判定: HD動画として処理`);
               correctedWidth = 1920;
               correctedHeight = 1080;
+            } else {
+              // 本当の4K動画
+              console.log(`✅ ファイルサイズ ${fileSizeMB.toFixed(0)}MB から判定: 真の4K動画`);
             }
+          }
+          
+          // その他の誤認識パターンも修正
+          // 1920x1080なのに高解像度として報告される場合
+          if ((actualWidth > 1920 && actualWidth < 3840) || (actualHeight > 1080 && actualHeight < 2160)) {
+            console.log(`⚠️ 中途半端な解像度 ${actualWidth}x${actualHeight} → HD動画として処理`);
+            correctedWidth = 1920;
+            correctedHeight = 1080;
           }
           
           setVideoWidth(correctedWidth);
@@ -3652,27 +3663,30 @@ const [notesInput, setNotesInput] = useState<string>("");
 
     setUsedTargetFps(targetFps);
 
-    // 4K動画の検出と確認（両方の条件を満たす必要がある）
-    console.log(`🎬 動画解像度確認: ${video.videoWidth}x${video.videoHeight}`);
-    console.log(`🎬 HD判定: ${video.videoWidth === 1920 && video.videoHeight === 1080 ? 'HD (1920x1080)' : 
-                 video.videoWidth === 1280 && video.videoHeight === 720 ? 'HD (1280x720)' : 
+    // 4K動画の検出と確認（保存された補正済みの解像度を使用）
+    const actualVideoWidth = videoWidth || video.videoWidth;
+    const actualVideoHeight = videoHeight || video.videoHeight;
+    
+    console.log(`🎬 動画解像度確認: ${actualVideoWidth}x${actualVideoHeight}`);
+    console.log(`🎬 HD判定: ${actualVideoWidth === 1920 && actualVideoHeight === 1080 ? 'HD (1920x1080)' : 
+                 actualVideoWidth === 1280 && actualVideoHeight === 720 ? 'HD (1280x720)' : 
                  '他の解像度'}`);
-    const is4K = video.videoWidth >= 3840 && video.videoHeight >= 2160;
+    const is4K = actualVideoWidth >= 3840 && actualVideoHeight >= 2160;
     console.log(`🎬 4K判定結果: ${is4K ? '4K動画' : '非4K動画'}`);
     const is240Fps = targetFps >= 240;
     
-    let scale = Math.min(1, MAX_WIDTH / video.videoWidth);
+    let scale = Math.min(1, MAX_WIDTH / actualVideoWidth);
     
     // 4K動画または240fpsの場合のみ確認（120fps以下は自動処理）
     if (is4K && !isMobile) {
-      const fullResMemoryMB = (video.videoWidth * video.videoHeight * totalFrames * 4) / (1024 * 1024);
-      const scaledMemoryMB = (MAX_WIDTH * (video.videoHeight * MAX_WIDTH / video.videoWidth) * totalFrames * 4) / (1024 * 1024);
+      const fullResMemoryMB = (actualVideoWidth * actualVideoHeight * totalFrames * 4) / (1024 * 1024);
+      const scaledMemoryMB = (MAX_WIDTH * (actualVideoHeight * MAX_WIDTH / actualVideoWidth) * totalFrames * 4) / (1024 * 1024);
       
-      console.log(`📹 4K video detected: ${video.videoWidth}x${video.videoHeight}`);
+      console.log(`📹 4K video detected: ${actualVideoWidth}x${actualVideoHeight}`);
       console.log(`💾 Full resolution would use: ${fullResMemoryMB.toFixed(0)}MB`);
       console.log(`💾 Scaled to ${MAX_WIDTH}px would use: ${scaledMemoryMB.toFixed(0)}MB`);
       
-      if (confirm(`4K動画が検出されました（${video.videoWidth}x${video.videoHeight}）\n\nフル解像度で処理しますか？\n\n「OK」: フル解像度（${fullResMemoryMB.toFixed(0)}MB使用、高精度）\n「キャンセル」: ${MAX_WIDTH}pxにスケール（${scaledMemoryMB.toFixed(0)}MB使用、推奨）`)) {
+      if (confirm(`4K動画が検出されました（${actualVideoWidth}x${actualVideoHeight}）\n\nフル解像度で処理しますか？\n\n「OK」: フル解像度（${fullResMemoryMB.toFixed(0)}MB使用、高精度）\n「キャンセル」: ${MAX_WIDTH}pxにスケール（${scaledMemoryMB.toFixed(0)}MB使用、推奨）`)) {
         scale = 1; // フル解像度
         console.log('✅ Processing at full 4K resolution');
       } else {
@@ -3680,8 +3694,8 @@ const [notesInput, setNotesInput] = useState<string>("");
       }
     }
     
-    const targetWidth = Math.round(video.videoWidth * scale);
-    const targetHeight = Math.round(video.videoHeight * scale);
+    const targetWidth = Math.round(actualVideoWidth * scale);
+    const targetHeight = Math.round(actualVideoHeight * scale);
     
     // メモリ使用量の推定と警告
     const estimatedMemoryMB = (targetWidth * targetHeight * totalFrames * 4) / (1024 * 1024);
