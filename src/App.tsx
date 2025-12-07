@@ -151,7 +151,7 @@ const calculateAngles = (
   const getPoint = (idx: number) => landmarks[idx];
   
   // 主要なランドマークの信頼度をチェック
-  const CONFIDENCE_THRESHOLD = 0.3; // 適切な閾値で誤検出を防ぐ
+  const CONFIDENCE_THRESHOLD = 0.2; // バランスを調整
 
   const leftHip = getPoint(23);
   const rightHip = getPoint(24);
@@ -5317,34 +5317,50 @@ const [notesInput, setNotesInput] = useState<string>("");
 
     console.log(`📹 マルチカメラ: セグメント${index + 1}/${data.segments.length} (${targetSegment.startDistanceM}m〜${targetSegment.endDistanceM}m) を処理開始`);
     
-    // 状態をリセット
+    // 完全な状態リセット（重要：新しいセグメントの処理前に必ず実行）
     if (videoUrl) {
       URL.revokeObjectURL(videoUrl);
     }
+    
+    // フレーム関連
     framesRef.current = [];
     setFramesCount(0);
     setCurrentFrame(0);
     setExtractProgress(0);
     setUsedTargetFps(null);
-    setStatus("");
+    
+    // セクション関連
     setSectionStartFrame(null);
     setSectionMidFrame(null);
     setSectionEndFrame(null);
     setStartLineOffset(0);
     setMidLineOffset(0);
     setEndLineOffset(0);
+    
+    // 姿勢推定関連
+    setPoseResults([]);
     setSavedStartHipX(null);
     setSavedMidHipX(null);
     setSavedEndHipX(null);
     setSavedStartPixelX(null);
     setSavedMidPixelX(null);
     setSavedEndPixelX(null);
+    
+    // マーカー関連
     setManualContactFrames([]);
     setAutoToeOffFrames([]);
+    setManualToeOffFrames([]);
+    
+    // キャリブレーション関連
     setCalibrationMode(0);
+    setCalibrationData({ 
+      contactFrame: null, 
+      toeOffFrame: null 
+    });
     setToeOffThreshold(null);
     setBaseThreshold(null);
-    setPoseResults([]);
+    
+    setStatus("");
     
     // 動画ファイルを設定
     const url = URL.createObjectURL(file);
@@ -5452,7 +5468,14 @@ const [notesInput, setNotesInput] = useState<string>("");
     setMultiCameraData(updatedState);
 
     if (hasNext) {
+      console.log(`📹 Saving segment ${currentIndex + 1} and loading segment ${nextIndex + 1}`);
       setStatus(`セグメント${currentIndex + 1}を保存しました。セグメント${nextIndex + 1}の動画を読み込みます。`);
+      // 次のセグメントを読み込む前に状態をリセット
+      setPoseResults([]);
+      setManualContactFrames([]);
+      setAutoToeOffFrames([]);
+      setManualToeOffFrames([]);
+      // 次のセグメントを処理
       loadMultiCameraSegment(updatedState, nextIndex);
       return;
     }
