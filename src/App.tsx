@@ -2901,7 +2901,7 @@ const [notesInput, setNotesInput] = useState<string>("");
     }
 
     ctx.strokeStyle = "#00ff00";  // より見やすい緑色
-    ctx.lineWidth = 6;  // 4 → 6に変更（より見やすく）
+    ctx.lineWidth = 10;  // 4 → 10に変更（さらに太く）
 
     const connections: [number, number][] = [
       [11, 12],
@@ -2959,7 +2959,7 @@ const [notesInput, setNotesInput] = useState<string>("");
         const y = lm.y * height;
         
         ctx.beginPath();
-        ctx.arc(x, y, 6, 0, 2 * Math.PI);  // 4 → 6に拡大
+        ctx.arc(x, y, 10, 0, 2 * Math.PI);  // 4 → 10に拡大（さらに大きく）
         ctx.fill();
         
         // iPadデバッグ: 主要ポイントの位置をログ出力（高頻度でログが出ないよう制限）

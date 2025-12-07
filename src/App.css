@@ -2254,6 +2254,45 @@ body {
   100% { border-color: #00ff88; }
 }
 
+/* ========== Step 8,9 データ表示の改善 ========== */
+
+/* 関節角度データの文字を大きく */
+.angle-display-result {
+  font-size: 1.1rem !important;
+}
+
+.angle-display-result h4 {
+  font-size: 1.3rem !important;
+  font-weight: bold;
+  margin-bottom: 12px;
+}
+
+.angle-display-result p {
+  font-size: 1rem !important;
+  line-height: 1.6;
+}
+
+.angle-display-result table {
+  font-size: 1.1rem !important;
+}
+
+.angle-display-result td, 
+.angle-display-result th {
+  padding: 8px 12px !important;
+  font-size: 1.1rem !important;
+}
+
+/* スティックピクチャの線を太く */
+.preview-canvas {
+  image-rendering: crisp-edges;
+}
+
+/* 足元拡大の位置調整 */
+.foot-zoom-overlay {
+  bottom: 20px !important;
+  top: auto !important;
+}
+
 /* ========== Step6 黒画面修正 ========== */
 
 /* キャンバス全体のコンテナを1列にする */
