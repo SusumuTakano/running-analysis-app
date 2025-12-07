@@ -20,8 +20,8 @@ export const MultiCameraRunSetup: React.FC<MultiCameraRunSetupProps> = ({
   const [selectedVideos, setSelectedVideos] = useState<{ [key: string]: File }>({});
   const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
 
-  const distanceOptions = [20, 30, 40, 60, 80, 100];
-  const segmentLength = 10; // 固定
+  const [segmentLength, setSegmentLength] = useState<5 | 10>(10); // 5mまたは10mセグメント
+  const distanceOptions = segmentLength === 10 ? [20, 30, 40, 60, 80, 100] : [10, 15, 20, 30, 40, 50];
 
   const handleConfigSubmit = (totalDistance: number, label: string) => {
     const numSegments = totalDistance / segmentLength;
@@ -94,6 +94,36 @@ export const MultiCameraRunSetup: React.FC<MultiCameraRunSetupProps> = ({
           <div className="p-6">
             <h2 className="text-2xl font-bold mb-4">マルチカメララン設定</h2>
             <div className="space-y-4">
+              {/* セグメント長選択 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  セグメント長を選択
+                </label>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setSegmentLength(5)}
+                    className={`px-6 py-3 rounded-lg font-semibold transition ${
+                      segmentLength === 5 
+                        ? 'bg-blue-500 text-white' 
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    5m セグメント
+                    <div className="text-xs mt-1">短距離・詳細解析向け</div>
+                  </button>
+                  <button
+                    onClick={() => setSegmentLength(10)}
+                    className={`px-6 py-3 rounded-lg font-semibold transition ${
+                      segmentLength === 10 
+                        ? 'bg-blue-500 text-white' 
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    10m セグメント
+                    <div className="text-xs mt-1">標準・推奨</div>
+                  </button>
+                </div>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   総距離を選択

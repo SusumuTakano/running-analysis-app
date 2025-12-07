@@ -3687,15 +3687,19 @@ const [notesInput, setNotesInput] = useState<string>("");
         setTimeout(async () => {
           if (analysisMode === "multi") {
             // マルチカメラモードは固定カメラなのでパン撮影選択をスキップ
-            console.log('📹 Multi-camera mode: Skipping pan mode selection, starting pose estimation...');
+            console.log('📹 Multi-camera mode: Processing current segment...');
             setIsPanMode(false);
+            
+            // 姿勢推定を実行
             setWizardStep(4);
             await runPoseEstimation();
-            // 姿勢推定完了後、マルチカメラモードでは区間設定をスキップ
-            // 区間はすでにセグメントで定義されているため
+            
+            // 区間設定を自動化（セグメント全体を使用）
             setSectionStartFrame(0);
             setSectionEndFrame(framesRef.current.length - 1);
-            setWizardStep(6); // 直接マーカー設定へ
+            
+            // マーカー設定へ
+            setWizardStep(6);
           } else {
             setWizardStep(3.5); // パン撮影モード選択
           }
@@ -5301,6 +5305,52 @@ const [notesInput, setNotesInput] = useState<string>("");
   // 認証は AppWithAuth で処理済み
 
   // ------------ ウィザードステップの内容 ------------
+  
+  // マルチカメラの各セグメントを順次処理
+  const processMultiCameraSegments = async () => {
+    if (!multiCameraData) return;
+    
+    const { segments, videoFiles, currentIndex } = multiCameraData;
+    
+    // すべてのセグメントを処理済みの場合
+    if (currentIndex >= segments.length) {
+      console.log('🎆 All segments processed!');
+      // 結果を集約
+      const allMetrics = Object.values(multiCameraData.segmentMetrics).flat();
+      const average = (values: Array<number | null | undefined>): number | null => {
+        const filtered = values.filter((v): v is number => typeof v === "number" && !Number.isNaN(v));
+        return filtered.length ? filtered.reduce((sum, value) => sum + value, 0) / filtered.length : null;
+      };
+      
+      setMultiCameraSummary({
+        totalDistance: multiCameraData.run.totalDistanceM,
+        totalSegments: segments.length,
+        totalSteps: allMetrics.length,
+        avgStride: average(allMetrics.map((m) => m.stride)),
+        avgContact: average(allMetrics.map((m) => m.contactTime)),
+        avgFlight: average(allMetrics.map((m) => m.flightTime)),
+        avgSpeed: average(allMetrics.map((m) => m.speedMps)),
+      });
+      
+      alert('マルチカメラ解析が完了しました！');
+      setWizardStep(7); // 結果表示へ
+      return;
+    }
+    
+    const currentSegment = segments[currentIndex];
+    const file = videoFiles[currentSegment.id];
+    
+    if (!file) {
+      console.error(`Segment ${currentIndex + 1} has no video file`);
+      return;
+    }
+    
+    console.log(`🎥 Processing segment ${currentIndex + 1}/${segments.length} (${currentSegment.startDistanceM}m〜${currentSegment.endDistanceM}m)`);
+    
+    // 現在のセグメントを読み込んで処理
+    await loadMultiCameraSegment(multiCameraData, currentIndex);
+  };
+  
   // マルチカメラ: 指定したセグメントの動画を読み込み、解析ステップを初期化
   const loadMultiCameraSegment = async (data: MultiCameraState, index: number) => {
     const targetSegment = data.segments[index];
@@ -5470,13 +5520,20 @@ const [notesInput, setNotesInput] = useState<string>("");
     if (hasNext) {
       console.log(`📹 Saving segment ${currentIndex + 1} and loading segment ${nextIndex + 1}`);
       setStatus(`セグメント${currentIndex + 1}を保存しました。セグメント${nextIndex + 1}の動画を読み込みます。`);
-      // 次のセグメントを読み込む前に状態をリセット
-      setPoseResults([]);
-      setManualContactFrames([]);
-      setAutoToeOffFrames([]);
-      setManualToeOffFrames([]);
-      // 次のセグメントを処理
-      loadMultiCameraSegment(updatedState, nextIndex);
+      
+      // 状態をリセットしてから次のセグメントを処理
+      setTimeout(async () => {
+        // すべての状態をクリア
+        setPoseResults([]);
+        setManualContactFrames([]);
+        setAutoToeOffFrames([]);
+        setManualToeOffFrames([]);
+        framesRef.current = [];
+        setFramesCount(0);
+        
+        // 次のセグメントを処理（processMultiCameraSegmentsを呼び出す）
+        await processMultiCameraSegments();
+      }, 500);
       return;
     }
 
