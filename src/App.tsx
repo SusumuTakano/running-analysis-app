@@ -3739,14 +3739,13 @@ const [notesInput, setNotesInput] = useState<string>("");
             setWizardStep(4);
             await runPoseEstimation();
             
-            // 区間設定を自動化（セグメント全体を使用）
+            // 姿勢推定後は区間設定へ（ステップ5）
             setSectionStartFrame(0);
             setSectionEndFrame(framesRef.current.length - 1);
-            
-            // マーカー設定へ
-            setWizardStep(6);
           } else {
-            setWizardStep(3.5); // パン撮影モード選択
+            // シングルカメラモードは姿勢推定へ
+            setWizardStep(4);
+            setTimeout(() => runPoseEstimation(), 1000);
           }
         }, 1000);
         return;
