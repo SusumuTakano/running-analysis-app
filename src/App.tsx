@@ -6824,50 +6824,44 @@ const [notesInput, setNotesInput] = useState<string>("");
         );
 
       case 5:
-        // 軽量版Step5コンポーネントを使用（パフォーマンス最適化）
-        return (
-          <Step5Simple
-            frames={framesRef.current.map(frame => {
-              // ImageDataをbase64文字列に変換（軽量化のため一度だけ）
-              const canvas = document.createElement('canvas');
-              canvas.width = frame.width;
-              canvas.height = frame.height;
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                ctx.putImageData(frame, 0, 0);
-              }
-              return canvas.toDataURL('image/jpeg', 0.8); // JPEGで圧縮
-            })}
-            fps={selectedFps}
-            startFrame={sectionStartFrame || 0}
-            finishFrame={sectionEndFrame || framesRef.current.length - 1}
-            midFrame={sectionMidFrame ?? undefined}
-            onChangeStartFrame={(frame) => {
-              setSectionStartFrame(frame);
-              setCurrentFrame(frame);
-            }}
-            onChangeFinishFrame={(frame) => {
-              setSectionEndFrame(frame);
-              setCurrentFrame(frame);
-            }}
-            onChangeMidFrame={(frame) => {
-              setSectionMidFrame(frame);
-              setCurrentFrame(frame);
-            }}
-            existingPoseData={(() => {
-              const map = new Map<number, any>();
-              poseResults.forEach((result, index) => {
-                if (result) map.set(index, result);
-              });
-              return map;
-            })()}
-            onSelectRoi={(frame, roi) => {
-              // ROI選択時の処理（ここで実際のポーズ推定を実行可能）
-              console.log('ROI selected at frame', frame, roi);
-              setStatus(`ROI選択: フレーム${frame} (${roi.width.toFixed(2)} x ${roi.height.toFixed(2)})`);
-            }}
-          />
-        );
+        // フレーム表示を更新
+        React.useEffect(() => {
+          if (displayCanvasRef.current && framesRef.current[currentFrame]) {
+            const canvas = displayCanvasRef.current;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+            
+            const frame = framesRef.current[currentFrame];
+            canvas.width = frame.width;
+            canvas.height = frame.height;
+            ctx.putImageData(frame, 0, 0);
+            
+            // スタート/フィニッシュラインを描画
+            if (currentFrame === sectionStartFrame) {
+              ctx.strokeStyle = '#00ff00';
+              ctx.lineWidth = 3;
+              ctx.beginPath();
+              ctx.moveTo(canvas.width * 0.3, 0);
+              ctx.lineTo(canvas.width * 0.3, canvas.height);
+              ctx.stroke();
+            }
+            
+            if (currentFrame === sectionEndFrame) {
+              ctx.strokeStyle = '#ff0000';
+              ctx.lineWidth = 3;
+              ctx.beginPath();
+              ctx.moveTo(canvas.width * 0.7, 0);
+              ctx.lineTo(canvas.width * 0.7, canvas.height);
+              ctx.stroke();
+            }
+            
+            // ポーズがある場合は骨格を描画
+            const pose = poseResults[currentFrame];
+            if (pose?.landmarks) {
+              drawSkeleton(ctx, pose.landmarks, canvas.width, canvas.height);
+            }
+          }
+        }, [currentFrame, sectionStartFrame, sectionEndFrame]);
 
         // マルチカメラモードの場合は区間設定をスキップ
         if (analysisMode === "multi") {
@@ -6933,12 +6927,24 @@ const [notesInput, setNotesInput] = useState<string>("");
               </p>
             </div>
 
-            {/* ビデオプレビュー - ChatGPT推奨のvideo-wrapper使用 */}
-            <div className="video-wrapper">
+            {/* ビデオプレビュー - フレームを直接表示 */}
+            <div className="video-wrapper" style={{ marginBottom: '2rem' }}>
               <canvas 
                 ref={displayCanvasRef} 
                 className="video-layer"
+                style={{
+                  width: '100%',
+                  maxWidth: '800px',
+                  height: 'auto',
+                  display: 'block',
+                  margin: '0 auto',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: '8px'
+                }}
               />
+              <div style={{ textAlign: 'center', marginTop: '10px', color: '#6b7280' }}>
+                現在のフレーム: {currentFrame} / {framesCount - 1}
+              </div>
             </div>
 
             {/* 3つのスライダーでの区間設定 */}
