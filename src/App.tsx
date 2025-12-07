@@ -892,6 +892,12 @@ const [notesInput, setNotesInput] = useState<string>("");
   // 🎥 パン撮影モード（カメラ追従撮影対応）
   const [isPanMode, setIsPanMode] = useState<boolean>(false);
   
+  // 👤 人物選択モード（姿勢推定が遅い場合の手動選択）
+  const [isPersonSelectMode, setIsPersonSelectMode] = useState<boolean>(false);
+  const [personBoundingBox, setPersonBoundingBox] = useState<{x: number, y: number, width: number, height: number} | null>(null);
+  const [isSelectingPerson, setIsSelectingPerson] = useState<boolean>(false);
+  const [selectionStart, setSelectionStart] = useState<{x: number, y: number} | null>(null);
+  
   // 🎓 1歩目学習データ（検出精度向上）
   const [learnedStepPattern, setLearnedStepPattern] = useState<{
     contactDuration: number;  // 接地時間（フレーム数）
@@ -3508,9 +3514,34 @@ const [notesInput, setNotesInput] = useState<string>("");
           video.removeEventListener("loadedmetadata", onLoaded);
           video.removeEventListener("error", onError);
           // 動画のサイズを保存
-          setVideoWidth(video.videoWidth);
-          setVideoHeight(video.videoHeight);
-          console.log(`📹 動画サイズ: ${video.videoWidth} × ${video.videoHeight}`);
+          // デバッグ: 実際の値を確認
+          const actualWidth = video.videoWidth;
+          const actualHeight = video.videoHeight;
+          console.log(`📹 実際の動画サイズ: ${actualWidth} × ${actualHeight}`);
+          console.log(`📹 ビデオ要素の表示サイズ: ${video.width || 'N/A'} × ${video.height || 'N/A'}`);
+          console.log(`📹 ビデオ要素: `, video);
+          
+          // 異常な値の場合は修正
+          let correctedWidth = actualWidth;
+          let correctedHeight = actualHeight;
+          
+          // 3840x2160が誤って報告される場合の修正
+          if (actualWidth === 3840 && actualHeight === 2160) {
+            // ファイルサイズや他の指標から実際の解像度を推定
+            const fileSizeMB = videoFile.size / (1024 * 1024);
+            console.log(`📹 ファイルサイズ: ${fileSizeMB.toFixed(2)}MB`);
+            
+            // 一般的にHD動画は100MB前後、4K動画は500MB以上
+            if (fileSizeMB < 200) {
+              console.log(`⚠️ ファイルサイズから推定: おそらくHD動画 (1920x1080)`);
+              correctedWidth = 1920;
+              correctedHeight = 1080;
+            }
+          }
+          
+          setVideoWidth(correctedWidth);
+          setVideoHeight(correctedHeight);
+          console.log(`📹 設定された動画サイズ: ${correctedWidth} × ${correctedHeight}`);
           resolve();
         };
         const onError = () => {
@@ -6613,6 +6644,110 @@ const [notesInput, setNotesInput] = useState<string>("");
         );
 
       case 4:
+        // 人物選択モード
+        if (isPersonSelectMode && framesRef.current.length > 0) {
+          return (
+            <div className="wizard-content">
+              <div className="wizard-step-header">
+                <h2 className="wizard-step-title">ステップ 4: 人物領域の選択</h2>
+                <p className="wizard-step-desc">
+                  姿勢推定する人物をマウスでドラッグして囲んでください。
+                </p>
+              </div>
+              
+              <div style={{ position: 'relative', maxWidth: '800px', margin: '0 auto' }}>
+                <canvas
+                  ref={canvasRef}
+                  style={{ 
+                    width: '100%', 
+                    cursor: 'crosshair',
+                    border: '2px solid #10b981'
+                  }}
+                  onMouseDown={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = (e.clientX - rect.left) * (e.currentTarget.width / rect.width);
+                    const y = (e.clientY - rect.top) * (e.currentTarget.height / rect.height);
+                    setSelectionStart({ x, y });
+                    setIsSelectingPerson(true);
+                  }}
+                  onMouseMove={(e) => {
+                    if (isSelectingPerson && selectionStart) {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const x = (e.clientX - rect.left) * (e.currentTarget.width / rect.width);
+                      const y = (e.clientY - rect.top) * (e.currentTarget.height / rect.height);
+                      
+                      const ctx = e.currentTarget.getContext('2d');
+                      if (ctx && framesRef.current[0]) {
+                        // 現在のフレームを再描画
+                        ctx.putImageData(framesRef.current[0], 0, 0);
+                        
+                        // 選択範囲を描画
+                        ctx.strokeStyle = '#10b981';
+                        ctx.lineWidth = 2;
+                        ctx.setLineDash([5, 5]);
+                        ctx.strokeRect(
+                          selectionStart.x, 
+                          selectionStart.y, 
+                          x - selectionStart.x, 
+                          y - selectionStart.y
+                        );
+                      }
+                    }
+                  }}
+                  onMouseUp={(e) => {
+                    if (isSelectingPerson && selectionStart) {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const x = (e.clientX - rect.left) * (e.currentTarget.width / rect.width);
+                      const y = (e.clientY - rect.top) * (e.currentTarget.height / rect.height);
+                      
+                      setPersonBoundingBox({
+                        x: Math.min(selectionStart.x, x),
+                        y: Math.min(selectionStart.y, y),
+                        width: Math.abs(x - selectionStart.x),
+                        height: Math.abs(y - selectionStart.y)
+                      });
+                      setIsSelectingPerson(false);
+                      setSelectionStart(null);
+                    }
+                  }}
+                />
+                
+                {personBoundingBox && (
+                  <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+                    <p style={{ color: '#10b981', fontWeight: 'bold' }}>
+                      ✅ 人物領域が選択されました
+                    </p>
+                  </div>
+                )}
+              </div>
+              
+              <div className="wizard-nav">
+                <button
+                  className="btn-secondary"
+                  onClick={() => {
+                    setIsPersonSelectMode(false);
+                    setPersonBoundingBox(null);
+                    setWizardStep(3);
+                  }}
+                >
+                  ← 戻る
+                </button>
+                <button
+                  className="btn-primary-large"
+                  onClick={() => {
+                    setIsPersonSelectMode(false);
+                    runPoseEstimation();
+                  }}
+                  disabled={!personBoundingBox}
+                >
+                  姿勢推定を開始 →
+                </button>
+              </div>
+            </div>
+          );
+        }
+        
+        // 通常の姿勢推定処理
         return (
           <div className="wizard-content">
             <div className="wizard-step-header">
