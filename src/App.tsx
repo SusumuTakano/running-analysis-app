@@ -1167,6 +1167,45 @@ const [notesInput, setNotesInput] = useState<string>("");
     return true;
   };
 
+  // Step5でフレームを表示するためのuseEffect
+  useEffect(() => {
+    if (wizardStep === 5 && displayCanvasRef.current && framesRef.current[currentFrame]) {
+      const canvas = displayCanvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      const frame = framesRef.current[currentFrame];
+      canvas.width = frame.width;
+      canvas.height = frame.height;
+      ctx.putImageData(frame, 0, 0);
+      
+      // スタート/フィニッシュラインを描画
+      if (currentFrame === sectionStartFrame) {
+        ctx.strokeStyle = '#00ff00';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(canvas.width * 0.3, 0);
+        ctx.lineTo(canvas.width * 0.3, canvas.height);
+        ctx.stroke();
+      }
+      
+      if (currentFrame === sectionEndFrame) {
+        ctx.strokeStyle = '#ff0000';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(canvas.width * 0.7, 0);
+        ctx.lineTo(canvas.width * 0.7, canvas.height);
+        ctx.stroke();
+      }
+      
+      // ポーズがある場合は骨格を描画
+      const pose = poseResults[currentFrame];
+      if (pose?.landmarks) {
+        drawSkeleton(ctx, pose.landmarks, canvas.width, canvas.height);
+      }
+    }
+  }, [wizardStep, currentFrame, sectionStartFrame, sectionEndFrame]);
+
   // 完全自動検出：全フレームから接地と離地を検出（つま先の動き検出方式）
   // 新方式では閾値不要、つま先の速度変化のみで判定
   const autoDetectAllContactsAndToeOffs = () => {
@@ -6824,44 +6863,6 @@ const [notesInput, setNotesInput] = useState<string>("");
         );
 
       case 5:
-        // フレーム表示を更新
-        React.useEffect(() => {
-          if (displayCanvasRef.current && framesRef.current[currentFrame]) {
-            const canvas = displayCanvasRef.current;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return;
-            
-            const frame = framesRef.current[currentFrame];
-            canvas.width = frame.width;
-            canvas.height = frame.height;
-            ctx.putImageData(frame, 0, 0);
-            
-            // スタート/フィニッシュラインを描画
-            if (currentFrame === sectionStartFrame) {
-              ctx.strokeStyle = '#00ff00';
-              ctx.lineWidth = 3;
-              ctx.beginPath();
-              ctx.moveTo(canvas.width * 0.3, 0);
-              ctx.lineTo(canvas.width * 0.3, canvas.height);
-              ctx.stroke();
-            }
-            
-            if (currentFrame === sectionEndFrame) {
-              ctx.strokeStyle = '#ff0000';
-              ctx.lineWidth = 3;
-              ctx.beginPath();
-              ctx.moveTo(canvas.width * 0.7, 0);
-              ctx.lineTo(canvas.width * 0.7, canvas.height);
-              ctx.stroke();
-            }
-            
-            // ポーズがある場合は骨格を描画
-            const pose = poseResults[currentFrame];
-            if (pose?.landmarks) {
-              drawSkeleton(ctx, pose.landmarks, canvas.width, canvas.height);
-            }
-          }
-        }, [currentFrame, sectionStartFrame, sectionEndFrame]);
 
         // マルチカメラモードの場合は区間設定をスキップ
         if (analysisMode === "multi") {
@@ -6916,6 +6917,20 @@ const [notesInput, setNotesInput] = useState<string>("");
             </div>
           );
         }
+        
+        // 初回表示時にフレームを描画
+        setTimeout(() => {
+          if (displayCanvasRef.current && framesRef.current[currentFrame]) {
+            const canvas = displayCanvasRef.current;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              const frame = framesRef.current[currentFrame];
+              canvas.width = frame.width;
+              canvas.height = frame.height;
+              ctx.putImageData(frame, 0, 0);
+            }
+          }
+        }, 100);
         
         // スライダーによる区間設定UI（トリミング機能時代のシンプル方式に戻す）
         return (
@@ -7009,6 +7024,18 @@ const [notesInput, setNotesInput] = useState<string>("");
                       }
                     }
                     setStartLineOffset(0);
+                    
+                    // フレームを表示
+                    if (displayCanvasRef.current && framesRef.current[newFrame]) {
+                      const canvas = displayCanvasRef.current;
+                      const ctx = canvas.getContext('2d');
+                      if (ctx) {
+                        const frame = framesRef.current[newFrame];
+                        canvas.width = frame.width;
+                        canvas.height = frame.height;
+                        ctx.putImageData(frame, 0, 0);
+                      }
+                    }
                   }}
                   className="section-slider start-slider"
                 />
@@ -7087,6 +7114,18 @@ const [notesInput, setNotesInput] = useState<string>("");
                       }
                     }
                     setEndLineOffset(0);
+                    
+                    // フレームを表示
+                    if (displayCanvasRef.current && framesRef.current[newFrame]) {
+                      const canvas = displayCanvasRef.current;
+                      const ctx = canvas.getContext('2d');
+                      if (ctx) {
+                        const frame = framesRef.current[newFrame];
+                        canvas.width = frame.width;
+                        canvas.height = frame.height;
+                        ctx.putImageData(frame, 0, 0);
+                      }
+                    }
                   }}
                   className="section-slider end-slider"
                 />
