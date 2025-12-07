@@ -3758,8 +3758,9 @@ const [notesInput, setNotesInput] = useState<string>("");
             setSectionEndFrame(framesRef.current.length - 1);
           } else {
             // シングルカメラモードは姿勢推定へ
+            console.log('📹 Single camera mode: Starting pose estimation...');
             setWizardStep(4);
-            setTimeout(() => runPoseEstimation(), 1000);
+            runPoseEstimation();
           }
         }, 1000);
         return;
@@ -6501,9 +6502,9 @@ const [notesInput, setNotesInput] = useState<string>("");
         return (
           <div className="wizard-content">
             <div className="wizard-step-header">
-              <h2 className="wizard-step-title">ステップ 3: フレーム抽出＆姿勢推定中</h2>
+              <h2 className="wizard-step-title">ステップ 3: フレーム抽出中</h2>
               <p className="wizard-step-desc">
-                動画からフレームを抽出し、各フレームから姿勢を推定しています。しばらくお待ちください。
+                動画からフレームを抽出しています。しばらくお待ちください。
               </p>
             </div>
 
@@ -6797,6 +6798,45 @@ const [notesInput, setNotesInput] = useState<string>("");
               </div>
               <div className="progress-status">{status}</div>
             </div>
+            
+            {/* 人物手動選択オプション */}
+            {poseProgress < 10 && (
+              <div style={{
+                margin: '20px auto',
+                maxWidth: '500px',
+                padding: '16px',
+                background: '#fef3c7',
+                borderRadius: '8px',
+                border: '2px solid #f59e0b',
+                textAlign: 'center'
+              }}>
+                <p style={{ fontWeight: 'bold', color: '#92400e', marginBottom: '12px' }}>
+                  🎯 姿勢推定がうまく検出できない場合
+                </p>
+                <button
+                  className="btn-secondary"
+                  onClick={() => {
+                    setIsPersonSelectMode(true);
+                    // 最初のフレームを表示
+                    if (framesRef.current[0] && canvasRef.current) {
+                      const ctx = canvasRef.current.getContext('2d');
+                      if (ctx) {
+                        ctx.putImageData(framesRef.current[0], 0, 0);
+                      }
+                    }
+                  }}
+                  style={{
+                    background: '#f59e0b',
+                    color: 'white',
+                    padding: '10px 20px',
+                    borderRadius: '6px',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  手動で人物領域を選択
+                </button>
+              </div>
+            )}
             
             {status.includes('❌') && (
               <div className="wizard-actions">
