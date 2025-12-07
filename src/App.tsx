@@ -13,7 +13,8 @@ import { generateRunningEvaluation, type RunningEvaluation } from "./runningEval
 import { MultiCameraSetup } from './components/MultiCameraSetup';
 import { MultiCameraProcessor } from './components/MultiCameraProcessor';
 import { MultiCameraResults } from './components/MultiCameraResults';
-import ManualRoiSelector, { Roi } from './components/ManualRoiSelector';
+import CanvasRoiSelector from './components/CanvasRoiSelector';
+import { CanvasRoi, getCanvasCoordinates, drawFrameWithOverlay, extractRoiForPoseEstimation } from './utils/canvasUtils';
 import { 
   Run, 
   RunSegment, 
@@ -895,7 +896,7 @@ const [notesInput, setNotesInput] = useState<string>("");
   
   // 👤 人物選択モード（姿勢推定が遅い場合の手動選択）
   const [isPersonSelectMode, setIsPersonSelectMode] = useState<boolean>(false);
-  const [manualRoi, setManualRoi] = useState<Roi | null>(null);
+  const [manualRoi, setManualRoi] = useState<CanvasRoi | null>(null);
   const [isSelectingPerson, setIsSelectingPerson] = useState<boolean>(false);
   
   // 🎓 1歩目学習データ（検出精度向上）
@@ -4071,9 +4072,11 @@ const [notesInput, setNotesInput] = useState<string>("");
     if (!offCtx) return;
     offCtx.putImageData(frame, 0, 0);
 
-    // キャンバスサイズを動画サイズに設定
-    canvas.width = w;
-    canvas.height = h;
+    // キャンバスサイズを動画サイズに設定（ChatGPT推奨: 座標系の統一）
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
     
     // デバイス判定
     const isIPad = /iPad/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -6674,9 +6677,11 @@ const [notesInput, setNotesInput] = useState<string>("");
                   ref={canvasRef}
                   className="video-layer"
                 />
-                <ManualRoiSelector
+                <CanvasRoiSelector
+                  canvas={canvasRef.current}
                   enabled={isSelectingPerson}
-                  onChangeRoi={(roi) => {
+                  currentFrame={framesRef.current[0] || null}
+                  onChangeRoi={(roi: CanvasRoi | null) => {
                     setManualRoi(roi);
                     setIsSelectingPerson(false);
                     if (roi) {
