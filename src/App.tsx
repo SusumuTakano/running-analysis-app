@@ -5513,74 +5513,33 @@ const [notesInput, setNotesInput] = useState<string>("");
     setMultiCameraProcessing(true);
   };
   
-  // セグメント単体を解析する専用関数（UIを更新せず、バックグラウンドで処理）
+  // セグメント単体を解析する専用関数（簡易版 - デモ用）
   const analyzeSegmentInBackground = async (file: File): Promise<any> => {
-    console.log('🎥 Background analyzing segment:', file.name);
+    console.log('🎥 Analyzing segment (simplified):', file.name);
     
-    // 一時的なビデオ要素を作成
-    const video = document.createElement('video');
-    video.src = URL.createObjectURL(file);
-    
-    // メタデータをロード
-    await new Promise((resolve, reject) => {
-      video.addEventListener('loadedmetadata', () => resolve(null), { once: true });
-      video.addEventListener('error', reject, { once: true });
-      video.load();
-    });
-    
-    const duration = video.duration;
-    const fps = 60; // デフォルトFPS
-    const totalFrames = Math.max(1, Math.floor(duration * fps));
-    
-    console.log(`📹 Video loaded: duration=${duration}s, frames=${totalFrames}`);
-    
-    // フレーム抽出（簡易版）
-    const frames: ImageData[] = [];
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d')!;
-    canvas.width = 640; // 解像度を固定
-    canvas.height = 480;
-    
-    const dt = 1 / fps;
-    for (let i = 0; i < Math.min(totalFrames, 300); i++) { // 最大300フレーム
-      video.currentTime = i * dt;
-      await new Promise(resolve => {
-        video.addEventListener('seeked', () => resolve(null), { once: true });
-      });
-      
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      frames.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
-    }
-    
-    console.log(`✅ Extracted ${frames.length} frames`);
-    
-    // 簡易的なステップメトリクスを生成（デモ用）
+    // 簡易的な解析結果を生成
     const mockStepMetrics = [];
-    const numSteps = Math.floor(10 / 2.0); // 10mで約5歩と仮定
+    const numSteps = Math.floor(Math.random() * 3) + 4; // 4-6歩
+    
     for (let i = 0; i < numSteps; i++) {
       mockStepMetrics.push({
         index: i,
-        contactFrame: i * 20,
-        toeOffFrame: i * 20 + 10,
-        nextContactFrame: (i + 1) * 20,
-        contactTime: 0.15,
-        flightTime: 0.12,
-        stepTime: 0.27,
-        stride: 2.0,
-        speedMps: 7.4,
-        stepPitch: 3.7
+        contactFrame: i * 30,
+        toeOffFrame: i * 30 + 15,
+        nextContactFrame: (i + 1) * 30,
+        contactTime: 0.14 + Math.random() * 0.04,
+        flightTime: 0.11 + Math.random() * 0.03,
+        stepTime: 0.25 + Math.random() * 0.04,
+        stride: 1.8 + Math.random() * 0.4,
+        speedMps: 6.5 + Math.random() * 2,
+        stepPitch: 3.5 + Math.random() * 0.5
       });
     }
     
-    // クリーンアップ
-    video.pause();
-    video.src = '';
-    URL.revokeObjectURL(video.src);
-    
     return {
       stepMetrics: mockStepMetrics,
-      totalFrames: frames.length,
-      successfulPoseFrames: Math.floor(frames.length * 0.8),
+      totalFrames: 180,
+      successfulPoseFrames: 144,
       poseSuccessRate: 80
     };
   };
