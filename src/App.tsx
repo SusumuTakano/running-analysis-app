@@ -9,8 +9,17 @@ import "./App.css";
 import { supabase } from "./lib/supabaseClient";
 import Chart from "chart.js/auto";
 import { generateRunningEvaluation, type RunningEvaluation } from "./runningEvaluation";
-import MultiCameraRunSetup from './components/MultiCameraRunSetup';
-import { Run, RunSegment } from './types/multiCamera';
+// New multi-camera components
+import { MultiCameraSetup } from './components/MultiCameraSetup';
+import { MultiCameraProcessor } from './components/MultiCameraProcessor';
+import { MultiCameraResults } from './components/MultiCameraResults';
+import { 
+  Run, 
+  RunSegment, 
+  RunAnalysisResult,
+  MultiCameraAnalysisState 
+} from './types/multiCameraTypes';
+// Old imports kept for compatibility during transition
 import { combineSegmentSteps, calculateMultiCameraStats } from './utils/multiCameraUtils';
 import MobileSimplifier from './components/MobileSimplifier';
 import MobileHeader from './components/MobileHeader';
@@ -5492,7 +5501,19 @@ const [notesInput, setNotesInput] = useState<string>("");
     setWizardStep(6); // 手動マーカー設定へ
   };
 
-  // マルチカメラ解析を開始
+  // 新しいマルチカメラシステムのハンドラー
+  const [multiCameraProcessing, setMultiCameraProcessing] = useState(false);
+  const [multiCameraResult, setMultiCameraResult] = useState<RunAnalysisResult | null>(null);
+  
+  const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+    console.log("新マルチカメラ解析開始:", { run, segments });
+    setCurrentRun(run);
+    setRunSegments(segments);
+    setIsMultiCameraSetup(false);
+    setMultiCameraProcessing(true);
+  };
+  
+  // 既存のマルチカメラ解析を開始（互換性のため残す）
   const handleMultiCameraStart = (run: Run, segments: RunSegment[], videoFiles: { [key: string]: File }) => {
     console.log("マルチカメラ解析開始:", { run, segments, videoFiles });
 
@@ -5627,10 +5648,47 @@ const [notesInput, setNotesInput] = useState<string>("");
     // マルチカメラ設定画面を表示
     if (isMultiCameraSetup) {
       return (
-        <MultiCameraRunSetup
+        <MultiCameraSetup
           athleteId={selectedAthleteId || undefined}
-          onStartAnalysis={handleMultiCameraStart}
+          athleteName={athleteInfo.name || undefined}
+          onStartAnalysis={handleNewMultiCameraStart}
           onCancel={() => setIsMultiCameraSetup(false)}
+        />
+      );
+    }
+    
+    // マルチカメラ処理画面を表示
+    if (multiCameraProcessing && !multiCameraResult) {
+      return (
+        <MultiCameraProcessor
+          run={currentRun!}
+          segments={runSegments}
+          onSegmentAnalysis={async (file: File) => {
+            // 既存の単一カメラ解析ロジックを使用
+            // TODO: ここに既存の解析ロジックを接続
+            return { stepMetrics: [], totalFrames: 0, successfulPoseFrames: 0, poseSuccessRate: 0 };
+          }}
+          onComplete={(result) => {
+            setMultiCameraResult(result);
+            setMultiCameraProcessing(false);
+          }}
+          onCancel={() => {
+            setMultiCameraProcessing(false);
+            setIsMultiCameraSetup(true);
+          }}
+        />
+      );
+    }
+    
+    // マルチカメラ結果表示
+    if (multiCameraResult) {
+      return (
+        <MultiCameraResults
+          result={multiCameraResult}
+          onReset={() => {
+            setMultiCameraResult(null);
+            setIsMultiCameraSetup(true);
+          }}
         />
       );
     }
