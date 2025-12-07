@@ -160,7 +160,7 @@ const calculateAngles = (
   const getPoint = (idx: number) => landmarks[idx];
   
   // 主要なランドマークの信頼度をチェック
-  const CONFIDENCE_THRESHOLD = 0.1; // 認識率を向上
+  const CONFIDENCE_THRESHOLD = 0.05; // さらに認識率を向上（0.1 → 0.05）
 
   const leftHip = getPoint(23);
   const rightHip = getPoint(24);
@@ -2497,29 +2497,29 @@ const [notesInput, setNotesInput] = useState<string>("");
       const isIPad = /iPad/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
       
       // 🔧 デバイスごとの最適化設定
-      let modelComplexity = 1; // 🔥 中精度をデフォルトに（速度と精度のバランス）
-      let minDetectionConfidence = 0.15; // 🔥 認識率を向上
-      let minTrackingConfidence = 0.15; // 🔥 認識率を向上
+      let modelComplexity = 2; // 🔥 高精度モデルをデフォルトに（精度優先）
+      let minDetectionConfidence = 0.1; // 🔥 認識率を大幅に向上
+      let minTrackingConfidence = 0.1; // 🔥 認識率を大幅に向上
       let staticImageMode = false;
       let smoothLandmarks = true;
       
       if (isIPad) {
         console.log('📱 iPad detected - applying optimized settings');
-        modelComplexity = 1; // 中精度モデル
-        minDetectionConfidence = 0.15; // 認識率を向上
-        minTrackingConfidence = 0.15; // 認識率を向上
+        modelComplexity = 1; // 中精度モデル（iPadはメモリ制限あり）
+        minDetectionConfidence = 0.05; // 認識率を最大化
+        minTrackingConfidence = 0.05; // 認識率を最大化
         staticImageMode = false; // ストリーミングモードで連続性を保つ
         smoothLandmarks = true; // スムージングを有効化
       } else if (isMobile) {
         console.log('📱 Mobile device detected - optimized settings');
-        modelComplexity = 1; // 中精度モデル
-        minDetectionConfidence = 0.15; // 認識率を向上
-        minTrackingConfidence = 0.15; // 認識率を向上
+        modelComplexity = 1; // 中精度モデル（モバイルはメモリ制限）
+        minDetectionConfidence = 0.05; // 認識率を最大化
+        minTrackingConfidence = 0.05; // 認識率を最大化
       } else {
-        console.log('💻 Desktop detected - optimized settings');
+        console.log('💻 Desktop detected - high accuracy settings');
         modelComplexity = 2; // デスクトップは高精度
-        minDetectionConfidence = 0.15; // 認識率を向上
-        minTrackingConfidence = 0.15; // 認識率を向上
+        minDetectionConfidence = 0.05; // 認識率を最大化
+        minTrackingConfidence = 0.05; // 認識率を最大化
       }
       
       console.log(`🔧 Setting options: modelComplexity=${modelComplexity}, detection=${minDetectionConfidence}, tracking=${minTrackingConfidence}`);
@@ -3621,8 +3621,8 @@ const [notesInput, setNotesInput] = useState<string>("");
 
     setUsedTargetFps(targetFps);
 
-    // 4K動画の検出と確認
-    const is4K = video.videoWidth >= 3840 || video.videoHeight >= 2160;
+    // 4K動画の検出と確認（両方の条件を満たす必要がある）
+    const is4K = video.videoWidth >= 3840 && video.videoHeight >= 2160;
     const is240Fps = targetFps >= 240;
     
     let scale = Math.min(1, MAX_WIDTH / video.videoWidth);
