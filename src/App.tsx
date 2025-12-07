@@ -151,7 +151,7 @@ const calculateAngles = (
   const getPoint = (idx: number) => landmarks[idx];
   
   // 主要なランドマークの信頼度をチェック
-  const CONFIDENCE_THRESHOLD = 0.01; // 🔥 閾値を極限まで下げて姿勢推定率を最大化（0.1→0.01に変更）
+  const CONFIDENCE_THRESHOLD = 0.3; // 適切な閾値で誤検出を防ぐ
 
   const leftHip = getPoint(23);
   const rightHip = getPoint(24);
@@ -2489,27 +2489,28 @@ const [notesInput, setNotesInput] = useState<string>("");
       
       // 🔧 デバイスごとの最適化設定
       let modelComplexity = 1; // 🔥 中精度をデフォルトに（速度と精度のバランス）
-      let minDetectionConfidence = 0.001; // 🔥 超極低閾値で姿勢認識率を最大化
-      let minTrackingConfidence = 0.001; // 🔥 超極低閾値
+      let minDetectionConfidence = 0.3; // 🔥 閾値を上げて誤検出を減らす
+      let minTrackingConfidence = 0.3; // 🔥 閾値を上げて安定性向上
       let staticImageMode = false;
       let smoothLandmarks = true;
       
       if (isIPad) {
-        console.log('📱 iPad detected - applying ultra-low threshold settings');
-        modelComplexity = 0; // 🔥 最速モデルで姿勢推定率を優先
-        minDetectionConfidence = 0.001; // 🔥 超極低閾値
-        minTrackingConfidence = 0.001; // 🔥 超極低閾値
-        staticImageMode = true; // 🔥 各フレームを独立処理（フレーム落ちを防ぐ）
-        smoothLandmarks = false; // 🔥 スムージングを無効化（速度優先）
+        console.log('📱 iPad detected - applying optimized settings');
+        modelComplexity = 1; // 中精度モデル
+        minDetectionConfidence = 0.3; // 適切な閾値
+        minTrackingConfidence = 0.3; // 適切な閾値
+        staticImageMode = false; // ストリーミングモードで連続性を保つ
+        smoothLandmarks = true; // スムージングを有効化
       } else if (isMobile) {
-        console.log('📱 Mobile device detected - ultra-low threshold settings');
-        modelComplexity = 0; // 🔥 最速モデル
-        minDetectionConfidence = 0.001; // 🔥 超極低閾値
-        minTrackingConfidence = 0.001; // 🔥 超極低閾値
+        console.log('📱 Mobile device detected - optimized settings');
+        modelComplexity = 1; // 中精度モデル
+        minDetectionConfidence = 0.3; // 適切な閾値
+        minTrackingConfidence = 0.3; // 適切な閾値
       } else {
-        console.log('💻 Desktop detected - ultra-low threshold for better detection');
-        minDetectionConfidence = 0.001; // 🔥 超極低閾値
-        minTrackingConfidence = 0.001; // 🔥 超極低閾値
+        console.log('💻 Desktop detected - optimized settings');
+        modelComplexity = 2; // デスクトップは高精度
+        minDetectionConfidence = 0.3; // 適切な閾値
+        minTrackingConfidence = 0.3; // 適切な閾値
       }
       
       console.log(`🔧 Setting options: modelComplexity=${modelComplexity}, detection=${minDetectionConfidence}, tracking=${minTrackingConfidence}`);
@@ -3683,12 +3684,18 @@ const [notesInput, setNotesInput] = useState<string>("");
         setStatus(`✅ フレーム抽出完了（${framesRef.current.length} フレーム）`);
         
         // 🎥 マルチカメラモードの場合は直接姿勢推定へ、それ以外はパン撮影モード選択画面へ
-        setTimeout(() => {
+        setTimeout(async () => {
           if (analysisMode === "multi") {
             // マルチカメラモードは固定カメラなのでパン撮影選択をスキップ
+            console.log('📹 Multi-camera mode: Skipping pan mode selection, starting pose estimation...');
             setIsPanMode(false);
             setWizardStep(4);
-            runPoseEstimation();
+            await runPoseEstimation();
+            // 姿勢推定完了後、マルチカメラモードでは区間設定をスキップ
+            // 区間はすでにセグメントで定義されているため
+            setSectionStartFrame(0);
+            setSectionEndFrame(framesRef.current.length - 1);
+            setWizardStep(6); // 直接マーカー設定へ
           } else {
             setWizardStep(3.5); // パン撮影モード選択
           }
@@ -5359,6 +5366,7 @@ const [notesInput, setNotesInput] = useState<string>("");
     setWizardStep(3);
     await new Promise(resolve => setTimeout(resolve, 300));
     await handleExtractFrames();
+    // handleExtractFramesが完了すると自動的に次のステップへ移行する
   };
 
   // マルチカメラ解析を開始
@@ -6415,6 +6423,15 @@ const [notesInput, setNotesInput] = useState<string>("");
         );
 
       case 5:
+        // マルチカメラモードの場合は区間設定をスキップ
+        if (analysisMode === "multi") {
+          // マルチカメラモードでは区間はすでに設定済みなのでスキップ
+          setSectionStartFrame(0);
+          setSectionEndFrame(framesRef.current.length - 1);
+          setWizardStep(6);
+          return null;
+        }
+        
         // 姿勢推定データがない場合は強制的にステップ4に戻す
         if (poseResults.length === 0) {
           return (
