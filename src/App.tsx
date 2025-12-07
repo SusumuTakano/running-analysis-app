@@ -2851,8 +2851,8 @@ const [notesInput, setNotesInput] = useState<string>("");
       return;
     }
 
-    ctx.strokeStyle = "#0ea5e9";
-    ctx.lineWidth = 4;  // 2 → 4に変更（より太く）
+    ctx.strokeStyle = "#00ff00";  // より見やすい緑色
+    ctx.lineWidth = 6;  // 4 → 6に変更（より見やすく）
 
     const connections: [number, number][] = [
       [11, 12],
@@ -2910,7 +2910,7 @@ const [notesInput, setNotesInput] = useState<string>("");
         const y = lm.y * height;
         
         ctx.beginPath();
-        ctx.arc(x, y, 4, 0, 2 * Math.PI);
+        ctx.arc(x, y, 6, 0, 2 * Math.PI);  // 4 → 6に拡大
         ctx.fill();
         
         // iPadデバッグ: 主要ポイントの位置をログ出力（高頻度でログが出ないよう制限）
@@ -4135,7 +4135,7 @@ const [notesInput, setNotesInput] = useState<string>("");
       if (showSkeleton && poseResults[idx]?.landmarks) {
         const landmarks = poseResults[idx]!.landmarks;
 
-        ctx.strokeStyle = "#0ea5e9";
+        ctx.strokeStyle = "#00ff00";  // より見やすい緑色
         ctx.lineWidth = 5;  // 3 → 5に変更（より太く）
 
         const connections: [number, number][] = [
