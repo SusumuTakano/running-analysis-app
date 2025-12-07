@@ -35,13 +35,22 @@ export const MultiCameraProcessor: React.FC<MultiCameraProcessorProps> = ({
 
   // Process segments sequentially
   const processNextSegment = useCallback(async () => {
+    console.log(`processNextSegment called: index=${currentSegmentIndex}, total=${segments.length}`);
+    
     if (currentSegmentIndex >= segments.length) {
       // All segments processed - merge results
+      console.log('All segments processed, merging results...');
       const results = Array.from(segmentResults.values());
+      console.log(`Results count: ${results.length}, Expected: ${segments.length}`);
+      
       if (results.length === segments.length) {
+        console.log('Calling mergeSegments...');
         const mergedResult = mergeSegments(run, segments, results);
+        console.log('Merged result:', mergedResult);
         onComplete(mergedResult);
         setProcessingStatus('completed');
+      } else {
+        console.warn('Results count mismatch!');
       }
       return;
     }
@@ -66,7 +75,13 @@ export const MultiCameraProcessor: React.FC<MultiCameraProcessorProps> = ({
       );
       
       // Store result
-      setSegmentResults(prev => new Map(prev).set(segment.id, result));
+      console.log(`Storing result for segment ${segment.id}:`, result);
+      setSegmentResults(prev => {
+        const newMap = new Map(prev);
+        newMap.set(segment.id, result);
+        console.log(`Updated results map size: ${newMap.size}`);
+        return newMap;
+      });
       
       // Move to next segment
       setCurrentSegmentIndex(prev => prev + 1);
@@ -87,12 +102,17 @@ export const MultiCameraProcessor: React.FC<MultiCameraProcessorProps> = ({
 
   // Continue processing when segment index changes
   useEffect(() => {
-    if (processingStatus === 'processing' && currentSegmentIndex < segments.length) {
-      // Add a small delay to allow UI to update
-      const timer = setTimeout(() => {
+    if (processingStatus === 'processing') {
+      if (currentSegmentIndex < segments.length) {
+        // Add a small delay to allow UI to update
+        const timer = setTimeout(() => {
+          processNextSegment();
+        }, 100);
+        return () => clearTimeout(timer);
+      } else if (currentSegmentIndex === segments.length) {
+        // All segments processed - trigger completion
         processNextSegment();
-      }, 100);
-      return () => clearTimeout(timer);
+      }
     }
   }, [currentSegmentIndex, processingStatus, processNextSegment]);
 
