@@ -5676,48 +5676,54 @@ const [notesInput, setNotesInput] = useState<string>("");
   };
 
   const renderStepContent = () => {
-    // マルチカメラ設定画面を表示
-    if (isMultiCameraSetup) {
-      return (
-        <MultiCameraSetup
-          athleteId={selectedAthleteId || undefined}
-          athleteName={athleteInfo.name || undefined}
-          onStartAnalysis={handleNewMultiCameraStart}
-          onCancel={() => setIsMultiCameraSetup(false)}
-        />
-      );
-    }
-    
-    // マルチカメラ処理画面を表示
-    if (multiCameraProcessing && !multiCameraResult) {
-      return (
-        <MultiCameraProcessor
-          run={currentRun!}
-          segments={runSegments}
-          onSegmentAnalysis={analyzeSegmentInBackground}
-          onComplete={(result) => {
-            setMultiCameraResult(result);
-            setMultiCameraProcessing(false);
-          }}
-          onCancel={() => {
-            setMultiCameraProcessing(false);
-            setIsMultiCameraSetup(true);
-          }}
-        />
-      );
-    }
-    
-    // マルチカメラ結果表示
-    if (multiCameraResult) {
-      return (
-        <MultiCameraResults
-          result={multiCameraResult}
-          onReset={() => {
-            setMultiCameraResult(null);
-            setIsMultiCameraSetup(true);
-          }}
-        />
-      );
+    // マルチカメラモードの場合のみ、マルチカメラ画面を表示
+    if (analysisMode === 'multi') {
+      // マルチカメラ設定画面を表示
+      if (isMultiCameraSetup) {
+        return (
+          <MultiCameraSetup
+            athleteId={selectedAthleteId || undefined}
+            athleteName={athleteInfo.name || undefined}
+            onStartAnalysis={handleNewMultiCameraStart}
+            onCancel={() => {
+              setIsMultiCameraSetup(false);
+              setAnalysisMode('single'); // シングルモードに戻す
+            }}
+          />
+        );
+      }
+      
+      // マルチカメラ処理画面を表示
+      if (multiCameraProcessing && !multiCameraResult) {
+        return (
+          <MultiCameraProcessor
+            run={currentRun!}
+            segments={runSegments}
+            onSegmentAnalysis={analyzeSegmentInBackground}
+            onComplete={(result) => {
+              setMultiCameraResult(result);
+              setMultiCameraProcessing(false);
+            }}
+            onCancel={() => {
+              setMultiCameraProcessing(false);
+              setIsMultiCameraSetup(true);
+            }}
+          />
+        );
+      }
+      
+      // マルチカメラ結果表示
+      if (multiCameraResult) {
+        return (
+          <MultiCameraResults
+            result={multiCameraResult}
+            onReset={() => {
+              setMultiCameraResult(null);
+              setIsMultiCameraSetup(true);
+            }}
+          />
+        );
+      }
     }
     
     switch (wizardStep) {
