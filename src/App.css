@@ -2253,3 +2253,38 @@ body {
   50% { border-color: #00ffaa; }
   100% { border-color: #00ff88; }
 }
+
+/* ========== Step6 黒画面修正 ========== */
+
+/* キャンバス全体のコンテナを1列にする */
+.video-wrapper {
+  position: relative;
+  width: min(100vw - 32px, 800px); /* 画面からはみ出ないように */
+  margin: 0 auto 16px;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden; /* これで「はみ出し部分」を切り捨てる */
+}
+
+/* キャンバスの中身を適切なサイズに */
+.video-wrapper canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  max-width: 100%;
+}
+
+/* 複数レイヤーの canvas があっても全部重ねる */
+.video-layer {
+  position: relative;
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* マルチカメラ用の右側エリアを一旦非表示 */
+.multi-camera-right,
+.second-camera,
+#secondaryCanvas {
+  display: none !important;
+}
