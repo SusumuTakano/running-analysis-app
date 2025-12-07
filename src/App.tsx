@@ -7018,7 +7018,8 @@ const [notesInput, setNotesInput] = useState<string>("");
                   💡 スライダーを動かすと、動画がその位置にジャンプします
                 </div>
                 {/* 姿勢認識状態の警告 */}
-                {(typeof sectionStartFrame === 'number' && sectionStartFrame >= 0 && !poseResults[sectionStartFrame]?.landmarks) && (
+                {/* @ts-ignore */}
+                {(sectionStartFrame !== null && sectionStartFrame !== undefined && sectionStartFrame >= 0 && sectionStartFrame < poseResults.length && !poseResults[sectionStartFrame]?.landmarks) && (
                   <div style={{
                     fontSize: '0.85rem',
                     color: '#dc2626',
@@ -7187,13 +7188,21 @@ const [notesInput, setNotesInput] = useState<string>("");
                   <div>
                     <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '4px' }}>区間時間</div>
                     <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#374151' }}>
-                      {typeof sectionTime === 'number' ? sectionTime.toFixed(3) : "ー"} 秒
+                      {(() => {
+                        const time = sectionTime;
+                        if (time === null || time === undefined) return "ー";
+                        return time!.toFixed(3);
+                      })()} 秒
                     </div>
                   </div>
                   <div>
                     <div style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '4px' }}>平均速度</div>
                     <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#374151' }}>
-                      {typeof avgSpeed === 'number' ? avgSpeed.toFixed(3) : "ー"} m/s
+                      {(() => {
+                        const speed = avgSpeed;
+                        if (speed === null || speed === undefined) return "ー";
+                        return speed!.toFixed(3);
+                      })()} m/s
                     </div>
                   </div>
                 </div>
