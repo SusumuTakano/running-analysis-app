@@ -151,7 +151,7 @@ const calculateAngles = (
   const getPoint = (idx: number) => landmarks[idx];
   
   // 主要なランドマークの信頼度をチェック
-  const CONFIDENCE_THRESHOLD = 0.2; // バランスを調整
+  const CONFIDENCE_THRESHOLD = 0.1; // 認識率を向上
 
   const leftHip = getPoint(23);
   const rightHip = getPoint(24);
@@ -2489,28 +2489,28 @@ const [notesInput, setNotesInput] = useState<string>("");
       
       // 🔧 デバイスごとの最適化設定
       let modelComplexity = 1; // 🔥 中精度をデフォルトに（速度と精度のバランス）
-      let minDetectionConfidence = 0.3; // 🔥 閾値を上げて誤検出を減らす
-      let minTrackingConfidence = 0.3; // 🔥 閾値を上げて安定性向上
+      let minDetectionConfidence = 0.15; // 🔥 認識率を向上
+      let minTrackingConfidence = 0.15; // 🔥 認識率を向上
       let staticImageMode = false;
       let smoothLandmarks = true;
       
       if (isIPad) {
         console.log('📱 iPad detected - applying optimized settings');
         modelComplexity = 1; // 中精度モデル
-        minDetectionConfidence = 0.3; // 適切な閾値
-        minTrackingConfidence = 0.3; // 適切な閾値
+        minDetectionConfidence = 0.15; // 認識率を向上
+        minTrackingConfidence = 0.15; // 認識率を向上
         staticImageMode = false; // ストリーミングモードで連続性を保つ
         smoothLandmarks = true; // スムージングを有効化
       } else if (isMobile) {
         console.log('📱 Mobile device detected - optimized settings');
         modelComplexity = 1; // 中精度モデル
-        minDetectionConfidence = 0.3; // 適切な閾値
-        minTrackingConfidence = 0.3; // 適切な閾値
+        minDetectionConfidence = 0.15; // 認識率を向上
+        minTrackingConfidence = 0.15; // 認識率を向上
       } else {
         console.log('💻 Desktop detected - optimized settings');
         modelComplexity = 2; // デスクトップは高精度
-        minDetectionConfidence = 0.3; // 適切な閾値
-        minTrackingConfidence = 0.3; // 適切な閾値
+        minDetectionConfidence = 0.15; // 認識率を向上
+        minTrackingConfidence = 0.15; // 認識率を向上
       }
       
       console.log(`🔧 Setting options: modelComplexity=${modelComplexity}, detection=${minDetectionConfidence}, tracking=${minTrackingConfidence}`);
@@ -5349,6 +5349,10 @@ const [notesInput, setNotesInput] = useState<string>("");
     
     // 現在のセグメントを読み込んで処理
     await loadMultiCameraSegment(multiCameraData, currentIndex);
+    
+    // フレーム抽出と姿勢推定は loadMultiCameraSegment 内で実行されるが、
+    // その後の処理の継続はステップの遷移を通じて行われる
+    // （handleMultiSegmentNextで次のセグメントへ）
   };
   
   // マルチカメラ: 指定したセグメントの動画を読み込み、解析ステップを初期化
@@ -5428,11 +5432,64 @@ const [notesInput, setNotesInput] = useState<string>("");
     setLabelInput(`${targetSegment.startDistanceM}m〜${targetSegment.endDistanceM}m セグメント`);
     setStatus(`セグメント${index + 1}/${data.segments.length} の処理を開始します...`);
     
-    // フレーム抽出を開始（FPS選択をスキップして直接処理）
+    // 自動的にフレーム抽出と姿勢推定を実行
+    console.log(`📹 セグメント ${index + 1}: フレーム抽出を開始します...`);
     setWizardStep(3);
-    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // 動画のメタデータ読み込みを待つ
+    await new Promise((resolve) => {
+      if (!videoRef.current) {
+        resolve(null);
+        return;
+      }
+      
+      let attempts = 0;
+      const maxAttempts = 50; // 最大5秒待つ
+      
+      const checkVideo = () => {
+        attempts++;
+        if (videoRef.current?.duration && videoRef.current?.duration > 0) {
+          const duration = videoRef.current.duration;
+          console.log(`📹 Video ready: duration=${duration}s, readyState=${videoRef.current.readyState}`);
+          resolve(null);
+        } else if (attempts >= maxAttempts) {
+          console.error('Video metadata loading timeout');
+          resolve(null);
+        } else {
+          setTimeout(checkVideo, 100);
+        }
+      };
+      
+      // メタデータロードイベントを追加
+      const handleMetadata = () => {
+        if (videoRef.current?.duration && videoRef.current?.duration > 0) {
+          console.log(`📹 Metadata loaded: duration=${videoRef.current.duration}s`);
+        }
+      };
+      
+      videoRef.current.addEventListener('loadedmetadata', handleMetadata);
+      checkVideo();
+    });
+    
+    // FPSを自動設定（標準60fps）
+    console.log(`📹 Setting FPS to 60 for segment ${index + 1}`);
+    setSelectedFps(60);
+    
+    // 少し待機してから開始（状態更新を確実にする）
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // フレーム抽出を実行
+    console.log(`📹 Starting frame extraction for segment ${index + 1}...`);
     await handleExtractFrames();
-    // handleExtractFramesが完了すると自動的に次のステップへ移行する
+    
+    // フレーム抽出が完了したら、姿勢推定を自動で開始
+    console.log(`📹 セグメント ${index + 1}: 姿勢推定を開始します...`);
+    setWizardStep(4);
+    await runPoseEstimation();
+    
+    // 姿勢推定が完了したら、マーカー設定へ移行（区間設定はスキップ）
+    console.log(`📹 セグメント ${index + 1}: マーカー設定へ移行します`);
+    setWizardStep(6); // 手動マーカー設定へ
   };
 
   // マルチカメラ解析を開始
@@ -5467,7 +5524,10 @@ const [notesInput, setNotesInput] = useState<string>("");
     setMultiCameraSummary(null);
     setMultiCameraData(nextState);
 
-    loadMultiCameraSegment(nextState, 0);
+    // 最初のセグメントの処理を開始
+    setTimeout(() => {
+      loadMultiCameraSegment(nextState, 0);
+    }, 100);
   };
 
   // マルチカメラ解析を中断して設定画面へ戻る
@@ -5531,8 +5591,10 @@ const [notesInput, setNotesInput] = useState<string>("");
         framesRef.current = [];
         setFramesCount(0);
         
-        // 次のセグメントを処理（processMultiCameraSegmentsを呼び出す）
-        await processMultiCameraSegments();
+        // 次のセグメントを処理
+        // updatedStateを使用して次のセグメントを処理
+        setMultiCameraData(updatedState);
+        await loadMultiCameraSegment(updatedState, nextIndex);
       }, 500);
       return;
     }
