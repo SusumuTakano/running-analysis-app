@@ -1167,9 +1167,9 @@ const [notesInput, setNotesInput] = useState<string>("");
     return true;
   };
 
-  // Step5でフレームを表示するためのuseEffect
+  // Step5とStep6でフレームを表示するためのuseEffect
   useEffect(() => {
-    if (wizardStep === 5 && displayCanvasRef.current && framesRef.current[currentFrame]) {
+    if ((wizardStep === 5 || wizardStep === 6) && displayCanvasRef.current && framesRef.current[currentFrame]) {
       const canvas = displayCanvasRef.current;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
@@ -1204,7 +1204,7 @@ const [notesInput, setNotesInput] = useState<string>("");
         drawSkeleton(ctx, pose.landmarks, canvas.width, canvas.height);
       }
     }
-  }, [wizardStep, currentFrame, sectionStartFrame, sectionEndFrame]);
+  }, [wizardStep, currentFrame, sectionStartFrame, sectionEndFrame, contactFrames, showSkeleton]);
 
   // 完全自動検出：全フレームから接地と離地を検出（つま先の動き検出方式）
   // 新方式では閾値不要、つま先の速度変化のみで判定
@@ -7632,8 +7632,24 @@ const [notesInput, setNotesInput] = useState<string>("");
               </button>
             </div>
 
-            <div className="canvas-area">
-              <canvas ref={displayCanvasRef} className="preview-canvas" />
+            <div className="canvas-area" style={{
+              position: 'relative',
+              width: '100%',
+              maxWidth: '800px',
+              margin: '0 auto',
+              overflow: 'hidden',
+              backgroundColor: '#000',
+              borderRadius: '8px'
+            }}>
+              <canvas 
+                ref={displayCanvasRef} 
+                className="preview-canvas"
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  height: 'auto'
+                }}
+              />
             </div>
 
             {/* モバイル用：フレーム移動ボタン */}
