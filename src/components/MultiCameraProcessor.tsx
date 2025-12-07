@@ -38,20 +38,8 @@ export const MultiCameraProcessor: React.FC<MultiCameraProcessorProps> = ({
     console.log(`processNextSegment called: index=${currentSegmentIndex}, total=${segments.length}`);
     
     if (currentSegmentIndex >= segments.length) {
-      // All segments processed - merge results
-      console.log('All segments processed, merging results...');
-      const results = Array.from(segmentResults.values());
-      console.log(`Results count: ${results.length}, Expected: ${segments.length}`);
-      
-      if (results.length === segments.length) {
-        console.log('Calling mergeSegments...');
-        const mergedResult = mergeSegments(run, segments, results);
-        console.log('Merged result:', mergedResult);
-        onComplete(mergedResult);
-        setProcessingStatus('completed');
-      } else {
-        console.warn('Results count mismatch!');
-      }
+      // All segments have been submitted for processing
+      console.log('All segments submitted for processing');
       return;
     }
 
@@ -109,12 +97,22 @@ export const MultiCameraProcessor: React.FC<MultiCameraProcessorProps> = ({
           processNextSegment();
         }, 100);
         return () => clearTimeout(timer);
-      } else if (currentSegmentIndex === segments.length) {
-        // All segments processed - trigger completion
-        processNextSegment();
       }
     }
   }, [currentSegmentIndex, processingStatus, processNextSegment]);
+  
+  // Check for completion when results are updated
+  useEffect(() => {
+    if (segmentResults.size === segments.length && segments.length > 0 && processingStatus === 'processing') {
+      console.log('All results collected, finalizing...');
+      // All results collected, finalize
+      const results = Array.from(segmentResults.values());
+      const mergedResult = mergeSegments(run, segments, results);
+      console.log('Final merged result:', mergedResult);
+      onComplete(mergedResult);
+      setProcessingStatus('completed');
+    }
+  }, [segmentResults, segments.length, processingStatus, run, segments, onComplete]);
 
   // Calculate progress
   const progress = (currentSegmentIndex / segments.length) * 100;
