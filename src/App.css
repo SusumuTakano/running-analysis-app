@@ -2202,3 +2202,140 @@ body {
     min-height: 44px;
   }
 }
+/* ================================
+   2025-12-08 ホットフィックス
+   PCレイアウト復旧 ＋ モバイル簡易レイアウト
+   ================================ */
+
+/* PC：ステップ5/6のキャンバスを固定しない & 中央寄せに戻す */
+@media (min-width: 769px) {
+  .wizard-step-5 .canvas-area,
+  .wizard-step-6 .canvas-area,
+  .wizard-content.step-5 .canvas-area,
+  .wizard-content.step-6 .canvas-area {
+    position: static !important;      /* 通常フローに戻す */
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: 100% !important;           /* コンテナ幅に合わせる */
+    max-width: 900px !important;      /* 横に広がりすぎないように */
+    margin: 0 auto 24px auto !important;
+  }
+
+  .wizard-step-5 .wizard-content,
+  .wizard-step-6 .wizard-content,
+  .wizard-content.step-5,
+  .wizard-content.step-6 {
+    padding-top: 0 !important;        /* 70vh 分の大きな余白をキャンセル */
+  }
+
+  /* キャンバスそのもののサイズも落ち着かせる */
+  .preview-canvas {
+    width: 100% !important;
+    height: auto !important;
+    max-height: 70vh !important;
+    display: block !important;
+  }
+}
+
+/* モバイル：ステップ5/6まわりを「全部固定」から「普通の縦並び」に戻す */
+@media (max-width: 768px) {
+  /* キャンバスを通常フローに戻す（固定しない） */
+  .wizard-content.step-5 .canvas-area,
+  .wizard-content.step-6 .canvas-area {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 0 12px 0 !important;
+  }
+
+  /* フレームスライダーも固定せず、下に普通に並べる */
+  .wizard-content.step-5 .frame-control,
+  .wizard-content.step-6 .frame-control {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    margin: 0 0 12px 0 !important;
+    border-radius: 8px !important;
+    border-bottom: 1px solid var(--gray-200) !important;
+  }
+
+  /* モバイル専用の固定 UI は一旦「固定解除」＋「非表示」に */
+  .wizard-content.step-6 .mobile-marking-controls,
+  .wizard-content.step-6 .mobile-marker-display,
+  .wizard-content.step-6 .mobile-view-options {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+  }
+
+  .mobile-marker-display,
+  .mobile-view-options {
+    display: none !important;  /* 重なりの原因なので一旦オフ */
+  }
+
+  /* 足元拡大（ズーム）スライダーをコンパクトにする */
+  .zoom-control,
+  .zoom-slider-compact {
+    font-size: 0.75rem !important;
+  }
+
+  .zoom-control {
+    gap: 4px !important;
+  }
+
+  .zoom-slider-compact {
+    padding: 6px 8px !important;
+  }
+
+  .zoom-slider-compact input[type="range"],
+  .zoom-control input[type="range"] {
+    width: 100% !important;
+  }
+
+  /* カメラ選択カードがはみ出さないよう 1 列表示に（クラス名想定） */
+  .capture-mode-grid,
+  .camera-mode-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  .capture-mode-card,
+  .camera-mode-card {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+/* ================================
+   2025-12-08 ホットフィックスその2
+   PCでキャンバスを上部に固定（position: sticky）
+   ================================ */
+
+@media (min-width: 769px) {
+  /* Step5 / Step6 のキャンバスを上部に張り付ける */
+  .wizard-main.step-5 .canvas-area,
+  .wizard-main.step-6 .canvas-area,
+  .wizard-content.step-5 .canvas-area,
+  .wizard-content.step-6 .canvas-area {
+    position: sticky !important;   /* ← fixed ではなく sticky */
+    top: 80px !important;          /* ヘッダーより少し下で固定 */
+    width: 100% !important;
+    max-width: 900px !important;   /* 本文コンテンツと同じくらいの幅 */
+    margin: 0 auto 24px auto !important;
+    z-index: 20 !important;
+  }
+
+  /* キャンバス自体の表示サイズを安定させる */
+  .preview-canvas {
+    width: 100% !important;
+    height: auto !important;
+    max-height: 70vh !important;
+    display: block !important;
+  }
+}
