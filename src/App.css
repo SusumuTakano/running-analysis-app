@@ -1362,3 +1362,164 @@ body {
     min-height: 44px;
   }
 }
+/* =========================================================
+   2025-12-09 追記分
+   - iPhone ヘッダーのコンパクト化
+   - iPhone で Step5/6 のキャンバスを固定表示（sticky）
+   - PC でキャンバスを 16:9 中央寄せ
+   - iPhone Step6 でモバイル用マークボタンを表示
+   ========================================================= */
+
+/* ---------- PC：キャンバスを16:9 & 中央寄せ ---------- */
+
+@media (min-width: 769px) {
+  .canvas-area {
+    position: relative;
+    width: 100%;
+    max-width: 960px;           /* 真ん中に収まる幅 */
+    margin: 0 auto 24px auto;   /* 中央寄せ */
+    background: #000;
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+    aspect-ratio: 16 / 9;       /* 16:9 固定 */
+  }
+
+  .canvas-area .preview-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;               /* aspect-ratio と合わせる */
+  }
+}
+
+/* ---------- モバイル共通（ヘッダー + キャンバス周り）---------- */
+
+@media (max-width: 768px) {
+  /* ◇ ランニング分析ヘッダーを1行＆固定にする */
+  .app-header-new {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1001;
+    background: linear-gradient(90deg, #6366f1, #8b5cf6);
+    color: #fff;
+    padding: 8px 12px;
+    margin: 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    text-align: left;
+  }
+
+  .app-title-new {
+    font-size: 1rem;
+    font-weight: 700;
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .app-subtitle-new {
+    display: none !important;   /* サブタイトルは非表示 */
+  }
+
+  /* ヘッダー分の余白をコンテンツ側で確保 */
+  .app-container {
+    padding-top: 60px !important;
+  }
+
+  /* ◇ Stepインジケータと本文に少し余白 */
+  .wizard-main {
+    padding-top: 16px;
+  }
+
+  /* ---------- iPhone / モバイル：Step5 & Step6 のキャンバス固定 ---------- */
+
+  /* キャンバス枠そのものは通常フローに置いたまま */
+  .canvas-area {
+    width: 100%;
+    max-width: 100%;
+    margin: 0 0 12px 0;
+    border-radius: 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  }
+
+  .canvas-area .preview-canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  /* Step5 / Step6 のときだけ sticky にする */
+  .wizard-content.step-5 .canvas-area,
+  .wizard-content.step-6 .canvas-area {
+    position: sticky;
+    top: 60px;                  /* ヘッダーの下あたりに張り付かせる */
+    z-index: 900;
+  }
+
+  /* フレームスライダーもキャンバス直下で見えるようにする */
+  .wizard-content.step-5 .frame-control,
+  .wizard-content.step-6 .frame-control {
+    margin-top: 8px;
+  }
+
+  /* ---------- Step6 モバイル用 マークボタン表示 ---------- */
+
+  /* もともと display: none にしていたクラスを Step6 だけ表示 */
+  .wizard-content.step-6 .mobile-marking-controls {
+    display: flex !important;
+    flex-direction: column;
+    gap: 6px;
+    margin: 8px 0 12px 0;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.96);
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+
+  .wizard-content.step-6 .btn-mark-contact {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.25);
+  }
+
+  .wizard-content.step-6 .btn-mark-contact:active {
+    transform: scale(0.97);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  }
+
+  /* モバイル専用のフレーム移動ボタンを縦方向に詰める（ある場合） */
+  .wizard-content.step-6 .mobile-frame-nav {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+  }
+
+  /* 既存の .mobile-only / .desktop-only の意図はそのまま維持 */
+  .mobile-only {
+    display: inline;
+  }
+
+  .desktop-only {
+    display: none;
+  }
+}
+
+/* ---------- さらに小さい iPhone 向け微調整（任意） ---------- */
+
+@media (max-width: 428px) {
+  .wizard-step-title {
+    font-size: 1.1rem;
+  }
+  .wizard-step-desc {
+    font-size: 0.8rem;
+  }
+}
