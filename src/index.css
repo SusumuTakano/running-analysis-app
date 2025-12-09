@@ -2,44 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
+/* リセット */
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
+/* 全体レイアウト */
+html,
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  width: 100%;
+  max-width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
+    "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans",
+    "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  min-height: 100vh;
 }
 
 #root {
   min-height: 100vh;
 }
 
-html,
-body {
-  width: 100%;
-  max-width: 100%;
-  overflow-x: hidden;
-}
-
-/* ===== スマホでヘッダーが邪魔にならないようにする応急処置 ===== */
+/* ===== スマホ時のヘッダー簡略化 ===== */
 @media (max-width: 768px) {
-  /* ヘッダー全体の高さと文字サイズを抑える */
   header {
-    max-height: 44px;
+    max-height: 48px;
     overflow: hidden;
     font-size: 12px;
     line-height: 1.2;
   }
 
-  /* ヘッダーの中のメニュー（nav）があれば消す */
   header nav {
     display: none;
   }

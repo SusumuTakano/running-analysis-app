@@ -734,15 +734,9 @@ useEffect(() => {
 
   // 足元拡大
   const [footZoomEnabled, setFootZoomEnabled] = useState(false);
-  const [zoomScale, setZoomScale] = useState<number>(() => {
-  if (typeof window !== "undefined" && window.innerWidth <= 768) {
-    return 5;
-  }
-  return 1;
-});
+  const [zoomScale, setZoomScale] = useState(3);
 
-
- 
+  // ------------ 動画最適化関連 -----------------
   // ------------ 姿勢推定関連 -----------------
   const [poseResults, setPoseResults] = useState<(FramePoseData | null)[]>([]);
   const [isPoseProcessing, setIsPoseProcessing] = useState(false);
@@ -6645,7 +6639,6 @@ const [notesInput, setNotesInput] = useState<string>("");
             </div>
 
             {/* 実測距離の重要性を強調 */}
-            {false && (
             <div style={{
               background: 'linear-gradient(135deg, #fef3c7 0%, #fef9e7 100%)',
               border: '3px solid #f59e0b',
@@ -6682,7 +6675,7 @@ const [notesInput, setNotesInput] = useState<string>("");
                 ✅ 各ステップが個別に計算されます（例: 1.8m, 2.1m, 1.9m...）
               </div>
             </div>
-            )}
+
             <div className="wizard-actions">
               <button className="btn-ghost" onClick={() => setWizardStep(1)}>
                 最初に戻る
@@ -6943,9 +6936,9 @@ const [notesInput, setNotesInput] = useState<string>("");
               </button>
             </div>
 
-            <div className="canvas-area">
-              <canvas ref={displayCanvasRef} className="preview-canvas" />
-            </div>
+           <div className="canvas-area canvas-area--mobile-sticky">
+            <canvas ref={displayCanvasRef} className="preview-canvas" />
+          </div>
 
             {/* モバイル用：フレーム移動ボタン */}
             {isMobile && (
@@ -7662,9 +7655,10 @@ const [notesInput, setNotesInput] = useState<string>("");
                 </button>
               </div>
 
-              <div className="canvas-area">
-                <canvas ref={displayCanvasRef} className="preview-canvas" />
-              </div>
+             {/* キャンバス表示エリア（Step4/5/6 共通） */}
+           <div className="canvas-area">
+            <canvas ref={displayCanvasRef} className="preview-canvas" />
+          </div>
 
               <div className="frame-control">
                 <div className="frame-info">

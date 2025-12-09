@@ -22,7 +22,6 @@
   --transition: all 0.2s ease;
 }
 
-/* リセット */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -36,10 +35,11 @@ body {
   min-height: 100vh;
   color: var(--gray-900);
   line-height: 1.6;
-
+  /* モバイルでのスクロールを改善 */
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   position: relative;
+  /* プルダウンリフレッシュを無効化（スライダー誤動作防止） */
   overscroll-behavior-y: contain;
 }
 
@@ -49,6 +49,7 @@ body {
   max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
+  /* モバイルでのスクロールを確保 */
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
@@ -74,7 +75,7 @@ body {
   opacity: 0.9;
 }
 
-/* モバイル用ヘッダー最適化 */
+/* モバイル用ヘッダー最適化 - コンパクト表示 */
 @media (max-width: 768px) {
   .app-header-new {
     position: fixed !important;
@@ -88,26 +89,27 @@ body {
     margin: 0 !important;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
-
+  
   .app-title-new {
     font-size: 1rem !important;
     margin: 0 !important;
     font-weight: 700;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   }
-
+  
   .app-subtitle-new {
     display: none !important;
   }
-
+  
+  /* ステップ6（マーキング時）のみヘッダー考慮が必要 */
   .wizard-content.step-6 .canvas-area {
     top: 42px !important;
   }
-
+  
   .wizard-content.step-6 .section-settings {
     margin-top: calc(42px + min(56.25vw, 50vh) + 80px) !important;
   }
-
+  
   .wizard-content.step-6 .marker-controls {
     margin-top: calc(42px + min(56.25vw, 50vh) + 110px) !important;
   }
@@ -362,36 +364,47 @@ body {
   text-align: center;
 }
 
-/* ========== キャンバス表示（Step 4, 5, 6） ========== */
+/* ========== キャンバス表示（Step 4, 5） ========== */
 
-/* キャンバス枠そのもの */
 .canvas-area {
   margin-bottom: 20px;
   border-radius: var(--radius);
   overflow: hidden;
   background: #000;
   box-shadow: var(--shadow-md);
-
-  /* ★ PC でも横幅を制御して中央寄せ（右半分だけ黒になるのを防ぐ） */
-  max-width: 960px;
-  margin-left: auto;
-  margin-right: auto;
 }
 
-/* PC では固定表示しない（スライダーとのズレ防止＆映像の片寄り防止） */
+/* PC版: ステップ5, 6でキャンバスを固定表示 */
 @media (min-width: 769px) {
+  /* ステップ5, 6共通: キャンバス固定 */
+  .wizard-step-5 .canvas-area,
+  .wizard-step-6 .canvas-area {
+    position: fixed !important;
+    top: 80px !important; /* ヘッダー分の余白 */
+    left: 0;
+    right: 0;
+    width: 100vw !important; /* 横幅いっぱい */
+    max-width: 100vw !important; /* 横幅いっぱい */
+    z-index: 9999 !important; /* 最前面に表示 */
+    margin: 0 !important;
+    padding: 0 !important;
+    pointer-events: auto; /* クリック可能に */
+  }
+
+  /* ステップ5, 6: キャンバス固定時のコンテンツ余白調整 */
   .wizard-step-5 .wizard-content,
   .wizard-step-6 .wizard-content {
-    padding-top: 0;
+    padding-top: calc(70vh + 40px); /* キャンバス高さ + 余白 */
   }
 }
 
-/* キャンバス要素 */
 .preview-canvas {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 80vh;
+  max-height: 80vh; /* PC版で画面の80%まで（より大きく） */
+  /* object-fit: contain を削除 - キャンバスは内部サイズと表示サイズを一致させる必要がある */
+  /* スケルトン描画座標がズレないようにアスペクト比はJSで管理 */
 }
 
 /* ========== フレームコントロール ========== */
@@ -417,7 +430,7 @@ body {
   appearance: none;
   cursor: pointer;
   margin-bottom: 12px;
-  touch-action: pan-x;
+  touch-action: pan-x; /* 横方向のみタッチ許可 */
 }
 
 .frame-range::-webkit-slider-thumb {
@@ -441,7 +454,7 @@ body {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-/* ========== 区間設定スライダー ========== */
+/* ========== 区間設定スライダー (スタート/フィニッシュ地点) ========== */
 
 .section-slider {
   -webkit-appearance: none;
@@ -459,7 +472,7 @@ body {
   background: linear-gradient(to right, var(--gray-300), var(--gray-400));
 }
 
-/* スタート地点（緑） */
+/* スタート地点スライダー（緑） */
 .section-slider.start-slider {
   background: linear-gradient(to right, #d1fae5, #10b981);
 }
@@ -492,7 +505,7 @@ body {
   border: 3px solid white;
 }
 
-/* フィニッシュ（赤） */
+/* フィニッシュ地点スライダー（赤） */
 .section-slider.end-slider {
   background: linear-gradient(to right, #fecaca, #ef4444);
 }
@@ -525,7 +538,7 @@ body {
   border: 3px solid white;
 }
 
-/* 中間（青） */
+/* 中間地点スライダー（青） */
 .section-slider.mid-slider {
   background: linear-gradient(to right, #dbeafe, #2563eb);
 }
@@ -557,8 +570,6 @@ body {
   box-shadow: 0 2px 6px rgba(37, 99, 235, 0.4);
   border: 3px solid white;
 }
-
-/* フレームボタン */
 
 .frame-buttons-compact {
   display: flex;
@@ -1213,7 +1224,7 @@ body {
   border-color: var(--gray-400);
 }
 
-/* ========== レスポンシブ共通 ========== */
+/* ========== レスポンシブ ========== */
 
 @media (max-width: 768px) {
   .app-container {
@@ -1272,20 +1283,24 @@ body {
   }
 }
 
-/* ========== モバイル専用表示切り替え ========== */
+/* ========== モバイル対応：接地/離地マーキング ========== */
 
+/* デフォルトでモバイル用コントロールを非表示 */
 .mobile-marking-controls {
   display: none;
 }
 
+/* モバイルマーカー表示エリアもデフォルト非表示 */
 .mobile-marker-display {
   display: none;
 }
 
+/* 表示オプションボタンもデフォルト非表示 */
 .mobile-view-options {
   display: none;
 }
 
+/* デスクトップでは通常のテキストを表示 */
 .mobile-only {
   display: none;
 }
@@ -1294,20 +1309,19 @@ body {
   display: inline;
 }
 
-/* モバイルレイアウト（キャンバス＆マーキング周り） */
+/* モバイルデバイスでの表示切り替え - 完全に新しいアプローチ */
 @media (max-width: 768px) {
   .mobile-only {
     display: inline;
   }
-
+  
   .desktop-only {
     display: none;
   }
 
-  /* キャンバスエリア（通常時） */
-  .canvas-area {
-    position: relative !important;
-    width: 100% !important;
+  /* ========== モバイル最適化：キャンバスを最大化、コントロールを最小化 ========== */
+  
+  /* キャンバスエリア：デフォルト（ステップ5, 6以外では固定） */
   .canvas-area {
     position: relative !important;
     width: 100% !important;
@@ -1321,29 +1335,32 @@ body {
     border-radius: 8px;
     overflow: hidden;
   }
+  
+  /* ステップ6（マーキング）でのキャンバスは固定表示 */
+.wizard-content.step-6 .canvas-area {
+  position: fixed !important;
+  top: 42px !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100vw !important;
+  /* ★ 縦横比を JS に任せるので、height/max-height を消す ★ */
+  /* height: 56.25vw !important; */
+  /* max-height: 50vh !important; */
+  z-index: 1000 !important;
+  margin: 0 !important;
+  border-radius: 0;
+}
 
-  /* ステップ5・6でのキャンバスは固定表示（モバイル） */
-  .wizard-content.step-5 .canvas-area,
-  .wizard-content.step-6 .canvas-area {
-    position: fixed !important;
-    top: 42px !important;
-    left: 0 !important;
-    right: 0 !important;
-    width: 100vw !important;
-    z-index: 1000 !important;
-    margin: 0 !important;
-    border-radius: 0;
-  }
+.preview-canvas {
+  width: 100% !important;
+  height: auto !important;   /* ★ 100% → auto に変更 ★ */
+  object-fit: contain;
+  display: block;
+  margin: 0;
+}
 
-  .preview-canvas {
-    width: 100% !important;
-    height: auto !important;
-    object-fit: contain;
-    display: block;
-    margin: 0;
-  }
 
-  /* フレームコントロール（スライダー）：通常はフロー内 */
+  /* フレームコントロール（スライダー）：通常はドキュメントフロー内 */
   .frame-control {
     position: relative !important;
     top: auto !important;
@@ -1357,8 +1374,8 @@ body {
     border-radius: 8px;
     border: 1px solid var(--gray-200);
   }
-
-  /* ステップ6（マーキング時）のみフレームコントロール固定 */
+  
+  /* ステップ6（マーキング時）でのフレームコントロールは固定 */
   .wizard-content.step-6 .frame-control {
     position: fixed !important;
     top: calc(42px + 45vh) !important;
@@ -1371,6 +1388,7 @@ body {
     border-bottom: 1px solid var(--gray-300);
   }
 
+  /* フレーム情報：1行のコンパクト表示 */
   .frame-info {
     font-size: 0.65rem !important;
     padding: 0 !important;
@@ -1381,6 +1399,7 @@ body {
     color: var(--gray-700);
   }
 
+  /* スライダー：薄く小さく */
   .frame-range {
     height: 18px !important;
     -webkit-appearance: none;
@@ -1424,11 +1443,12 @@ body {
     border: none;
   }
 
+  /* デスクトップ用のボタングループを非表示 */
   .frame-buttons-compact {
     display: none;
   }
 
-  /* モバイル用マーキングコントロール */
+  /* モバイル用のマーキングコントロール（Step 6マーキング時のみ固定） */
   .mobile-marking-controls {
     display: flex !important;
     flex-direction: column;
@@ -1445,8 +1465,8 @@ body {
     z-index: 1 !important;
     border: 1px solid var(--gray-200);
   }
-
-  /* ステップ6（マーキング時）で固定 */
+  
+  /* ステップ6（マーキング時）でのマーキングコントロールは固定 */
   .wizard-content.step-6 .mobile-marking-controls {
     position: fixed !important;
     top: calc(42px + 45vh + 32px) !important;
@@ -1459,6 +1479,7 @@ body {
     border-bottom: 1px solid var(--gray-300);
   }
 
+  /* マーキングボタン */
   .btn-mark-contact {
     width: 100%;
     padding: 8px;
@@ -1485,6 +1506,7 @@ body {
     cursor: not-allowed;
   }
 
+  /* フレーム移動ボタン：4つ（±1と±10） */
   .mobile-frame-nav {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -1515,7 +1537,7 @@ body {
     cursor: not-allowed;
   }
 
-  /* Step4: section-settings をキャンバスの下に */
+  /* Step 4: section-settingsを固定エリアの下に配置 */
   .wizard-content .section-settings {
     position: relative;
     margin-top: calc(min(56.25vw, 50vh) + 28px) !important;
@@ -1524,7 +1546,7 @@ body {
     gap: 6px !important;
   }
 
-  /* Step5: marker-controls をキャンバスの下に */
+  /* Step 5: marker-controlsを固定エリアの下に表示 */
   .wizard-content .marker-controls {
     position: relative;
     margin-top: calc(min(56.25vw, 50vh) + 60px) !important;
@@ -1532,85 +1554,89 @@ body {
     z-index: 1;
   }
 
-  /* ステップ6のマーキングモードでは見出しを非表示 */
+  /* ステップ6のマーキングモードではwizard-step-headerを非表示（キャンバスが固定のため） */
+  /* 検出モード選択時（calibrationTypeがnull）は表示する */
   .wizard-content.step-6 .wizard-step-header {
     display: none;
   }
-
-  /* それ以外は表示 */
+  
+  /* その他のステップでは見出しを表示 */
   .wizard-content .wizard-step-header {
     display: block;
     padding-top: 0;
   }
 
-  /* Section item 小さく */
+  /* Section item をコンパクトに */
   .section-item {
-    padding: 8px !important;
-    gap: 12px !important;
+    padding: 6px 8px !important;
+    gap: 8px !important;
     font-size: 0.8rem !important;
   }
 
   .section-label {
     font-size: 0.8rem !important;
-    gap: 8px !important;
+    gap: 6px !important;
   }
 
   .marker-badge {
-    padding: 3px 8px !important;
-    font-size: 0.7rem !important;
+    padding: 2px 6px !important;
+    font-size: 0.65rem !important;
   }
 
   .section-actions button {
-    padding: 6px 10px !important;
-    font-size: 0.8rem !important;
+    padding: 4px 8px !important;
+    font-size: 0.75rem !important;
   }
 
+  /* Section summary をコンパクトに */
   .section-summary {
     padding: 8px !important;
     gap: 8px !important;
     font-size: 0.75rem !important;
   }
 
+  /* 線の位置調整コントロールをさらに小さく */
   .line-adjust-control {
-    padding: 8px !important;
-    margin-top: -6px !important;
+    padding: 6px !important;
+    margin-top: -4px !important;
   }
 
   .adjust-label {
-    font-size: 0.75rem !important;
-    gap: 6px !important;
+    font-size: 0.7rem !important;
+    gap: 4px !important;
   }
 
   .adjust-btn {
-    width: 28px !important;
-    height: 28px !important;
-    font-size: 0.8rem !important;
-  }
-
-  .adjust-slider {
-    height: 4px !important;
-  }
-
-  .adjust-slider::-webkit-slider-thumb {
-    width: 14px !important;
-    height: 14px !important;
-  }
-
-  .adjust-slider::-moz-range-thumb {
-    width: 14px !important;
-    height: 14px !important;
-  }
-
-  .adjust-value {
-    min-width: 40px !important;
+    width: 24px !important;
+    height: 24px !important;
     font-size: 0.75rem !important;
   }
 
-  .adjust-reset {
-    padding: 4px 8px !important;
+  .adjust-slider {
+    height: 3px !important;
+  }
+
+  .adjust-slider::-webkit-slider-thumb {
+    width: 12px !important;
+    height: 12px !important;
+  }
+
+  .adjust-slider::-moz-range-thumb {
+    width: 12px !important;
+    height: 12px !important;
+  }
+
+  .adjust-value {
+    min-width: 35px !important;
     font-size: 0.7rem !important;
   }
 
+  .adjust-reset {
+    padding: 3px 6px !important;
+    font-size: 0.65rem !important;
+  }
+
+  /* Section markers info をコンパクトに */
   .section-markers-info {
     padding: 6px 8px !important;
     margin-bottom: 6px !important;
@@ -1620,6 +1646,7 @@ body {
     font-size: 0.75rem !important;
   }
 
+  /* マーカーコントロールボタンを小さく */
   .marker-controls {
     flex-wrap: wrap;
     gap: 6px;
@@ -1635,6 +1662,7 @@ body {
     touch-action: manipulation;
   }
 
+  /* 角度表示を縦に並べる */
   .angle-display-compact {
     padding: 8px;
   }
@@ -1649,7 +1677,69 @@ body {
     font-size: 0.85rem;
   }
 
-  /* body / app-container スクロール調整 */
+  /* 区間設定の線調整コントロールを小さく */
+  .line-adjust-control {
+    padding: 8px;
+    margin-top: -6px;
+  }
+
+  .adjust-label {
+    font-size: 0.75rem;
+    gap: 6px;
+  }
+
+  .adjust-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 0.8rem;
+  }
+
+  .adjust-slider {
+    height: 4px;
+  }
+
+  .adjust-slider::-webkit-slider-thumb {
+    width: 14px;
+    height: 14px;
+  }
+
+  .adjust-slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+  }
+
+  .adjust-value {
+    min-width: 40px;
+    font-size: 0.75rem;
+  }
+
+  .adjust-reset {
+    padding: 4px 8px;
+    font-size: 0.7rem;
+  }
+
+  /* Section item を小さく */
+  .section-item {
+    padding: 8px;
+    gap: 12px;
+  }
+
+  .section-label {
+    font-size: 0.85rem;
+    gap: 8px;
+  }
+
+  .marker-badge {
+    padding: 3px 8px;
+    font-size: 0.7rem;
+  }
+
+  .section-actions button {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+  }
+
+  /* モバイルでのスクロール問題を修正 */
   body {
     position: relative;
     overflow-y: auto;
@@ -1668,6 +1758,7 @@ body {
     padding-top: 80px !important;
   }
 
+  /* ウィザードコンテンツのスクロールを確保 */
   .wizard-content {
     overflow-y: visible !important;
     overflow-x: hidden;
@@ -1675,25 +1766,25 @@ body {
     height: auto;
     -webkit-overflow-scrolling: touch;
     padding-bottom: 120px;
-    padding-top: 50px;
+    padding-top: 50px; /* ヘッダー分のスペース確保 */
   }
-
-  .wizard-content.step-5,
+  
+  /* ステップ6のマーキングモードでは固定レイアウト用の大きなpaddingが必要 */
   .wizard-content.step-6 {
     padding-top: calc(42px + min(56.25vw, 50vh) + 150px) !important;
   }
 
+  /* 固定されたキャンバスエリアの子要素 */
   .canvas-area canvas {
     touch-action: pan-y pinch-zoom;
   }
 
-  button,
-  input[type="range"],
-  .btn-mark-contact,
-  .btn-nav-arrow {
+  /* すべてのボタンとインタラクティブ要素 */
+  button, input[type="range"], .btn-mark-contact, .btn-nav-arrow {
     touch-action: manipulation;
   }
 
+  /* ステッププログレスを小さく */
   .step-progress {
     padding: 8px 12px;
     margin-bottom: 12px;
@@ -1714,6 +1805,7 @@ body {
     font-size: 0.6rem;
   }
 
+  /* ウィザードメインを小さく */
   .wizard-main {
     padding: 12px;
     min-height: auto;
@@ -1728,6 +1820,7 @@ body {
     font-size: 0.8rem;
   }
 
+  /* Wizard actions をコンパクトに */
   .wizard-actions {
     gap: 8px !important;
     margin-top: 16px !important;
@@ -1744,7 +1837,7 @@ body {
     font-size: 0.85rem !important;
   }
 
-  /* マーカー表示エリア（固定） */
+  /* マーカー表示エリア - コントロールの下に固定 */
   .mobile-marker-display {
     display: block !important;
     position: fixed !important;
@@ -1757,7 +1850,7 @@ body {
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
   }
 
-  /* 表示オプションボタン */
+  /* 表示オプションボタン - マーカーの下 */
   .mobile-view-options {
     display: flex !important;
     gap: 8px;
@@ -1837,8 +1930,11 @@ body {
   }
 }
 
-/* ========== iPhone 最適化 (max-width: 428px) ========== */
+/* ========== iPhone/iPad 最適化 ========== */
+
+/* iPhone向け最適化 (max-width: 428px) */
 @media (max-width: 428px) {
+  /* AI評価セクションの最適化 */
   .result-card {
     padding: 12px !important;
     margin: 8px 0 !important;
@@ -1850,26 +1946,63 @@ body {
     margin-bottom: 12px !important;
   }
 
+  /* 総合評価のタイトルサイズ調整 */
   .result-card > div:first-of-type > div:first-child {
     font-size: 1.2rem !important;
   }
 
+  /* 総合評価のメッセージサイズ調整 */
   .result-card > div:first-of-type > div:nth-child(2) {
     font-size: 0.85rem !important;
     line-height: 1.5 !important;
   }
 
+  /* スコアバー調整 */
+  .result-card > div:first-of-type > div:last-child > div {
+    width: 30px !important;
+    height: 6px !important;
+  }
+
+  /* 個別評価項目のパディング */
+  .result-card > div > div {
+    padding: 12px !important;
+  }
+
+  /* カテゴリ名のサイズ */
+  .result-card > div > div > div:first-child > div:first-child {
+    font-size: 0.9rem !important;
+  }
+
+  /* メッセージのサイズ */
+  .result-card > div > div > div:first-child > div:last-child {
+    font-size: 0.75rem !important;
+  }
+
+  /* アドバイスのサイズ */
+  .result-card > div > div > div:last-child {
+    font-size: 0.75rem !important;
+    padding-left: 24px !important;
+  }
+
+  /* アイコンサイズ */
+  .result-card > div > div > div:first-child > span {
+    font-size: 1.2rem !important;
+  }
+
+  /* 結果レイアウトを縦並びに */
   .results-layout {
     display: flex !important;
     flex-direction: column !important;
     gap: 12px !important;
   }
 
+  /* グラフセクションの最適化 */
   .chart-container {
     height: 200px !important;
     margin-bottom: 12px !important;
   }
 
+  /* テーブルの文字サイズ調整 */
   table {
     font-size: 0.7rem !important;
   }
@@ -1879,6 +2012,7 @@ body {
     padding: 6px 4px !important;
   }
 
+  /* セクション設定の最適化 */
   .section-settings {
     padding: 12px !important;
   }
@@ -1893,6 +2027,7 @@ body {
     padding: 8px !important;
   }
 
+  /* ウィザードタイトル */
   .wizard-step-title {
     font-size: 1.1rem !important;
   }
@@ -1901,12 +2036,14 @@ body {
     font-size: 0.8rem !important;
   }
 
+  /* ボタンサイズ調整 */
   .btn-primary-large,
   .btn-ghost {
     padding: 10px 16px !important;
     font-size: 0.85rem !important;
   }
 
+  /* フレームコントロール（スライダー） */
   .frame-control {
     padding: 4px 8px !important;
   }
@@ -1915,6 +2052,7 @@ body {
     height: 28px !important;
   }
 
+  /* マーキングコントロール */
   .mobile-marking-controls button {
     padding: 8px 10px !important;
     font-size: 0.7rem !important;
@@ -1922,8 +2060,9 @@ body {
   }
 }
 
-/* ========== iPad 最適化 ========== */
+/* iPad向け最適化 (min-width: 429px) and (max-width: 1024px) */
 @media (min-width: 429px) and (max-width: 1024px) {
+  /* AI評価セクションの最適化 */
   .result-card {
     padding: 16px !important;
     margin: 12px 0 !important;
@@ -1935,26 +2074,31 @@ body {
     margin-bottom: 16px !important;
   }
 
+  /* 総合評価のタイトルサイズ調整 */
   .result-card > div:first-of-type > div:first-child {
     font-size: 1.4rem !important;
   }
 
+  /* 総合評価のメッセージサイズ調整 */
   .result-card > div:first-of-type > div:nth-child(2) {
     font-size: 0.9rem !important;
     line-height: 1.6 !important;
   }
 
+  /* 結果レイアウトを縦並びに（iPadでも） */
   .results-layout {
     display: flex !important;
     flex-direction: column !important;
     gap: 16px !important;
   }
 
+  /* グラフセクションの最適化 */
   .chart-container {
     height: 250px !important;
     margin-bottom: 16px !important;
   }
 
+  /* テーブルの文字サイズ調整 */
   table {
     font-size: 0.8rem !important;
   }
@@ -1964,27 +2108,31 @@ body {
     padding: 8px 6px !important;
   }
 
+  /* セクション設定の最適化 */
   .section-settings {
     padding: 16px !important;
   }
 
+  /* ウィザードタイトル */
   .wizard-step-title {
     font-size: 1.25rem !important;
   }
 
+  /* ボタンサイズ調整 */
   .btn-primary-large,
   .btn-ghost {
     padding: 12px 20px !important;
     font-size: 0.9rem !important;
   }
 
+  /* ステップ8の詳細結果を見やすく */
   .metrics-summary {
     grid-template-columns: repeat(2, 1fr) !important;
     gap: 12px !important;
   }
 }
 
-/* ========== セーフエリア（ノッチ）対応 ========== */
+/* セーフエリア対応（ノッチ付きiPhone） */
 @supports (padding: max(0px)) {
   @media (max-width: 768px) {
     .app-container {
@@ -2005,22 +2153,13 @@ body {
       padding-left: max(8px, env(safe-area-inset-left));
       padding-right: max(8px, env(safe-area-inset-right));
     }
-
-    /* iPhone では接地マーカー画面の角度表示を非表示 */
-    .wizard-content.step-6 .angle-display-compact {
-      display: none !important;
-    }
-
-    /* iPhone では足元拡大スライダーを隠す */
-    .wizard-content.step-6 .zoom-control {
-      display: none !important;
-    }
   }
 }
 
-/* ========== タッチ操作最適化 ========== */
+/* タッチ操作の最適化 */
 @media (pointer: coarse) {
-  button,
+  /* タッチターゲットを大きく */
+  button, 
   input[type="button"],
   input[type="submit"],
   .btn-primary-large,
@@ -2029,6 +2168,7 @@ body {
     touch-action: manipulation;
   }
 
+  /* スライダーのタッチ領域拡大 */
   input[type="range"] {
     height: 44px;
     cursor: pointer;
@@ -2039,6 +2179,7 @@ body {
     height: 28px;
   }
 
+  /* チェックボックス・ラジオボタンのタッチ領域 */
   input[type="checkbox"],
   input[type="radio"] {
     width: 24px;
@@ -2046,84 +2187,18 @@ body {
     margin: 4px;
   }
 
+  /* セレクトボックスの最適化 */
   select {
     min-height: 44px;
-    font-size: 16px;
+    font-size: 16px; /* iOS でズームを防ぐ */
   }
 
+  /* テキスト入力の最適化 */
   input[type="text"],
   input[type="number"],
   input[type="email"],
   textarea {
-    font-size: 16px;
+    font-size: 16px; /* iOS でズームを防ぐ */
     min-height: 44px;
-  }
-}
-}
-/* ================================
-   追加: キャンバスの16:9固定 & モバイル挙動の修正
-   ================================ */
-
-/* PC/モバイル共通：キャンバスを中央寄せ＆16:9 に固定 */
-.canvas-area {
-  position: relative;
-  max-width: 960px;
-  margin: 0 auto 20px;
-  background: #000;
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: var(--shadow-md);
-}
-
-/* キャンバス本体。16:9で表示する */
-.preview-canvas {
-  display: block;
-  width: 100%;
-  height: auto;
-  aspect-ratio: 16 / 9;   /* ★ ここで 16:9 に固定 ★ */
-}
-
-/* スマホ向け（iPhone含む）レイアウト調整 */
-@media (max-width: 768px) {
-  /* ヘッダーは固定のまま */
-  .app-header-new {
-    position: fixed !important;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 1001;
-  }
-
-  /* ヘッダー分の余白を上に確保 */
-  .app-container {
-    padding-top: 60px !important;
-  }
-
-  /* キャンバスは「sticky」でヘッダー直下に張り付く */
-  .canvas-area {
-    position: sticky !important;
-    top: 60px;                 /* ヘッダーの高さくらい */
-    max-width: 100%;
-    margin: 0 0 12px 0;
-    border-radius: 0;
-  }
-
-  /* スライダー／マーカー系は固定をやめて、普通にスクロールする */
-  .frame-control,
-  .mobile-marking-controls,
-  .mobile-marker-display,
-  .mobile-view-options {
-    position: static !important;
-    top: auto !important;
-    left: auto !important;
-    right: auto !important;
-    z-index: 1 !important;
-  }
-
-  /* モバイル用マークボタンを必ず表示させる */
-  .mobile-marking-controls {
-    display: flex !important;
-    flex-direction: column;
-    gap: 4px;
   }
 }
