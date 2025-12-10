@@ -114,6 +114,25 @@ body {
     margin-top: calc(42px + min(56.25vw, 50vh) + 110px) !important;
   }
 }
+/* ================================
+ * スマホでは下側のハンバーガーメニューを非表示
+ * （上の白いグローバルメニューだけ使う）
+ * ================================ */
+@media (max-width: 768px) {
+  /* 下側ハンバーガーのボタンのクラス名を指定 */
+  .app-header .hamburger-menu-button,
+  .app-header .wizard-menu-button {
+    display: none !important;
+  }
+}
+/* ================================
+ * スマホでは「現在のフレームの角度」を非表示
+ * ================================ */
+@media (max-width: 768px) {
+  .angle-display-result {
+    display: none !important;
+  }
+}
 
 /* ========== ステップインジケーター ========== */
 
