@@ -2333,3 +2333,312 @@ body {
 .secondary-canvas {
   display: none !important;
 }
+/* =========================
+   スマホ用ヘッダー・ステップバー調整
+   ========================= */
+@media (max-width: 768px) {
+  /* ヘッダーの高さとタイトル調整 */
+  .app-header {
+    height: 56px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .app-header-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: calc(100% - 56px); /* 右のボタン分を引く */
+  }
+
+  /* ステップバーは横スクロール可能に */
+  .wizard-steps {
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .wizard-step {
+    flex: 0 0 auto;
+    min-width: 64px;
+  }
+
+  .wizard-step-label {
+    font-size: 0.72rem;
+  }
+}
+/* ========== スマホ用: 上部ヘッダーを簡略表示 ========== */
+
+@media (max-width: 768px) {
+  /* 上の白いヘッダー全体を少しコンパクトに */
+  .app-header-inner {
+    padding: 6px 10px;
+  }
+
+  /* タイトルとサブタイトルを小さめにして 2 行に収める */
+  .app-header-title {
+    font-size: 0.9rem;
+    line-height: 1.2;
+  }
+
+  .app-header-subtitle {
+    font-size: 0.7rem;
+    margin-top: 2px;
+  }
+
+  /* PC 用メニューはスマホでは非表示にする */
+  .app-header-nav {
+    display: none;
+  }
+}
+
+/* =========================
+   Step5/6 モバイル: 映像を上部に固定
+   ========================= */
+@media (max-width: 768px) {
+  .wizard-content.step-5 .video-wrapper,
+  .wizard-content.step-6 .video-wrapper {
+    position: sticky;
+    top: 112px; /* ヘッダー + ステップバー分の高さに合わせる */
+    z-index: 20;
+    background: #000;
+  }
+
+  .wizard-content.step-5 .video-wrapper canvas,
+  .wizard-content.step-6 .video-wrapper canvas {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+}
+/* ===== PC 用トップナビ（main.tsx の AppTopNav 用） =================== */
+
+.top-nav-desktop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  z-index: 1100;
+  backdrop-filter: blur(10px);
+  background: linear-gradient(
+    to right,
+    rgba(248, 250, 252, 0.96),
+    rgba(239, 246, 255, 0.96)
+  );
+  border-bottom: 1px solid rgba(148, 163, 184, 0.6);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.12);
+}
+
+/* ナビの中身レイアウト */
+.top-nav-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+/* 左側ロゴ部分 */
+.top-nav-logo {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  text-decoration: none;
+}
+
+.top-nav-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.top-nav-sub {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+/* 右側リンク群 */
+.top-nav-menu {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.top-nav-link {
+  color: #111827;
+  text-decoration: none;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.top-nav-link:hover {
+  border-color: #cbd5f5;
+  background: #eef2ff;
+}
+
+.top-nav-divider {
+  height: 26px;
+  width: 1px;
+  background: #d1d5db;
+}
+
+/* ナビ分の余白 */
+.top-nav-spacer {
+  height: 60px;
+}
+
+/* ===== スマホでは PC ナビを完全に消す ================================ */
+@media (max-width: 768px) {
+  .top-nav-desktop {
+    display: none;
+  }
+
+  .top-nav-spacer {
+    height: 0;
+  }
+}
+/* ===== PC 用トップナビ（main.tsx の AppTopNav 用） =================== */
+
+.top-nav-desktop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  z-index: 1100;
+  backdrop-filter: blur(10px);
+  background: linear-gradient(
+    to right,
+    rgba(248, 250, 252, 0.96),
+    rgba(239, 246, 255, 0.96)
+  );
+  border-bottom: 1px solid rgba(148, 163, 184, 0.6);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.12);
+}
+
+/* ナビの中身レイアウト */
+.top-nav-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+/* 左側ロゴ部分 */
+.top-nav-logo {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  text-decoration: none;
+}
+
+.top-nav-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.top-nav-sub {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+/* 右側リンク群 */
+.top-nav-menu {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.top-nav-link {
+  color: #111827;
+  text-decoration: none;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.top-nav-link:hover {
+  border-color: #cbd5f5;
+  background: #eef2ff;
+}
+
+.top-nav-divider {
+  height: 26px;
+  width: 1px;
+  background: #d1d5db;
+}
+
+/* ナビ分の余白 */
+.top-nav-spacer {
+  height: 60px;
+}
+
+/* ===== スマホでは PC ナビを完全に消す ================================ */
+@media (max-width: 768px) {
+  .top-nav-desktop {
+    display: none;
+  }
+
+  .top-nav-spacer {
+    height: 0;
+  }
+}
+/* ===============================
+ * スマホ幅では紫ヘッダーを非表示にする
+ * （下側のハンバーガーメニューごと隠す）
+ * =============================== */
+@media (max-width: 768px) {
+  .app-header {
+    display: none !important;
+  }
+}
+/* ===============================
+ * スマホでの Step6 接地マーク UI 調整
+ * =============================== */
+@media (max-width: 768px) {
+  /* スライダーバーを固定表示にしない（重なり防止） */
+  .frame-slider-bar {
+    position: static !important;
+    bottom: auto !important;
+    top: auto !important;
+    margin: 8px 0 12px 0;
+  }
+
+  /* スライダー自体を少しコンパクトに */
+  .frame-slider-bar input[type="range"] {
+    width: 100%;
+    max-width: 100%;
+    height: 16px;
+  }
+
+  /* 接地マークのボタン群が横に詰まりすぎないように調整 */
+  .step-6-controls,
+  .step-6-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* もしフッター付近にマージンが足りない場合の保険 */
+  .wizard-content.step-6 {
+    padding-bottom: 16px;
+  }
+}
