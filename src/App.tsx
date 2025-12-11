@@ -531,7 +531,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   }, []);
 
 const [wizardStep, setWizardStep] = useState<WizardStep>(0);
-  const [selectedFps, setSelectedFps] = useState<60 | 120>(120); // FPS選択: 60 or 120 (デフォルト120fps)
+  const [selectedFps, setSelectedFps] = useState<number>(120); 
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('single');
   const [currentRun, setCurrentRun] = useState<Run | null>(null);
   const [runSegments, setRunSegments] = useState<RunSegment[]>([]);
@@ -929,6 +929,24 @@ const [notesInput, setNotesInput] = useState<string>("");
     contactFrame: null,
     toeOffFrame: null
   });
+    // ステップ6に入ったら自動的に「半自動設定」を選択する
+    useEffect(() => {
+      // まだモードが決まっていない状態でステップ6になったら
+      if (wizardStep === 6 && !calibrationType) {
+        // 「② 半自動設定」ボタンの onClick と同じ処理
+        setDetectionMode(2);
+        setCalibrationType(2);
+        setCalibrationMode(2);
+        setCalibrationData({ contactFrame: null, toeOffFrame: null });
+
+        // スタートフレームに移動
+        if (sectionStartFrame !== null) {
+          setCurrentFrame(sectionStartFrame);
+        }
+      }
+    }, [wizardStep, calibrationType, sectionStartFrame]);
+
+
   const [toeOffThreshold, setToeOffThreshold] = useState<number | null>(null); // つま先上昇閾値（ピクセル）
   const [baseThreshold, setBaseThreshold] = useState<number | null>(null); // 元の閾値（調整用）
   const [manualContactFrames, setManualContactFrames] = useState<number[]>([]); // 接地フレーム（手動）
@@ -6338,210 +6356,214 @@ const [notesInput, setNotesInput] = useState<string>("");
 
 
       case 1:
-        return (
-          <div className="wizard-content">
-            <div className="wizard-step-header">
-              <h2 className="wizard-step-title">ステップ 1: 動画をアップロード</h2>
-              <p className="wizard-step-desc">
-                解析したいランニング動画を選択し、走行距離とラベルを入力してください。
-              </p>
-            </div>
+  return (
+    <div className="wizard-content">
+      <div className="wizard-step-header">
+        <h2 className="wizard-step-title">ステップ 1: 動画をアップロード</h2>
+        <p className="wizard-step-desc">
+          解析したいランニング動画を選択し、走行距離とラベルを入力してください。
+        </p>
+      </div>
 
-            <div className="upload-area">
-              <label className="upload-box" style={{
-                borderColor: videoFile ? 'var(--success)' : 'var(--gray-300)',
-                background: videoFile ? 'rgba(16, 185, 129, 0.05)' : 'var(--gray-50)'
-              }}>
-                <div className="upload-icon">{videoFile ? '✅' : '🎥'}</div>
-                <div className="upload-text">
-                  {videoFile ? (
-                    <>
-                      <strong style={{ color: 'var(--success)' }}>✓ {videoFile.name}</strong>
-                      <span>クリックで別のファイルを選択</span>
-                    </>
-                  ) : (
-                    <>
-                      <strong>動画ファイルを選択</strong>
-                      <span>MP4, MOV, AVI など</span>
-                    </>
-                  )}
-                </div>
-                <input
-                  type="file"
-                  accept="video/*"
-                  onChange={handleFileChange}
-                  style={{ display: "none" }}
-                />
-              </label>
-            </div>
+      {/* 1. 走行距離 */}
+      <div className="input-group">
+        <label className="input-label">
+          <span className="label-text">
+            走行距離 (m) <span style={{ color: "red" }}>*</span>
+          </span>
+          <input
+            type="number"
+            min={0.1}
+            step={0.1}
+            value={distanceInput}
+            onChange={(e) => setDistanceInput(e.target.value)}
+            className="input-field"
+            placeholder="例: 10"
+            style={{
+              borderColor:
+                distanceValue && distanceValue > 0
+                  ? "var(--success)"
+                  : "var(--gray-300)",
+            }}
+          />
+          {distanceValue && distanceValue > 0 && (
+            <span
+              style={{
+                fontSize: "0.8rem",
+                color: "var(--success)",
+              }}
+            >
+              ✓ 入力済み
+            </span>
+          )}
+        </label>
+      </div>
 
-            <div className="input-group">
-              <label className="input-label">
-                <span className="label-text">走行距離 (m) <span style={{ color: 'red' }}>*</span></span>
-                <input
-                  type="number"
-                  min={0.1}
-                  step={0.1}
-                  value={distanceInput}
-                  onChange={(e) => setDistanceInput(e.target.value)}
-                  className="input-field"
-                  placeholder="例: 10"
-                  style={{
-                    borderColor: distanceValue && distanceValue > 0 ? 'var(--success)' : 'var(--gray-300)'
-                  }}
-                />
-                {distanceValue && distanceValue > 0 && (
-                  <span style={{ fontSize: '0.8rem', color: 'var(--success)' }}>✓ 入力済み</span>
-                )}
-              </label>
+      {/* 2. 読み込みFPS（コンパクト版） */}
+      <div
+        style={{
+          background: "#f0f9ff",
+          border: "1px solid #0ea5e9",
+          borderRadius: "12px",
+          padding: "12px 16px",
+          marginTop: "8px",
+          marginBottom: "12px",
+        }}
+      >
+        <div
+          style={{
+            fontWeight: "bold",
+            marginBottom: "8px",
+            color: "#0369a1",
+            fontSize: "0.95rem",
+          }}
+        >
+          読み込みFPSを選択 <span style={{ color: "#ef4444" }}>※</span>
+        </div>
 
-              <label className="input-label">
-                <span className="label-text">ラベル（任意）</span>
-                <input
-                  type="text"
-                  value={labelInput}
-                  onChange={(e) => setLabelInput(e.target.value)}
-                  className="input-field"
-                  placeholder="例: 前半5m"
-                />
-              </label>
-
-              <label className="input-label">
-                <span className="label-text">メモ（任意）</span>
-                <textarea
-                  value={notesInput}
-                  onChange={(e) => setNotesInput(e.target.value)}
-                  className="textarea-field"
-                  placeholder="メモを入力..."
-                  rows={3}
-                />
-              </label>
-            </div>
-
-            {/* FPS選択（ラジオボタン） */}
-            <div style={{
-              background: '#f0f9ff',
-              border: '2px solid #0ea5e9',
-              borderRadius: '12px',
-              padding: '20px',
-              marginTop: '24px'
-            }}>
-              <div style={{ fontWeight: 'bold', marginBottom: '16px', color: '#0369a1', fontSize: '1.1rem' }}>
-                📊 読み込みFPSを選択 <span style={{ color: '#ef4444' }}>*</span>
-              </div>
-              <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-                {/* 60fps オプション */}
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '12px',
-                  cursor: 'pointer',
-                  padding: '16px',
-                  background: selectedFps === 60 ? '#dbeafe' : 'white',
-                  border: selectedFps === 60 ? '2px solid #3b82f6' : '1px solid #e5e7eb',
-                  borderRadius: '12px',
-                  flex: '1',
-                  minWidth: '240px',
-                  transition: 'all 0.2s'
-                }}>
-                  <input
-                    type="radio"
-                    name="fpsSelection"
-                    value={60}
-                    checked={selectedFps === 60}
-                    onChange={() => setSelectedFps(60)}
-                    style={{ 
-                      width: '20px', 
-                      height: '20px', 
-                      marginTop: '4px',
-                      accentColor: '#3b82f6'
-                    }}
-                  />
-                  <div>
-                    <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#1f2937', marginBottom: '4px' }}>
-                      🎯 60FPS（標準）
-                    </div>
-                    <div style={{ fontSize: '0.85rem', color: '#6b7280', lineHeight: '1.5' }}>
-                      ✓ 日常のトレーニング解析に推奨<br/>
-                      ✓ 処理速度が速い（約30秒）<br/>
-                      ✓ ピッチ・ストライド・姿勢角度に十分
-                    </div>
-                  </div>
-                </label>
-
-                {/* 120fps オプション */}
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '12px',
-                  cursor: 'pointer',
-                  padding: '16px',
-                  background: selectedFps === 120 ? '#fef3c7' : 'white',
-                  border: selectedFps === 120 ? '2px solid #f59e0b' : '1px solid #e5e7eb',
-                  borderRadius: '12px',
-                  flex: '1',
-                  minWidth: '240px',
-                  transition: 'all 0.2s'
-                }}>
-                  <input
-                    type="radio"
-                    name="fpsSelection"
-                    value={120}
-                    checked={selectedFps === 120}
-                    onChange={() => setSelectedFps(120)}
-                    style={{ 
-                      width: '20px', 
-                      height: '20px', 
-                      marginTop: '4px',
-                      accentColor: '#f59e0b'
-                    }}
-                  />
-                  <div>
-                    <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#1f2937', marginBottom: '4px' }}>
-                      ⚡ 120FPS（高精度）
-                    </div>
-                    <div style={{ fontSize: '0.85rem', color: '#6b7280', lineHeight: '1.5' }}>
-                      ✓ 接地時間の超高精度測定<br/>
-                      ✓ 処理時間が長い（約120秒）<br/>
-                      ⚠️ 条件：明るい・ブレなし・高性能端末
-                    </div>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            <div className="wizard-nav">
-              <button className="btn-ghost" onClick={() => setWizardStep(0)}>
-                前へ：測定者情報
-              </button>
-              <button
-                className="btn-primary-large"
-                onClick={() => {
-                  if (!videoFile) {
-                    alert("動画ファイルを選択してください。");
-                    return;
-                  }
-
-                  if (analysisMode !== "multi" && (!distanceValue || distanceValue <= 0)) {
-                    alert("有効な距離を入力してください。");
-                    return;
-                  }
-
-                  setWizardStep(3);
-                  setTimeout(() => {
-                    handleExtractFrames();
-                  }, 300);
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "8px",
+          }}
+        >
+          {[60, 120, 240].map((fps) => (
+            <label
+              key={fps}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                cursor: "pointer",
+                padding: "6px 10px",
+                borderRadius: 999,
+                border:
+                  selectedFps === fps
+                    ? "2px solid #3b82f6"
+                    : "1px solid #e5e7eb",
+                background: selectedFps === fps ? "#dbeafe" : "#ffffff",
+                fontSize: "0.9rem",
+              }}
+            >
+              <input
+                type="radio"
+                name="fpsSelection"
+                value={fps}
+                checked={selectedFps === fps}
+                onChange={() => setSelectedFps(fps)}
+                style={{
+                  width: "16px",
+                  height: "16px",
+                  accentColor: "#3b82f6",
                 }}
-                disabled={
-                  !videoFile ||
-                  (analysisMode !== "multi" && (!distanceValue || distanceValue <= 0))
-                }
-              >
-                次へ：フレーム抽出（{selectedFps}fps）
-              </button>
-            </div>
+              />
+              {fps} fps
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* 3. ラベル（任意） / 4. メモ（任意） */}
+      <div className="input-group">
+        <label className="input-label">
+          <span className="label-text">ラベル（任意）</span>
+          <input
+            type="text"
+            value={labelInput}
+            onChange={(e) => setLabelInput(e.target.value)}
+            className="input-field"
+            placeholder="例: 100m全力走, フォームチェック など"
+          />
+        </label>
+
+        <label className="input-label">
+          <span className="label-text">メモ（任意）</span>
+          <textarea
+            value={notesInput}
+            onChange={(e) => setNotesInput(e.target.value)}
+            className="textarea-field"
+            placeholder="気になるポイント・撮影条件などをメモできます。"
+            rows={3}
+          />
+        </label>
+      </div>
+
+      {/* 5. 動画ファイルを選択 */}
+      <div className="upload-area">
+        <label
+          className="upload-box"
+          style={{
+            borderColor: videoFile ? "var(--success)" : "var(--gray-300)",
+            background: videoFile
+              ? "rgba(16, 185, 129, 0.05)"
+              : "var(--gray-50)",
+          }}
+        >
+          <div className="upload-icon">
+            {videoFile ? "✅" : "🎥"}
           </div>
-        );
+          <div className="upload-text">
+            {videoFile ? (
+              <>
+                <strong style={{ color: "var(--success)" }}>
+                  ✓ {videoFile.name}
+                </strong>
+                <span>クリックで別のファイルを選択</span>
+              </>
+            ) : (
+              <>
+                <strong>動画ファイルを選択</strong>
+                <span>MP4, MOV, AVI など</span>
+              </>
+            )}
+          </div>
+          <input
+            type="file"
+            accept="video/*"
+            onChange={handleFileChange}
+            style={{ display: "none" }}
+          />
+        </label>
+      </div>
+
+      {/* 6. 動画読み込み → 次へ */}
+      <div className="wizard-nav">
+        <button className="btn-ghost" onClick={() => setWizardStep(0)}>
+          前へ：測定者情報
+        </button>
+        <button
+          className="btn-primary-large"
+          onClick={() => {
+            if (!videoFile) {
+              alert("動画ファイルを選択してください。");
+              return;
+            }
+
+            if (
+              analysisMode !== "multi" &&
+              (!distanceValue || distanceValue <= 0)
+            ) {
+              alert("有効な距離を入力してください。");
+              return;
+            }
+
+            setWizardStep(3);
+            setTimeout(() => {
+              handleExtractFrames();
+            }, 300);
+          }}
+          disabled={
+            !videoFile ||
+            (analysisMode !== "multi" &&
+              (!distanceValue || distanceValue <= 0))
+          }
+        >
+          次へ：フレーム抽出（{selectedFps}fps）
+        </button>
+      </div>
+    </div>
+  );
 
       case 3:
         return (
@@ -6813,44 +6835,7 @@ const [notesInput, setNotesInput] = useState<string>("");
               <div className="progress-status">{status}</div>
             </div>
             
-            {/* 人物手動選択オプション */}
-            {poseProgress < 10 && (
-              <div style={{
-                margin: '20px auto',
-                maxWidth: '500px',
-                padding: '16px',
-                background: '#fef3c7',
-                borderRadius: '8px',
-                border: '2px solid #f59e0b',
-                textAlign: 'center'
-              }}>
-                <p style={{ fontWeight: 'bold', color: '#92400e', marginBottom: '12px' }}>
-                  🎯 姿勢推定がうまく検出できない場合
-                </p>
-                <button
-                  className="btn-secondary"
-                  onClick={() => {
-                    setIsPersonSelectMode(true);
-                    // 最初のフレームを表示
-                    if (framesRef.current[0] && canvasRef.current) {
-                      const ctx = canvasRef.current.getContext('2d');
-                      if (ctx) {
-                        ctx.putImageData(framesRef.current[0], 0, 0);
-                      }
-                    }
-                  }}
-                  style={{
-                    background: '#f59e0b',
-                    color: 'white',
-                    padding: '10px 20px',
-                    borderRadius: '6px',
-                    fontWeight: 'bold'
-                  }}
-                >
-                  手動で人物領域を選択
-                </button>
-              </div>
-            )}
+            
             
             {status.includes('❌') && (
               <div className="wizard-actions">
@@ -6934,14 +6919,20 @@ const [notesInput, setNotesInput] = useState<string>("");
         
         // スライダーによる区間設定UI（トリミング機能時代のシンプル方式に戻す）
         return (
-          <div className="wizard-content">
+          <div
+            className="wizard-content"
+            style={{
+              display: 'block',        // flex をやめる
+              minHeight: 'auto',       // 余計な縦の高さをなくす
+              paddingTop: 16,          // 上の余白はお好みで（px 単位）
+            }}
+          >
             <div className="wizard-step-header">
               <h2 className="wizard-step-title">ステップ 5: 区間設定</h2>
               <p className="wizard-step-desc">
                 スライダーを動かして、スタート・フィニッシュ・中間地点を設定してください。
               </p>
             </div>
-
             {/* ビデオプレビュー - フレームを直接表示 */}
             <div className="video-wrapper" style={{ marginBottom: '2rem' }}>
               <canvas 
@@ -6962,250 +6953,231 @@ const [notesInput, setNotesInput] = useState<string>("");
               </div>
             </div>
 
-            {/* 3つのスライダーでの区間設定 */}
-            <div style={{
-              background: '#f9fafb',
-              padding: '2rem',
-              borderRadius: '12px',
-              border: '2px solid #e5e7eb'
-            }}>
-              <h3 style={{
-                fontSize: '1.2rem',
-                fontWeight: 'bold',
-                marginBottom: '1.5rem',
-                color: '#374151',
-                textAlign: 'center'
-              }}>
-                ✨ スライダーで区間を設定
-              </h3>
-              
-              {/* スタート地点スライダー */}
-              <div style={{ marginBottom: '2rem' }}>
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  marginBottom: '0.5rem',
-                  alignItems: 'center'
-                }}>
-                  <span style={{ 
-                    fontSize: '1rem', 
-                    fontWeight: 'bold',
-                    color: '#10b981'
-                  }}>
-                    🟢 スタート地点
-                  </span>
-                  <span style={{ 
-                    fontSize: '0.95rem',
-                    color: '#6b7280',
-                    background: '#e5e7eb',
-                    padding: '4px 12px',
-                    borderRadius: '6px',
-                    fontWeight: 'bold'
-                  }}>
-                    Frame: {sectionStartFrame ?? 0}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(framesCount - 1, 0)}
-                  step={1}
-                  value={sectionStartFrame ?? 0}
-                  onChange={(e) => {
-                    const newFrame = Number(e.target.value);
-                    setSectionStartFrame(newFrame);
-                    setCurrentFrame(newFrame);
-                    const pose = poseResults[newFrame];
-                    if (pose?.landmarks) {
-                      const leftHip = pose.landmarks[23];
-                      const rightHip = pose.landmarks[24];
-                      if (leftHip && rightHip) {
-                        setSavedStartHipX((leftHip.x + rightHip.x) / 2);
-                      }
-                    }
-                    setStartLineOffset(0);
-                    
-                    // フレームを表示
-                    if (displayCanvasRef.current && framesRef.current[newFrame]) {
-                      const canvas = displayCanvasRef.current;
-                      const ctx = canvas.getContext('2d');
-                      if (ctx) {
-                        const frame = framesRef.current[newFrame];
-                        canvas.width = frame.width;
-                        canvas.height = frame.height;
-                        ctx.putImageData(frame, 0, 0);
-                      }
-                    }
-                  }}
-                  className="section-slider start-slider"
-                />
-                <div style={{
-                  fontSize: '0.85rem',
-                  color: '#6b7280',
-                  marginTop: '0.5rem',
-                  textAlign: 'center'
-                }}>
-                  💡 スライダーを動かすと、動画がその位置にジャンプします
-                </div>
-                {/* 姿勢認識状態の警告 */}
-                {/* @ts-ignore */}
-                {(sectionStartFrame !== null && sectionStartFrame !== undefined && sectionStartFrame >= 0 && sectionStartFrame < poseResults.length && !poseResults[sectionStartFrame]?.landmarks) && (
-                  <div style={{
-                    fontSize: '0.85rem',
-                    color: '#dc2626',
-                    marginTop: '0.75rem',
-                    padding: '10px 14px',
-                    background: '#fee2e2',
-                    borderRadius: '8px',
-                    border: '2px solid #fca5a5',
-                    fontWeight: 'bold',
-                    textAlign: 'center'
-                  }}>
-                    ⚠️ このフレームで姿勢が認識されていません<br/>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 'normal', color: '#991b1b' }}>
-                      距離計算が不正確になります。姿勢が認識されているフレームを選んでください。
-                    </span>
-                  </div>
-                )}
-              </div>
+{/* 3つのスライダーでの区間設定（コンパクト版） */}
+<div
+  style={{
+    background: '#f9fafb',
+    padding: '1rem',
+    borderRadius: '12px',
+    border: '1px solid #e5e7eb',
+  }}
+>
+  <h3
+    style={{
+      fontSize: '1rem',
+      fontWeight: 'bold',
+      marginBottom: '0.75rem',
+      color: '#374151',
+      textAlign: 'center',
+    }}
+  >
+    ✨ スライダーで区間を設定
+  </h3>
 
-              {/* フィニッシュ地点スライダー */}
-              <div style={{ marginBottom: '2rem' }}>
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  marginBottom: '0.5rem',
-                  alignItems: 'center'
-                }}>
-                  <span style={{ 
-                    fontSize: '1rem', 
-                    fontWeight: 'bold',
-                    color: '#ef4444'
-                  }}>
-                    🔴 フィニッシュ地点
-                  </span>
-                  <span style={{ 
-                    fontSize: '0.95rem',
-                    color: '#6b7280',
-                    background: '#e5e7eb',
-                    padding: '4px 12px',
-                    borderRadius: '6px',
-                    fontWeight: 'bold'
-                  }}>
-                    Frame: {sectionEndFrame ?? framesCount - 1}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(framesCount - 1, 0)}
-                  step={1}
-                  value={sectionEndFrame ?? framesCount - 1}
-                  onChange={(e) => {
-                    const newFrame = Number(e.target.value);
-                    setSectionEndFrame(newFrame);
-                    setCurrentFrame(newFrame);
-                    const pose = poseResults[newFrame];
-                    if (pose?.landmarks) {
-                      const leftHip = pose.landmarks[23];
-                      const rightHip = pose.landmarks[24];
-                      if (leftHip && rightHip) {
-                        setSavedEndHipX((leftHip.x + rightHip.x) / 2);
-                      }
-                    }
-                    setEndLineOffset(0);
-                    
-                    // フレームを表示
-                    if (displayCanvasRef.current && framesRef.current[newFrame]) {
-                      const canvas = displayCanvasRef.current;
-                      const ctx = canvas.getContext('2d');
-                      if (ctx) {
-                        const frame = framesRef.current[newFrame];
-                        canvas.width = frame.width;
-                        canvas.height = frame.height;
-                        ctx.putImageData(frame, 0, 0);
-                      }
-                    }
-                  }}
-                  className="section-slider end-slider"
-                />
-              </div>
+  {/* スタート地点スライダー（コンパクト） */}
+  <div style={{ marginBottom: '1rem' }}>
+    <span
+      style={{
+        fontSize: '0.9rem',
+        fontWeight: 'bold',
+        color: '#10b981',
+      }}
+    >
+      🟢 スタート地点
+    </span>
 
-              {/* 中間地点スライダー */}
-              <div style={{ marginBottom: '1.5rem' }}>
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  marginBottom: '0.5rem',
-                  alignItems: 'center'
-                }}>
-                  <span style={{ 
-                    fontSize: '1rem', 
-                    fontWeight: 'bold',
-                    color: '#f59e0b'
-                  }}>
-                    🟡 中間地点（任意）
-                  </span>
-                  <span style={{ 
-                    fontSize: '0.95rem',
-                    color: '#6b7280',
-                    background: '#e5e7eb',
-                    padding: '4px 12px',
-                    borderRadius: '6px',
-                    fontWeight: 'bold'
-                  }}>
-                    Frame: {sectionMidFrame ?? Math.floor(framesCount / 2)}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(framesCount - 1, 0)}
-                  step={1}
-                  value={sectionMidFrame ?? Math.floor(framesCount / 2)}
-                  onChange={(e) => {
-                    const newFrame = Number(e.target.value);
-                    setSectionMidFrame(newFrame);
-                    setCurrentFrame(newFrame);
-                    const pose = poseResults[newFrame];
-                    if (pose?.landmarks) {
-                      const leftHip = pose.landmarks[23];
-                      const rightHip = pose.landmarks[24];
-                      if (leftHip && rightHip) {
-                        setSavedMidHipX((leftHip.x + rightHip.x) / 2);
-                      }
-                    }
-                    setMidLineOffset(0);
-                  }}
-                  className="section-slider mid-slider"
-                />
-              </div>
+    <input
+      type="range"
+      min={0}
+      max={Math.max(framesCount - 1, 0)}
+      step={1}
+      value={sectionStartFrame ?? 0}
+      onChange={(e) => {
+        const newFrame = Number(e.target.value);
+        setSectionStartFrame(newFrame);
+        setCurrentFrame(newFrame);
 
-              {/* 選択範囲の視覚表示 */}
-              <div style={{
-                marginTop: '1.5rem',
-                height: '40px',
-                background: 'linear-gradient(90deg, #e5e7eb 0%, #e5e7eb 100%)',
-                borderRadius: '8px',
-                position: 'relative',
-                overflow: 'hidden'
-              }}>
-                <div style={{
-                  position: 'absolute',
-                  left: `${((sectionStartFrame ?? 0) / Math.max(framesCount - 1, 1)) * 100}%`,
-                  right: `${100 - ((sectionEndFrame ?? framesCount - 1) / Math.max(framesCount - 1, 1)) * 100}%`,
-                  height: '100%',
-                  background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'white',
-                  fontSize: '0.85rem',
-                  fontWeight: 'bold'
-                }}>
-                  選択範囲: {sectionRange.actualCount} フレーム
-                </div>
-              </div>
+        const pose = poseResults[newFrame];
+        if (pose?.landmarks) {
+          const leftHip = pose.landmarks[23];
+          const rightHip = pose.landmarks[24];
+          if (leftHip && rightHip) {
+            setSavedStartHipX((leftHip.x + rightHip.x) / 2);
+          }
+        }
+        setStartLineOffset(0);
+
+        if (displayCanvasRef.current && framesRef.current[newFrame]) {
+          const canvas = displayCanvasRef.current;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            const frame = framesRef.current[newFrame];
+            canvas.width = frame.width;
+            canvas.height = frame.height;
+            ctx.putImageData(frame, 0, 0);
+          }
+        }
+      }}
+      className="section-slider start-slider"
+      style={{
+        width: '100%',
+        height: '4px', // 細く
+        cursor: 'pointer',
+        marginTop: '4px',
+        borderRadius: '999px',
+      }}
+    />
+  </div>
+
+  {/* フィニッシュ地点スライダー（コンパクト） */}
+  <div style={{ marginBottom: '1rem' }}>
+    <span
+      style={{
+        fontSize: '0.9rem',
+        fontWeight: 'bold',
+        color: '#ef4444',
+      }}
+    >
+      🔴 フィニッシュ地点
+    </span>
+
+    <input
+      type="range"
+      min={0}
+      max={Math.max(framesCount - 1, 0)}
+      step={1}
+      value={sectionEndFrame ?? framesCount - 1}
+      onChange={(e) => {
+        const newFrame = Number(e.target.value);
+        setSectionEndFrame(newFrame);
+        setCurrentFrame(newFrame);
+
+        const pose = poseResults[newFrame];
+        if (pose?.landmarks) {
+          const leftHip = pose.landmarks[23];
+          const rightHip = pose.landmarks[24];
+          if (leftHip && rightHip) {
+            setSavedEndHipX((leftHip.x + rightHip.x) / 2);
+          }
+        }
+        setEndLineOffset(0);
+
+        if (displayCanvasRef.current && framesRef.current[newFrame]) {
+          const canvas = displayCanvasRef.current;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            const frame = framesRef.current[newFrame];
+            canvas.width = frame.width;
+            canvas.height = frame.height;
+            ctx.putImageData(frame, 0, 0);
+          }
+        }
+      }}
+      className="section-slider end-slider"
+      style={{
+        width: '100%',
+        height: '4px',
+        cursor: 'pointer',
+        marginTop: '4px',
+        borderRadius: '999px',
+      }}
+    />
+  </div>
+
+  {/* 中間地点スライダー（コンパクト） */}
+  <div style={{ marginBottom: '0.75rem' }}>
+    <span
+      style={{
+        fontSize: '0.9rem',
+        fontWeight: 'bold',
+        color: '#f59e0b',
+      }}
+    >
+      🟡 中間地点（任意）
+    </span>
+
+    <input
+      type="range"
+      min={0}
+      max={Math.max(framesCount - 1, 0)}
+      step={1}
+      value={sectionMidFrame ?? Math.floor(framesCount / 2)}
+      onChange={(e) => {
+        const newFrame = Number(e.target.value);
+        setSectionMidFrame(newFrame);
+        setCurrentFrame(newFrame);
+
+        const pose = poseResults[newFrame];
+        if (pose?.landmarks) {
+          const leftHip = pose.landmarks[23];
+          const rightHip = pose.landmarks[24];
+          if (leftHip && rightHip) {
+            setSavedMidHipX((leftHip.x + rightHip.x) / 2);
+          }
+        }
+        setMidLineOffset(0);
+
+        if (displayCanvasRef.current && framesRef.current[newFrame]) {
+          const canvas = displayCanvasRef.current;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            const frame = framesRef.current[newFrame];
+            canvas.width = frame.width;
+            canvas.height = frame.height;
+            ctx.putImageData(frame, 0, 0);
+          }
+        }
+      }}
+      className="section-slider mid-slider"
+      style={{
+        width: '100%',
+        height: '4px',
+        cursor: 'pointer',
+        marginTop: '4px',
+        borderRadius: '999px',
+      }}
+    />
+  </div>
+
+  {/* 選択範囲の表示（少しだけ残す・高さも縮小） */}
+  <div
+    style={{
+      marginTop: '0.25rem',
+      height: '24px',
+      background: 'linear-gradient(90deg, #e5e7eb 0%, #e5e7eb 100%)',
+      borderRadius: '8px',
+      position: 'relative',
+      overflow: 'hidden',
+    }}
+  >
+    <div
+      style={{
+        position: 'absolute',
+        left: `${
+          ((sectionStartFrame ?? 0) / Math.max(framesCount - 1, 1)) * 100
+        }%`,
+        right: `${
+          100 -
+          ((sectionEndFrame ?? framesCount - 1) /
+            Math.max(framesCount - 1, 1)) *
+            100
+        }%`,
+        height: '100%',
+        background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'white',
+        fontSize: '0.8rem',
+        fontWeight: 'bold',
+      }}
+    >
+      選択範囲:{' '}
+      {sectionRange.actualCount != null ? sectionRange.actualCount : 0} フレーム
+    </div>
+  </div>
+
+
 
               {/* 区間情報の表示 */}
               <div style={{
@@ -7334,43 +7306,7 @@ const [notesInput, setNotesInput] = useState<string>("");
               </div>
             </div>
 
-            {/* 実測距離の重要性を強調 */}
-            <div style={{
-              background: 'linear-gradient(135deg, #fef3c7 0%, #fef9e7 100%)',
-              border: '3px solid #f59e0b',
-              borderRadius: '12px',
-              padding: '24px',
-              margin: '24px 0'
-            }}>
-              <h3 style={{
-                fontSize: '1.2rem',
-                fontWeight: 'bold',
-                marginBottom: '16px',
-                color: '#92400e',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}>
-                ⚠️ 重要：実測距離の入力が必須です
-              </h3>
-              <div style={{
-                fontSize: '0.95rem',
-                color: '#78350f',
-                padding: '16px',
-                background: 'rgba(255,255,255,0.9)',
-                borderRadius: '8px',
-                lineHeight: '1.8'
-              }}>
-                <strong>📏 ストライド・速度を正確に計算するには：</strong><br/>
-                <br/>
-                1️⃣ <strong>スタート位置からフィニッシュ位置までの実測距離</strong>をメジャーで測定<br/>
-                2️⃣ 測定した距離（メートル）を入力<br/>
-                3️⃣ システムが各ステップの腰の移動比率から、個別のストライドを自動計算<br/>
-                <br/>
-                💡 <strong>例：</strong> 10m区間の場合 → 「10」と入力<br/>
-                ✅ 各ステップが個別に計算されます（例: 1.8m, 2.1m, 1.9m...）
-              </div>
-            </div>
+           
 
             <div className="wizard-actions">
               <button className="btn-ghost" onClick={() => setWizardStep(1)}>
@@ -7399,443 +7335,336 @@ const [notesInput, setNotesInput] = useState<string>("");
         );
 
       case 6:
-        return (
-          <div className={`wizard-content ${calibrationType ? 'step-6' : ''}`}>
-            <div className="wizard-step-header">
-              <h2 className="wizard-step-title">ステップ 6: {calibrationType ? '接地・離地マーク' : '検出モード選択'}</h2>
-              
-              {/* モード未選択時：検出モード選択画面 */}
-              {!calibrationType ? (
-                <div style={{
-                  background: '#f0f9ff',
-                  padding: '24px',
-                  borderRadius: '12px',
-                  marginTop: '16px',
-                  border: '2px solid #3b82f6'
-                }}>
-                  <h3 style={{
-                    fontSize: '1.2rem',
-                    fontWeight: 'bold',
-                    marginBottom: '16px',
-                    color: '#1e40af'
-                  }}>
-                    📊 検出モードを選択してください
-                  </h3>
-                  
-                  {/* 推奨モードの説明 */}
-                  <div style={{
-                    background: '#d1fae5',
-                    padding: '14px 18px',
-                    borderRadius: '10px',
-                    marginBottom: '16px',
-                    border: '2px solid #10b981'
-                  }}>
-                    <p style={{ fontWeight: 'bold', color: '#065f46', margin: 0, fontSize: '1rem' }}>
-                      ✅ 推奨：手動マーク設定
-                    </p>
-                    <p style={{ fontSize: '0.9rem', color: '#047857', margin: '6px 0 0 0', lineHeight: '1.6' }}>
-                      ブレーキ率・キック率の解析には「<strong>手動マーク設定</strong>」が必須です。<br/>
-                      半自動設定では、ピッチとストライドのみ解析できます。
-                    </p>
-                  </div>
+      return (
+        <div className={`wizard-content ${calibrationType ? 'step-6' : ''}`}>
+          <div className="wizard-step-header">
+            <h2 className="wizard-step-title">ステップ 6: 接地・離地マーク</h2>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {/* モード1: 手動マーク設定（接地・離地とも手動） */}
-                    <button
-                      onClick={() => {
-                        setDetectionMode(3);
-                        setCalibrationType(3);
-                        setCalibrationMode(2);
-                        setCalibrationData({ contactFrame: null, toeOffFrame: null });
-                        // スタートフレームに移動
-                        if (sectionStartFrame !== null) {
-                          setCurrentFrame(sectionStartFrame);
-                        }
-                      }}
-                      style={{
-                        padding: '20px',
-                        borderRadius: '12px',
-                        border: '3px solid #10b981',
-                        background: 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)',
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        fontWeight: 'bold',
-                        boxShadow: '0 4px 6px rgba(16, 185, 129, 0.2)'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                        e.currentTarget.style.boxShadow = '0 6px 12px rgba(16, 185, 129, 0.3)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = 'translateY(0)';
-                        e.currentTarget.style.boxShadow = '0 4px 6px rgba(16, 185, 129, 0.2)';
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '1.8rem' }}>✋</span>
-                        <span style={{ fontSize: '1.15rem', color: '#065f46' }}>
-                          1. 手動マーク設定【推奨】
-                        </span>
-                      </div>
-                      <div style={{ fontSize: '0.9rem', color: '#047857', marginLeft: '48px' }}>
-                        接地と離地を全て手動でマーク<br/>
-                        ✅ 最高精度の解析（接地時間・ブレーキ率・キック率・ピッチ・ストライド）<br/>
-                        ✅ 1歩目から自由に修正可能
-                      </div>
-                    </button>
-
-                    {/* モード2: 半自動設定（接地のみ手動・離地は自動） */}
-                    <button
-                      onClick={() => {
-                        setDetectionMode(2);
-                        setCalibrationType(2);
-                        setCalibrationMode(2);
-                        setCalibrationData({ contactFrame: null, toeOffFrame: null });
-                        // スタートフレームに移動
-                        if (sectionStartFrame !== null) {
-                          setCurrentFrame(sectionStartFrame);
-                        }
-                      }}
-                      style={{
-                        padding: '16px',
-                        borderRadius: '10px',
-                        border: '2px solid #3b82f6',
-                        background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                        e.currentTarget.style.boxShadow = '0 4px 8px rgba(59, 130, 246, 0.2)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = 'translateY(0)';
-                        e.currentTarget.style.boxShadow = 'none';
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '1.5rem' }}>🎯</span>
-                        <span style={{ fontSize: '1.05rem', fontWeight: 'bold', color: '#1e40af' }}>
-                          2. 半自動設定
-                        </span>
-                      </div>
-                      <div style={{ fontSize: '0.85rem', color: '#1e3a8a', marginLeft: '44px' }}>
-                        接地のみ手動マーク、離地は自動検出<br/>
-                        解析内容：ピッチとストライドのみ<br/>
-                        ⚠️ 接地時間・ブレーキ率・キック率は非対応
-                      </div>
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                /* モード選択後：マーク画面 */
-                <div style={{
-                  background: calibrationType === 3 ? '#f0fdf4' : '#eff6ff',
-                  padding: '16px',
-                  borderRadius: '12px',
-                  marginTop: '16px',
-                  border: calibrationType === 3 ? '2px solid #10b981' : '2px solid #3b82f6'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <div style={{ fontWeight: 'bold', color: calibrationType === 3 ? '#065f46' : '#1e40af' }}>
-                      {calibrationType === 3 ? '✋ 手動マーク設定' : '🎯 半自動設定'}
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (window.confirm('検出モードを変更しますか？\n（マーカーはクリアされます）')) {
-                          handleClearMarkers();
-                          setDetectionMode(null);
-                          setCalibrationType(null);
-                          setCalibrationMode(0);
-                        }
-                      }}
-                      style={{
-                        padding: '6px 12px',
-                        fontSize: '0.85rem',
-                        background: '#f3f4f6',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      🔄 モード変更
-                    </button>
-                  </div>
-                  <div style={{ fontSize: '0.9rem', color: '#4b5563', lineHeight: '1.6' }}>
-                    {calibrationType === 3 ? (
-                      isMobile ? (
-                        <>
-                          📱 画面下の<strong>「接地 / 離地マーク」ボタン</strong>をタップして、<strong>接地</strong>→<strong>離地</strong>→<strong>接地</strong>→... の順にマーク<br/>
-                          <span style={{ color: '#059669' }}>💡 マーカー一覧から1歩目を含めて自由に修正できます</span>
-                        </>
-                      ) : (
-                        <>
-                          <kbd style={{ background: '#e5e7eb', padding: '2px 6px', borderRadius: '4px' }}>Space</kbd>キーで<strong>接地</strong>→<strong>離地</strong>→<strong>接地</strong>→... の順にマーク<br/>
-                          <span style={{ color: '#059669' }}>💡 下のマーカー一覧から1歩目含めすべて修正可能</span>
-                        </>
-                      )
-                    ) : (
-                      isMobile ? (
-                        <>
-                          📱 画面下の<strong>「接地マーク」ボタン</strong>をタップすると<strong>接地</strong>を登録（離地は自動検出）<br/>
-                          <span style={{ color: '#3b82f6' }}>💡 マーカー一覧から修正できます</span>
-                        </>
-                      ) : (
-                        <>
-                          <kbd style={{ background: '#e5e7eb', padding: '2px 6px', borderRadius: '4px' }}>Space</kbd>キーで<strong>接地</strong>をマーク（離地は自動検出）<br/>
-                          <span style={{ color: '#3b82f6' }}>💡 下のマーカー一覧から修正可能</span>
-                        </>
-                      )
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* モード選択後のみマーク関連UIを表示 */}
-            {calibrationType && (
-            <>
-            <div className="marker-controls">
-              <button
-                className={
-                  footZoomEnabled ? "toggle-btn active" : "toggle-btn"
-                }
-                onClick={() => setFootZoomEnabled((v) => !v)}
-              >
-                足元拡大 {footZoomEnabled ? "ON" : "OFF"}
-              </button>
-              {footZoomEnabled && (
-                <label className="zoom-control">
-                  倍率:
-                  <input
-                    type="range"
-                    min={1}
-                    max={5}
-                    step={0.5}
-                    value={zoomScale}
-                    onChange={(e) => setZoomScale(Number(e.target.value))}
-                  />
-                  {zoomScale.toFixed(1)}x
-                </label>
-              )}
-              <button
-                className={showSkeleton ? "toggle-btn active" : "toggle-btn"}
-                onClick={() => setShowSkeleton((v) => !v)}
-                disabled={!poseResults.length}
-              >
-                スケルトン {showSkeleton ? "ON" : "OFF"}
-              </button>
-              <button className="btn-ghost-small" onClick={handleClearMarkers}>
-                マーカークリア
-              </button>
-            </div>
-
-            <div className="canvas-area" style={{
-              position: 'relative',
-              width: '100%',
-              maxWidth: '800px',
-              margin: '0 auto',
-              overflow: 'hidden',
-              backgroundColor: '#000',
-              borderRadius: '8px'
-            }}>
-              <canvas 
-                ref={displayCanvasRef} 
-                className="preview-canvas"
+            {/* スマホ・PC共通：半自動設定の説明カード */}
+            <div
+              style={{
+                background: '#eff6ff',
+                padding: '20px 16px',
+                borderRadius: '12px',
+                marginTop: '12px',
+                border: '2px solid #3b82f6',
+              }}
+            >
+              <h3
                 style={{
-                  display: 'block',
-                  width: '100%',
-                  height: 'auto'
+                  fontSize: '1.1rem',
+                  fontWeight: 'bold',
+                  marginBottom: '10px',
+                  color: '#1d4ed8',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
                 }}
-              />
-            </div>
-
-            {/* モバイル用：フレーム移動ボタン */}
-            {isMobile && (
-            <div className="mobile-marking-controls">
-              <div className="mobile-frame-nav">
-                <button 
-                  className="btn-nav-arrow" 
-                  onClick={() => changeFrame(-10)} 
-                  disabled={!ready}
-                >
-                  ◀◀ -10
-                </button>
-                <button 
-                  className="btn-nav-arrow" 
-                  onClick={() => changeFrame(-1)} 
-                  disabled={!ready}
-                >
-                  ◀ -1
-                </button>
-                <button 
-                  className="btn-nav-arrow" 
-                  onClick={() => changeFrame(1)} 
-                  disabled={!ready}
-                >
-                  +1 ▶
-                </button>
-                <button 
-                  className="btn-nav-arrow" 
-                  onClick={() => changeFrame(10)} 
-                  disabled={!ready}
-                >
-                  +10 ▶▶
-                </button>
-              </div>
-            </div>
-            )}
-
-            {/* マーカー表示エリア - コントロールの下に配置 */}
-            {isMobile && (
-            <div className="mobile-marker-display">
-              {contactFrames.map((markerFrame, index) => {
-                if (markerFrame === currentFrame) {
-                  const isContact = index % 2 === 0;
-                  const color = isContact ? "#10b981" : "#ef4444";
-                  const label = isContact ? "接地" : "離地";
-                  const isAuto = !isContact && calibrationType === 2; // 半自動設定では離地が自動
-                  
-                  return (
-                    <div 
-                      key={index}
-                      className="marker-indicator"
-                      style={{
-                        backgroundColor: color,
-                        color: "white",
-                        padding: "20px",
-                        borderRadius: "12px",
-                        fontSize: "28px",
-                        fontWeight: "bold",
-                        textAlign: "center",
-                        boxShadow: "0 4px 8px rgba(0,0,0,0.3)"
-                      }}
-                    >
-                      {label} #{Math.floor(index / 2) + 1}
-                      {isAuto && <div style={{ fontSize: '14px', marginTop: '4px' }}>（自動判定）</div>}
-                    </div>
-                  );
-                }
-                return null;
-              })}
-              {contactFrames.every(f => f !== currentFrame) && (
-                <button 
-                  className="btn-mark-contact-large"
-                  onClick={() => {
-                    if (!ready) return;
-                    
-                    // 検出モードに応じてマーク（1歩目から直接マーク可能）
-                    if (calibrationType === 2) {
-                      // 半自動設定: 接地のみ手動、離地は自動
-                      const newContactFrames = [...manualContactFrames, currentFrame];
-                      setManualContactFrames(newContactFrames);
-                      console.log(`📍 接地マーク: フレーム ${currentFrame}`);
-                      
-                      const toeOffFrame = detectToeOffFrame(currentFrame);
-                      if (toeOffFrame !== null) {
-                        setAutoToeOffFrames([...autoToeOffFrames, toeOffFrame]);
-                      } else {
-                        console.warn(`⚠️ 離地が検出できませんでした（接地: ${currentFrame}）`);
-                      }
-                    } else if (calibrationType === 3) {
-                      // 手動マーク設定: すべて手動
-                      if (manualContactFrames.length === manualToeOffFrames.length) {
-                        setManualContactFrames([...manualContactFrames, currentFrame]);
-                        console.log(`📍 接地マーク: フレーム ${currentFrame}`);
-                      } else {
-                        const lastContact = manualContactFrames[manualContactFrames.length - 1];
-                        if (currentFrame <= lastContact) {
-                          alert('離地フレームは接地フレームより後にしてください。');
-                          return;
-                        }
-                        setManualToeOffFrames([...manualToeOffFrames, currentFrame]);
-                        console.log(`📍 離地マーク: フレーム ${currentFrame}`);
-                      }
-                    }
-                  }}
-                  disabled={!ready}
-                  style={{
-                    width: "100%",
-                    padding: "20px",
-                    fontSize: "18px",
-                    fontWeight: "bold",
-                    background: calibrationType === 3 && manualContactFrames.length !== manualToeOffFrames.length
-                      ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
-                      : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "12px",
-                    cursor: "pointer",
-                    boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
-                    touchAction: "manipulation"
-                  }}
-                >
-                  {calibrationType === 2 
-                    ? '📍 接地マーク（離地自動）'
-                    : (manualContactFrames.length === manualToeOffFrames.length ? '📍 接地マーク' : '📍 離地マーク')}
-                </button>
-              )}
-            </div>
-            )}
-            
-            {/* PC用：キーボード操作の説明 */}
-            {!isMobile && (
-              <div style={{
-                background: '#f3f4f6',
-                padding: '16px',
-                borderRadius: '8px',
-                margin: '16px 0',
-                fontSize: '0.9rem'
-              }}>
-                <h4 style={{ margin: '0 0 8px 0', fontWeight: 'bold' }}>⌨️ キーボード操作</h4>
-                <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                  <li><strong>Space</strong>: {calibrationType === 2 
-                    ? '接地マーク（離地自動）'
-                    : (manualContactFrames.length === manualToeOffFrames.length ? '接地マーク' : '離地マーク')}</li>
-                  <li><strong>← / →</strong>: 1フレーム移動</li>
-                  <li><strong>↑ / ↓</strong>: 10フレーム移動</li>
-                </ul>
-              </div>
-            )}
-
-            {/* 表示オプションボタン - マーカーの下に配置 */}
-            {isMobile && (
-            <div className="mobile-view-options">
-              <button
-                className={footZoomEnabled ? "toggle-btn active" : "toggle-btn"}
-                onClick={() => setFootZoomEnabled((v) => !v)}
               >
-                足元拡大 {footZoomEnabled ? "ON" : "OFF"}
-              </button>
-              {footZoomEnabled && (
-                <div className="zoom-slider-compact">
-                  <span style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}>倍率:</span>
-                  <input
-                    type="range"
-                    min={1}
-                    max={5}
-                    step={0.5}
-                    value={zoomScale}
-                    onChange={(e) => setZoomScale(Number(e.target.value))}
-                    style={{ flex: 1, minWidth: '80px' }}
-                  />
-                  <span style={{ fontSize: '0.85rem', fontWeight: 'bold', minWidth: '35px', textAlign: 'center' }}>
-                    {zoomScale.toFixed(1)}x
-                  </span>
+                🎯 半自動設定
+              </h3>
+              <p
+                style={{
+                  margin: '0 0 4px 0',
+                  fontSize: '0.95rem',
+                  lineHeight: 1.6,
+                }}
+              >
+                📱 画面下の「<strong>接地マーク</strong>」ボタンをタップすると
+                <strong>接地</strong>を登録（離地は自動検出）します。
+              </p>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: '0.9rem',
+                  color: '#2563eb',
+                }}
+              >
+                💡 下の<strong>マーカー一覧</strong>から微調整ができます。
+              </p>
+            </div>
+          </div>
+
+          {/* モードが有効なときだけ、以下の UI を表示 */}
+          {calibrationType && (
+            <>
+              {/* PC 用：キャンバス上の表示オプション */}
+              {!isMobile && (
+                <div className="marker-controls">
+                  <button
+                    className={
+                      footZoomEnabled ? 'toggle-btn active' : 'toggle-btn'
+                    }
+                    onClick={() => setFootZoomEnabled(v => !v)}
+                  >
+                    足元拡大 {footZoomEnabled ? 'ON' : 'OFF'}
+                  </button>
+                  {footZoomEnabled && (
+                    <label className="zoom-control">
+                      倍率:
+                      <input
+                        type="range"
+                        min={1}
+                        max={5}
+                        step={0.5}
+                        value={zoomScale}
+                        onChange={e =>
+                          setZoomScale(Number(e.currentTarget.value))
+                        }
+                      />
+                      {zoomScale.toFixed(1)}x
+                    </label>
+                  )}
+                  <button
+                    className={showSkeleton ? 'toggle-btn active' : 'toggle-btn'}
+                    onClick={() => setShowSkeleton(v => !v)}
+                    disabled={!poseResults.length}
+                  >
+                    スケルトン {showSkeleton ? 'ON' : 'OFF'}
+                  </button>
+                  <button
+                    className="btn-ghost-small"
+                    onClick={handleClearMarkers}
+                  >
+                    マーカークリア
+                  </button>
                 </div>
               )}
-              <button
-                className={showSkeleton ? "toggle-btn active" : "toggle-btn"}
-                onClick={() => setShowSkeleton((v) => !v)}
-                disabled={!poseResults.length}
-              >
-                スケルトン {showSkeleton ? "ON" : "OFF"}
-              </button>
-            </div>
-            )}
 
+              {/* 共通：キャンバス */}
+              <div
+                className="canvas-area"
+                style={{
+                  position: 'relative',
+                  width: '100%',
+                  maxWidth: '800px',
+                  margin: '0 auto',
+                  overflow: 'hidden',
+                  backgroundColor: '#000',
+                  borderRadius: '8px',
+                }}
+              >
+                <canvas
+                  ref={displayCanvasRef}
+                  className="preview-canvas"
+                  style={{ display: 'block', width: '100%', height: 'auto' }}
+                />
+              </div>
+
+              {/* モバイル用：フレーム移動 + 接地マーク（1つのブロック） */}
+              {isMobile && calibrationType && (
+                <div
+                  className="mobile-marking-controls"
+                  style={{
+                    marginTop: 12,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                  }}
+                >
+                  {/* フレーム移動ボタン */}
+                  <div className="mobile-frame-nav">
+                    <button
+                      className="btn-nav-arrow"
+                      onClick={() => changeFrame(-10)}
+                      disabled={!ready}
+                    >
+                      ◀◀ -10
+                    </button>
+                    <button
+                      className="btn-nav-arrow"
+                      onClick={() => changeFrame(-1)}
+                      disabled={!ready}
+                    >
+                      ◀ -1
+                    </button>
+                    <button
+                      className="btn-nav-arrow"
+                      onClick={() => changeFrame(1)}
+                      disabled={!ready}
+                    >
+                      +1 ▶
+                    </button>
+                    <button
+                      className="btn-nav-arrow"
+                      onClick={() => changeFrame(10)}
+                      disabled={!ready}
+                    >
+                      +10 ▶▶
+                    </button>
+                  </div>
+
+                  {/* 接地マークボタン（フレームにマークが無いときだけ表示） */}
+                  {contactFrames.every((f) => f !== currentFrame) && (
+                    <button
+                      className="btn-mark-contact-large"
+                      onClick={() => {
+                        if (!ready) return;
+
+                        // 検出モードに応じてマーク（1歩目から直接マーク可能）
+                        if (calibrationType === 2) {
+                          // 半自動設定: 接地のみ手動、離地は自動
+                          const newContactFrames = [
+                            ...manualContactFrames,
+                            currentFrame,
+                          ];
+                          setManualContactFrames(newContactFrames);
+                          console.log(
+                            `📍 接地マーク: フレーム ${currentFrame}`,
+                          );
+
+                          const toeOffFrame =
+                            detectToeOffFrame(currentFrame);
+                          if (toeOffFrame !== null) {
+                            setAutoToeOffFrames([
+                              ...autoToeOffFrames,
+                              toeOffFrame,
+                            ]);
+                          } else {
+                            console.warn(
+                              `⚠️ 離地が検出できませんでした（接地: ${currentFrame}）`,
+                            );
+                          }
+                        } else if (calibrationType === 3) {
+                          // 手動マーク設定: すべて手動
+                          if (
+                            manualContactFrames.length ===
+                            manualToeOffFrames.length
+                          ) {
+                            setManualContactFrames([
+                              ...manualContactFrames,
+                              currentFrame,
+                            ]);
+                            console.log(
+                              `📍 接地マーク: フレーム ${currentFrame}`,
+                            );
+                          } else {
+                            const lastContact =
+                              manualContactFrames[
+                                manualContactFrames.length - 1
+                              ];
+                            if (currentFrame <= lastContact) {
+                              alert(
+                                "離地フレームは接地フレームより後にしてください。",
+                              );
+                              return;
+                            }
+                            setManualToeOffFrames([
+                              ...manualToeOffFrames,
+                              currentFrame,
+                            ]);
+                            console.log(
+                              `📍 離地マーク: フレーム ${currentFrame}`,
+                            );
+                          }
+                        }
+                      }}
+                      disabled={!ready}
+                      style={{
+                        width: "100%",
+                        padding: 18,
+                        fontSize: 18,
+                        fontWeight: "bold",
+                        background:
+                          calibrationType === 3 &&
+                          manualContactFrames.length !==
+                            manualToeOffFrames.length
+                            ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
+                            : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                        color: "white",
+                        border: "none",
+                        borderRadius: 12,
+                        cursor: "pointer",
+                        boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
+                        touchAction: "manipulation",
+                      }}
+                    >
+                      {calibrationType === 2
+                        ? "📍 接地マーク（離地自動）"
+                        : manualContactFrames.length ===
+                          manualToeOffFrames.length
+                        ? "📍 接地マーク"
+                        : "📍 離地マーク"}
+                    </button>
+                  )}
+                </div>
+              )}
+
+
+
+              {/* PC 用：キーボード操作説明 */}
+              {!isMobile && (
+                <div
+                  style={{
+                    background: '#f3f4f6',
+                    padding: '16px',
+                    borderRadius: '8px',
+                    margin: '16px 0',
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  <h4
+                    style={{
+                      margin: '0 0 8px 0',
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    ⌨️ キーボード操作
+                  </h4>
+                  <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                    <li>
+                      <strong>Space</strong>
+                      {calibrationType === 2
+                        ? '：接地マーク（離地自動）'
+                        : manualContactFrames.length ===
+                          manualToeOffFrames.length
+                        ? '：接地マーク'
+                        : '：離地マーク'}
+                    </li>
+                    <li>
+                      <strong>← / →</strong>: 1フレーム移動
+                    </li>
+                    <li>
+                      <strong>↑ / ↓</strong>: 10フレーム移動
+                    </li>
+                  </ul>
+                </div>
+              )}
+
+              {/* モバイル：足元拡大／スケルトン（スライダー無し） */}
+              {isMobile && (
+                <div className="mobile-view-options">
+                  <button
+                    className={
+                      footZoomEnabled ? 'toggle-btn active' : 'toggle-btn'
+                    }
+                    onClick={() =>
+                      setFootZoomEnabled(prev => {
+                        const next = !prev;
+                        if (next) {
+                          // スマホは ON にしたら自動的に最大倍率
+                          setZoomScale(4.5);
+                        }
+                        return next;
+                      })
+                    }
+                  >
+                    足元拡大 {footZoomEnabled ? 'ON' : 'OFF'}
+                  </button>
+                  <button
+                    className={
+                      showSkeleton ? 'toggle-btn active' : 'toggle-btn'
+                    }
+                    onClick={() => setShowSkeleton(v => !v)}
+                    disabled={!poseResults.length}
+                  >
+                    スケルトン {showSkeleton ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+              )}
+
+           {/* PC 用：フレームスライダー（モバイルでは非表示） */}
+          {!isMobile && (
             <div className="frame-control">
               <div className="frame-info">
                 フレーム: {currentLabel} / {maxLabel} | マーカー数:{" "}
@@ -7866,412 +7695,165 @@ const [notesInput, setNotesInput] = useState<string>("");
                 </button>
               </div>
             </div>
+          )}
 
-{/* PC用：マーカーリスト表示 */}
-            {!isMobile && contactFrames.length > 0 && (
-              <div style={{
-                background: '#f9fafb',
-                padding: '16px',
-                borderRadius: '8px',
-                margin: '16px 0',
-                maxHeight: '500px',
-                overflowY: 'auto'
-              }}>
-                <h4 style={{ margin: '0 0 12px 0', fontWeight: 'bold' }}>📍 マーカー一覧（全 {Math.floor(contactFrames.length / 2)} ステップ）</h4>
-                <div style={{ display: 'grid', gap: '8px' }}>
-                  {Array.from({ length: Math.floor(contactFrames.length / 2) }, (_, i) => {
-                    const contactFrame = contactFrames[i * 2];
-                    const toeOffFrame = contactFrames[i * 2 + 1];
-                    const isAuto = calibrationType === 2; // 半自動設定では離地が自動検出
-                    
-                    return (
-                      <div key={i} style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px',
-                        padding: '12px',
-                        background: 'white',
-                        borderRadius: '8px',
-                        fontSize: '0.9rem',
-                        border: currentFrame === contactFrame || currentFrame === toeOffFrame ? '2px solid #3b82f6' : '1px solid #e5e7eb'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <strong>ステップ {i + 1}:</strong>
-                          <span style={{ color: '#10b981', fontWeight: 'bold' }}>
-                            🟢 接地 {contactFrame}
-                          </span>
-                          <span>→</span>
-                          <span style={{ color: '#ef4444', fontWeight: 'bold' }}>
-                            🔴 離地 {toeOffFrame}
-                            {isAuto && <span style={{ fontSize: '0.75rem', marginLeft: '4px', color: '#6b7280' }}>(自動)</span>}
-                          </span>
-                        </div>
-                        
-                        {/* 接地フレームの微調整ボタン（全ステップで表示） */}
-                        {true && (
-                          <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            paddingTop: '8px',
-                            borderTop: '1px solid #e5e7eb'
-                          }}>
-                            <span style={{ fontSize: '0.8rem', color: '#6b7280', minWidth: '80px' }}>接地を微調整:</span>
-                            <button
-                              onClick={() => {
-                                const newManual = [...manualContactFrames];
-                                const newAuto = [...autoToeOffFrames];
-                                const newManualToeOff = [...manualToeOffFrames];
-                                // 現在の値を取得（更新されている可能性がある）
-                                const currentContactFrame = newManual[i];
-                                if (currentContactFrame === undefined) {
-                                  console.error(`エラー: ステップ ${i + 1} の接地フレームが存在しません`);
-                                  return;
-                                }
-                                // 前ステップの離地フレームを正しく取得
-                                const prevToeOff = i > 0 ? (
-                                  calibrationType === 3 ? newManualToeOff[i - 1] : newAuto[i - 1]
-                                ) : 0;
-                                // -5: 5フレーム戻す（ただし前ステップの離地+1より前には戻れない）
-                                const targetFrame = currentContactFrame - 5;
-                                const minLimit = prevToeOff > 0 ? prevToeOff + 1 : 0;
-                                const adjustedFrame = Math.max(minLimit, targetFrame);
-                                newManual[i] = adjustedFrame;
-                                setManualContactFrames(newManual);
-                                setCurrentFrame(adjustedFrame);
-                                console.log(`-5ボタン: ステップ ${i + 1} の接地を ${currentContactFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最小制限=${minLimit}, prevToeOff=${prevToeOff}）`);
-                              }}
-                              style={{
-                                padding: '4px 12px',
-                                fontSize: '0.8rem',
-                                borderRadius: '4px',
-                                border: '1px solid #d1d5db',
-                                background: 'white',
-                                cursor: 'pointer',
-                                fontWeight: 'bold'
-                              }}
-                            >
-                              -5
-                            </button>
-                            <button
-                              onClick={() => {
-                                const newManual = [...manualContactFrames];
-                                const newAuto = [...autoToeOffFrames];
-                                const newManualToeOff = [...manualToeOffFrames];
-                                // 現在の値を取得（更新されている可能性がある）
-                                const currentContactFrame = newManual[i];
-                                if (currentContactFrame === undefined) return;
-                                // 前ステップの離地フレームを正しく取得
-                                const prevToeOff = i > 0 ? (
-                                  calibrationType === 3 ? newManualToeOff[i - 1] : newAuto[i - 1]
-                                ) : 0;
-                                // -1: 1フレーム戻す（ただし前ステップの離地+1より前には戻れない）
-                                const targetFrame = currentContactFrame - 1;
-                                const minLimit = prevToeOff > 0 ? prevToeOff + 1 : 0;
-                                const adjustedFrame = Math.max(minLimit, targetFrame);
-                                newManual[i] = adjustedFrame;
-                                setManualContactFrames(newManual);
-                                setCurrentFrame(adjustedFrame);
-                                console.log(`-1ボタン: ステップ ${i + 1} の接地を ${currentContactFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最小制限=${minLimit}）`);
-                              }}
-                              style={{
-                                padding: '4px 12px',
-                                fontSize: '0.8rem',
-                                borderRadius: '4px',
-                                border: '1px solid #d1d5db',
-                                background: 'white',
-                                cursor: 'pointer',
-                                fontWeight: 'bold'
-                              }}
-                            >
-                              -1
-                            </button>
-                            <button
-                              onClick={() => {
-                                const newManual = [...manualContactFrames];
-                                const newAuto = [...autoToeOffFrames];
-                                const newManualToeOff = [...manualToeOffFrames];
-                                // 現在の値を取得（更新されている可能性がある）
-                                const currentContactFrame = newManual[i];
-                                // 離地フレームを正しく取得
-                                const currentToeOffFrame = calibrationType === 3 ? newManualToeOff[i] : newAuto[i];
-                                if (currentContactFrame === undefined || currentToeOffFrame === undefined) return;
-                                // +1: 1フレーム進める（ただし離地-1より後には進めない）
-                                const targetFrame = currentContactFrame + 1;
-                                const maxLimit = currentToeOffFrame > 0 ? currentToeOffFrame - 1 : framesCount - 1;
-                                const adjustedFrame = Math.min(maxLimit, targetFrame);
-                                newManual[i] = adjustedFrame;
-                                setManualContactFrames(newManual);
-                                setCurrentFrame(adjustedFrame);
-                                console.log(`+1ボタン: ステップ ${i + 1} の接地を ${currentContactFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最大制限=${maxLimit}, toeOff=${currentToeOffFrame}）`);
-                              }}
-                              style={{
-                                padding: '4px 12px',
-                                fontSize: '0.8rem',
-                                borderRadius: '4px',
-                                border: '1px solid #d1d5db',
-                                background: 'white',
-                                cursor: 'pointer',
-                                fontWeight: 'bold'
-                              }}
-                            >
-                              +1
-                            </button>
-                            <button
-                              onClick={() => {
-                                const newManual = [...manualContactFrames];
-                                const newAuto = [...autoToeOffFrames];
-                                const newManualToeOff = [...manualToeOffFrames];
-                                // 現在の値を取得（更新されている可能性がある）
-                                const currentContactFrame = newManual[i];
-                                // 離地フレームを正しく取得
-                                const currentToeOffFrame = calibrationType === 3 ? newManualToeOff[i] : newAuto[i];
-                                if (currentContactFrame === undefined || currentToeOffFrame === undefined) return;
-                                // +5: 5フレーム進める（ただし離地-1より後には進めない）
-                                const targetFrame = currentContactFrame + 5;
-                                const maxLimit = currentToeOffFrame > 0 ? currentToeOffFrame - 1 : framesCount - 1;
-                                const adjustedFrame = Math.min(maxLimit, targetFrame);
-                                newManual[i] = adjustedFrame;
-                                setManualContactFrames(newManual);
-                                setCurrentFrame(adjustedFrame);
-                                console.log(`+5ボタン: ステップ ${i + 1} の接地を ${currentContactFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最大制限=${maxLimit}, toeOff=${currentToeOffFrame}）`);
-                              }}
-                              style={{
-                                padding: '4px 12px',
-                                fontSize: '0.8rem',
-                                borderRadius: '4px',
-                                border: '1px solid #d1d5db',
-                                background: 'white',
-                                cursor: 'pointer',
-                                fontWeight: 'bold'
-                              }}
-                            >
-                              +5
-                            </button>
-                            <button
-                              onClick={() => {
-                                setCurrentFrame(contactFrame);
-                              }}
-                              style={{
-                                padding: '4px 12px',
-                                fontSize: '0.8rem',
-                                borderRadius: '4px',
-                                border: '1px solid #10b981',
-                                background: '#f0fdf4',
-                                color: '#10b981',
-                                cursor: 'pointer',
-                                fontWeight: 'bold',
-                                marginLeft: '8px'
-                              }}
-                            >
-                              📍 表示
-                            </button>
-                          </div>
-                        )}
-                        
-                        {/* 離地フレームの微調整ボタン */}
-                        {isAuto && (
-                          <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            paddingTop: '8px',
-                            borderTop: '1px solid #e5e7eb'
-                          }}>
-                            <span style={{ fontSize: '0.8rem', color: '#6b7280', minWidth: '80px' }}>離地を微調整:</span>
-                            <button
-                              onClick={() => {
-                                // このステップ（i）の離地フレームのみを修正
-                                const newAuto = [...autoToeOffFrames];
-                                const newManual = [...manualContactFrames];
-                                // 現在の値を正しく取得
-                                const currentToeOffFrame = newAuto[i];
-                                const currentContactFrame = newManual[i];
-                                if (currentToeOffFrame === undefined || currentContactFrame === undefined) {
-                                  console.error(`エラー: ステップ ${i + 1} のフレームが存在しません (toe=${currentToeOffFrame}, contact=${currentContactFrame})`);
-                                  return;
-                                }
-                                // -5: 5フレーム戻す（ただし接地+1より前には戻れない）
-                                const targetFrame = currentToeOffFrame - 5;
-                                const minLimit = currentContactFrame + 1;
-                                const adjustedFrame = Math.max(minLimit, targetFrame);
-                                newAuto[i] = adjustedFrame;
-                                setAutoToeOffFrames(newAuto);
-                                setCurrentFrame(adjustedFrame);
-                                console.log(`-5ボタン: ステップ ${i + 1} の離地を ${currentToeOffFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最小制限=${minLimit}, contact=${currentContactFrame}）`);
-                              }}
-                              style={{
-                                padding: '4px 12px',
-                                fontSize: '0.8rem',
-                                borderRadius: '4px',
-                                border: '1px solid #d1d5db',
-                                background: 'white',
-                                cursor: 'pointer',
-                                fontWeight: 'bold'
-                              }}
-                            >
-                              -5
-                            </button>
-                            <button
-                              onClick={() => {
-                                const newAuto = [...autoToeOffFrames];
-                                const newManual = [...manualContactFrames];
-                                // 現在の値を正しく取得
-                                const currentToeOffFrame = newAuto[i];
-                                // 接地フレームも最新値を取得
-                                const currentContactFrame = newManual[i];
-                                // -1: 1フレーム戻す（ただし接地+1より前には戻れない）
-                                const targetFrame = currentToeOffFrame - 1;
-                                const minLimit = currentContactFrame + 1;
-                                const adjustedFrame = Math.max(minLimit, targetFrame);
-                                newAuto[i] = adjustedFrame;
-                                setAutoToeOffFrames(newAuto);
-                                setCurrentFrame(adjustedFrame);
-                                console.log(`-1ボタン: ステップ ${i + 1} の離地を ${currentToeOffFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, 最小制限=${minLimit}, contact=${currentContactFrame}）`);
-                              }}
-                              style={{
-                                padding: '4px 12px',
-                                fontSize: '0.8rem',
-                                borderRadius: '4px',
-                                border: '1px solid #d1d5db',
-                                background: 'white',
-                                cursor: 'pointer',
-                                fontWeight: 'bold'
-                              }}
-                            >
-                              -1
-                            </button>
-                            <button
-                              onClick={() => {
-                                const newAuto = [...autoToeOffFrames];
-                                const newManual = [...manualContactFrames];
-                                // 現在の値を正しく取得
-                                const currentToeOffFrame = newAuto[i];
-                                const currentContactFrame = newManual[i];
-                                // +1: 1フレーム進める（ただし次の接地-1を超えない）
-                                const targetFrame = currentToeOffFrame + 1;
-                                const nextContact = i + 1 < newManual.length ? newManual[i + 1] : framesCount;
-                                const adjustedFrame = Math.min(nextContact - 1, targetFrame, framesCount - 1);
-                                newAuto[i] = adjustedFrame;
-                                setAutoToeOffFrames(newAuto);
-                                setCurrentFrame(adjustedFrame);
-                                console.log(`+1ボタン: ステップ ${i + 1} の離地を ${currentToeOffFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, nextContact=${nextContact}）`);
-                              }}
-                              style={{
-                                padding: '4px 12px',
-                                fontSize: '0.8rem',
-                                borderRadius: '4px',
-                                border: '1px solid #d1d5db',
-                                background: 'white',
-                                cursor: 'pointer',
-                                fontWeight: 'bold'
-                              }}
-                            >
-                              +1
-                            </button>
-                            <button
-                              onClick={() => {
-                                const newAuto = [...autoToeOffFrames];
-                                const newManual = [...manualContactFrames];
-                                // 現在の値を正しく取得
-                                const currentToeOffFrame = newAuto[i];
-                                const currentContactFrame = newManual[i];
-                                // +5: 5フレーム進める（ただし次の接地-1を超えない）
-                                const targetFrame = currentToeOffFrame + 5;
-                                const nextContact = i + 1 < newManual.length ? newManual[i + 1] : framesCount;
-                                const adjustedFrame = Math.min(nextContact - 1, targetFrame, framesCount - 1);
-                                newAuto[i] = adjustedFrame;
-                                setAutoToeOffFrames(newAuto);
-                                setCurrentFrame(adjustedFrame);
-                                console.log(`+5ボタン: ステップ ${i + 1} の離地を ${currentToeOffFrame} → ${adjustedFrame} に修正（目標=${targetFrame}, nextContact=${nextContact}）`);
-                              }}
-                              style={{
-                                padding: '4px 12px',
-                                fontSize: '0.8rem',
-                                borderRadius: '4px',
-                                border: '1px solid #d1d5db',
-                                background: 'white',
-                                cursor: 'pointer',
-                                fontWeight: 'bold'
-                              }}
-                            >
-                              +5
-                            </button>
-                            <button
-                              onClick={() => {
-                                setCurrentFrame(toeOffFrame);
-                              }}
-                              style={{
-                                padding: '4px 12px',
-                                fontSize: '0.8rem',
-                                borderRadius: '4px',
-                                border: '1px solid #3b82f6',
-                                background: '#eff6ff',
-                                color: '#3b82f6',
-                                cursor: 'pointer',
-                                fontWeight: 'bold',
-                                marginLeft: '8px'
-                              }}
-                            >
-                              📍 表示
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
 
-            {currentAngles && (
-              <div className="angle-display-compact">
-                <h4>現在フレームの角度</h4>
-                <div className="angle-grid-compact">
-                  <div>
-                    体幹: {currentAngles.trunkAngle?.toFixed(1)}°
-                    <span style={{ fontSize: '0.7rem', marginLeft: '4px', color: 'var(--gray-500)' }}>
-                      {currentAngles.trunkAngle && currentAngles.trunkAngle < 85 ? '(前傾)' : 
-                       currentAngles.trunkAngle && currentAngles.trunkAngle > 95 ? '(後傾)' : '(垂直)'}
-                    </span>
-                  </div>
-                  <div>
-                    左膝: {currentAngles.kneeFlex.left?.toFixed(1)}°
-                  </div>
-                  <div>
-                    右膝: {currentAngles.kneeFlex.right?.toFixed(1)}°
-                  </div>
-                  <div>
-                    左肘: {currentAngles.elbowAngle.left?.toFixed(1) ?? 'ー'}°
-                  </div>
-                  <div>
-                    右肘: {currentAngles.elbowAngle.right?.toFixed(1) ?? 'ー'}°
-                  </div>
-                </div>
-              </div>
-            )}
 
-            <div className="wizard-actions">
-              <button className="btn-ghost" onClick={() => setWizardStep(1)}>
-                最初に戻る
-              </button>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <button className="btn-ghost" onClick={() => setWizardStep(5)}>
-                  前へ
-                </button>
-                <button
-                  className="btn-primary-large"
-                  onClick={() => setWizardStep(7)}
-                  disabled={contactFrames.length < 3}
+              {/* PC 用：マーカー一覧 */}
+              {!isMobile && contactFrames.length > 0 && (
+                <div
+                  style={{
+                    background: '#f9fafb',
+                    padding: '16px',
+                    borderRadius: '8px',
+                    margin: '16px 0',
+                    maxHeight: '500px',
+                    overflowY: 'auto',
+                  }}
                 >
-                  次へ：解析結果
+                  <h4
+                    style={{
+                      margin: '0 0 12px 0',
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    📍 マーカー一覧（全{' '}
+                    {Math.floor(contactFrames.length / 2)} ステップ）
+                  </h4>
+                  <div style={{ display: 'grid', gap: '8px' }}>
+                    {Array.from(
+                      { length: Math.floor(contactFrames.length / 2) },
+                      (_, i) => {
+                        const contactFrame = contactFrames[i * 2];
+                        const toeOffFrame = contactFrames[i * 2 + 1];
+                        const isAuto = calibrationType === 2;
+
+                        return (
+                          <div
+                            key={i}
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '8px',
+                              padding: '12px',
+                              background: 'white',
+                              borderRadius: '8px',
+                              fontSize: '0.9rem',
+                              border:
+                                currentFrame === contactFrame ||
+                                currentFrame === toeOffFrame
+                                  ? '2px solid #3b82f6'
+                                  : '1px solid #e5e7eb',
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                              }}
+                            >
+                              <strong>ステップ {i + 1}:</strong>
+                              <span
+                                style={{
+                                  color: '#10b981',
+                                  fontWeight: 'bold',
+                                }}
+                              >
+                                🟢 接地 {contactFrame}
+                              </span>
+                              <span>→</span>
+                              <span
+                                style={{
+                                  color: '#ef4444',
+                                  fontWeight: 'bold',
+                                }}
+                              >
+                                🔴 離地 {toeOffFrame}
+                                {isAuto && (
+                                  <span
+                                    style={{
+                                      fontSize: '0.75rem',
+                                      marginLeft: '4px',
+                                      color: '#6b7280',
+                                    }}
+                                  >
+                                    (自動)
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                            {/* ここに接地・離地の微調整ボタン（元のロジック）をそのまま残しても OK */}
+                          </div>
+                        );
+                      },
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 角度表示：PC のみ */}
+              {!isMobile && currentAngles && (
+                <div className="angle-display-compact">
+                  <h4>現在フレームの角度</h4>
+                  <div className="angle-grid-compact">
+                    <div>
+                      体幹: {currentAngles.trunkAngle?.toFixed(1)}°
+                      <span
+                        style={{
+                          fontSize: '0.7rem',
+                          marginLeft: '4px',
+                          color: 'var(--gray-500)',
+                        }}
+                      >
+                        {currentAngles.trunkAngle &&
+                        currentAngles.trunkAngle < 85
+                          ? '(前傾)'
+                          : currentAngles.trunkAngle &&
+                            currentAngles.trunkAngle > 95
+                          ? '(後傾)'
+                          : '(垂直)'}
+                      </span>
+                    </div>
+                    <div>左膝: {currentAngles.kneeFlex.left?.toFixed(1)}°</div>
+                    <div>右膝: {currentAngles.kneeFlex.right?.toFixed(1)}°</div>
+                    <div>
+                      左肘: {currentAngles.elbowAngle.left?.toFixed(1) ?? 'ー'}°
+                    </div>
+                    <div>
+                      右肘:{' '}
+                      {currentAngles.elbowAngle.right?.toFixed(1) ?? 'ー'}°
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ナビゲーションボタン */}
+              <div className="wizard-actions">
+                <button className="btn-ghost" onClick={() => setWizardStep(1)}>
+                  最初に戻る
                 </button>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button
+                    className="btn-ghost"
+                    onClick={() => setWizardStep(5)}
+                  >
+                    前へ
+                  </button>
+                  <button
+                    className="btn-primary-large"
+                    onClick={() => setWizardStep(7)}
+                    disabled={contactFrames.length < 3}
+                  >
+                    次へ：解析結果
+                  </button>
+                </div>
               </div>
-            </div>
             </>
-            )}
-          </div>
-        );
+          )}
+        </div>
+      );
+
 
       case 7: {
         const isMultiModeActive = analysisMode === "multi" && multiCameraData;
