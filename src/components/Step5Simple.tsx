@@ -217,6 +217,7 @@ export const Step5Simple: React.FC<Step5SimpleProps> = ({
               max={frames.length - 1}
               value={startFrame}
               onChange={(e) => handleSliderChange(Number(e.target.value), 'start')}
+              className="section-slider-input" 
             />
             <span>{startFrame}</span>
           </div>
@@ -229,6 +230,7 @@ export const Step5Simple: React.FC<Step5SimpleProps> = ({
               max={frames.length - 1}
               value={finishFrame}
               onChange={(e) => handleSliderChange(Number(e.target.value), 'finish')}
+              className="section-slider-input" 
             />
             <span>{finishFrame}</span>
           </div>
@@ -242,6 +244,7 @@ export const Step5Simple: React.FC<Step5SimpleProps> = ({
                 max={frames.length - 1}
                 value={midFrame || Math.floor((startFrame + finishFrame) / 2)}
                 onChange={(e) => handleSliderChange(Number(e.target.value), 'mid')}
+                className="section-slider-input" 
               />
               <span>{midFrame || Math.floor((startFrame + finishFrame) / 2)}</span>
             </div>

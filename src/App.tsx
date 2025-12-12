@@ -4507,6 +4507,60 @@ const [notesInput, setNotesInput] = useState<string>("");
     const idx = Number(e.target.value) || 0;
     setCurrentFrame(idx);
   };
+  // 接地フレームを 1 コマずつ微調整
+  const handleAdjustContactFrame = (stepIndex: number, delta: number) => {
+    setManualContactFrames(prev => {
+      if (!prev.length) return prev;
+      if (stepIndex < 0 || stepIndex >= prev.length) return prev;
+
+      const framesMax = framesCount > 0 ? framesCount - 1 : 0;
+      const next = [...prev];
+
+      let updated = next[stepIndex] + delta;
+      if (updated < 0) updated = 0;
+      if (updated > framesMax) updated = framesMax;
+
+      next[stepIndex] = updated;
+      return next;
+    });
+  };
+
+  // 離地フレームを 1 コマずつ微調整
+  const handleAdjustToeOffFrame = (stepIndex: number, delta: number) => {
+    const framesMax = framesCount > 0 ? framesCount - 1 : 0;
+
+    if (calibrationType === 2) {
+      // 半自動設定：autoToeOffFrames を修正
+      setAutoToeOffFrames(prev => {
+        if (!prev.length) return prev;
+        if (stepIndex < 0 || stepIndex >= prev.length) return prev;
+
+        const next = [...prev];
+
+        let updated = next[stepIndex] + delta;
+        if (updated < 0) updated = 0;
+        if (updated > framesMax) updated = framesMax;
+
+        next[stepIndex] = updated;
+        return next;
+      });
+    } else {
+      // 手動マーク設定：manualToeOffFrames を修正
+      setManualToeOffFrames(prev => {
+        if (!prev.length) return prev;
+        if (stepIndex < 0 || stepIndex >= prev.length) return prev;
+
+        const next = [...prev];
+
+        let updated = next[stepIndex] + delta;
+        if (updated < 0) updated = 0;
+        if (updated > framesMax) updated = framesMax;
+
+        next[stepIndex] = updated;
+        return next;
+      });
+    }
+  };
 
   const currentLabel = ready ? currentFrame + 1 : 0;
   const maxLabel = ready ? framesCount : 0;
@@ -7450,147 +7504,530 @@ const [notesInput, setNotesInput] = useState<string>("");
                   style={{ display: 'block', width: '100%', height: 'auto' }}
                 />
               </div>
+            {isMobile && (
+              <div
+                className="mobile-marker-display"
+                // 完全に通常フローに載せて、上のスライダーとしっかり間隔を空ける
+                style={{
+                  position: 'static',
+                  marginTop: 24,
+                  marginBottom: 20,
+                  padding: 0,
+                }}
+              >
+                {contactFrames.map((markerFrame, index) => {
+                  if (markerFrame === currentFrame) {
+                    const isContact = index % 2 === 0;
+                    const color = isContact ? '#10b981' : '#ef4444';
+                    const label = isContact ? '接地' : '離地';
+                    const isAuto = !isContact && calibrationType === 2; // 半自動設定では離地が自動
 
-              {/* モバイル用：フレーム移動 + 接地マーク（1つのブロック） */}
-              {isMobile && calibrationType && (
-                <div
-                  className="mobile-marking-controls"
-                  style={{
-                    marginTop: 12,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 12,
-                  }}
-                >
-                  {/* フレーム移動ボタン */}
-                  <div className="mobile-frame-nav">
-                    <button
-                      className="btn-nav-arrow"
-                      onClick={() => changeFrame(-10)}
-                      disabled={!ready}
-                    >
-                      ◀◀ -10
-                    </button>
-                    <button
-                      className="btn-nav-arrow"
-                      onClick={() => changeFrame(-1)}
-                      disabled={!ready}
-                    >
-                      ◀ -1
-                    </button>
-                    <button
-                      className="btn-nav-arrow"
-                      onClick={() => changeFrame(1)}
-                      disabled={!ready}
-                    >
-                      +1 ▶
-                    </button>
-                    <button
-                      className="btn-nav-arrow"
-                      onClick={() => changeFrame(10)}
-                      disabled={!ready}
-                    >
-                      +10 ▶▶
-                    </button>
-                  </div>
+                    return (
+                      <div
+                        key={index}
+                        className="marker-indicator"
+                        style={{
+                          backgroundColor: color,
+                          color: 'white',
+                          padding: '20px',
+                          borderRadius: '12px',
+                          fontSize: '28px',
+                          fontWeight: 'bold',
+                          textAlign: 'center',
+                          boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+                          marginBottom: 12,
+                        }}
+                      >
+                        {label} #{Math.floor(index / 2) + 1}
+                        {isAuto && (
+                          <div style={{ fontSize: '14px', marginTop: '4px' }}>
+                            （自動判定）
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                  return null;
+                })}
 
-                  {/* 接地マークボタン（フレームにマークが無いときだけ表示） */}
-                  {contactFrames.every((f) => f !== currentFrame) && (
-                    <button
-                      className="btn-mark-contact-large"
-                      onClick={() => {
-                        if (!ready) return;
+                {contactFrames.every((f) => f !== currentFrame) && (
+                  <button
+                    className="btn-mark-contact-large"
+                    onClick={() => {
+                      if (!ready) return;
 
-                        // 検出モードに応じてマーク（1歩目から直接マーク可能）
-                        if (calibrationType === 2) {
-                          // 半自動設定: 接地のみ手動、離地は自動
-                          const newContactFrames = [
+                      // 検出モードに応じてマーク（1歩目から直接マーク可能）
+                      if (calibrationType === 2) {
+                        // 半自動設定: 接地のみ手動、離地は自動
+                        const newContactFrames = [
+                          ...manualContactFrames,
+                          currentFrame,
+                        ];
+                        setManualContactFrames(newContactFrames);
+                        console.log(`📍 接地マーク: フレーム ${currentFrame}`);
+
+                        const toeOffFrame = detectToeOffFrame(currentFrame);
+                        if (toeOffFrame !== null) {
+                          setAutoToeOffFrames([...autoToeOffFrames, toeOffFrame]);
+                        } else {
+                          console.warn(
+                            `⚠️ 離地が検出できませんでした（接地: ${currentFrame}）`,
+                          );
+                        }
+                      } else if (calibrationType === 3) {
+                        // 手動マーク設定: すべて手動
+                        if (
+                          manualContactFrames.length ===
+                          manualToeOffFrames.length
+                        ) {
+                          setManualContactFrames([
                             ...manualContactFrames,
                             currentFrame,
-                          ];
-                          setManualContactFrames(newContactFrames);
-                          console.log(
-                            `📍 接地マーク: フレーム ${currentFrame}`,
-                          );
-
-                          const toeOffFrame =
-                            detectToeOffFrame(currentFrame);
-                          if (toeOffFrame !== null) {
-                            setAutoToeOffFrames([
-                              ...autoToeOffFrames,
-                              toeOffFrame,
-                            ]);
-                          } else {
-                            console.warn(
-                              `⚠️ 離地が検出できませんでした（接地: ${currentFrame}）`,
+                          ]);
+                          console.log(`📍 接地マーク: フレーム ${currentFrame}`);
+                        } else {
+                          const lastContact =
+                            manualContactFrames[
+                              manualContactFrames.length - 1
+                            ];
+                          if (currentFrame <= lastContact) {
+                            alert(
+                              '離地フレームは接地フレームより後にしてください。',
                             );
+                            return;
                           }
-                        } else if (calibrationType === 3) {
-                          // 手動マーク設定: すべて手動
-                          if (
-                            manualContactFrames.length ===
-                            manualToeOffFrames.length
-                          ) {
-                            setManualContactFrames([
-                              ...manualContactFrames,
-                              currentFrame,
-                            ]);
-                            console.log(
-                              `📍 接地マーク: フレーム ${currentFrame}`,
-                            );
-                          } else {
-                            const lastContact =
-                              manualContactFrames[
-                                manualContactFrames.length - 1
-                              ];
-                            if (currentFrame <= lastContact) {
-                              alert(
-                                "離地フレームは接地フレームより後にしてください。",
-                              );
-                              return;
-                            }
-                            setManualToeOffFrames([
-                              ...manualToeOffFrames,
-                              currentFrame,
-                            ]);
-                            console.log(
-                              `📍 離地マーク: フレーム ${currentFrame}`,
-                            );
-                          }
+                          setManualToeOffFrames([
+                            ...manualToeOffFrames,
+                            currentFrame,
+                          ]);
+                          console.log(`📍 離地マーク: フレーム ${currentFrame}`);
                         }
-                      }}
-                      disabled={!ready}
-                      style={{
-                        width: "100%",
-                        padding: 18,
-                        fontSize: 18,
-                        fontWeight: "bold",
-                        background:
-                          calibrationType === 3 &&
-                          manualContactFrames.length !==
-                            manualToeOffFrames.length
-                            ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
-                            : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 12,
-                        cursor: "pointer",
-                        boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
-                        touchAction: "manipulation",
-                      }}
-                    >
-                      {calibrationType === 2
-                        ? "📍 接地マーク（離地自動）"
-                        : manualContactFrames.length ===
+                      }
+                    }}
+                    disabled={!ready}
+                    style={{
+                      width: '100%',
+                      padding: '20px',
+                      fontSize: '18px',
+                      fontWeight: 'bold',
+                      background:
+                        calibrationType === 3 &&
+                        manualContactFrames.length !==
                           manualToeOffFrames.length
-                        ? "📍 接地マーク"
-                        : "📍 離地マーク"}
-                    </button>
-                  )}
+                          ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
+                          : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '12px',
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+                      touchAction: 'manipulation',
+                    }}
+                  >
+                    {calibrationType === 2
+                      ? '📍 接地マーク（離地自動）'
+                      : manualContactFrames.length ===
+                        manualToeOffFrames.length
+                      ? '📍 接地マーク'
+                      : '📍 離地マーク'}
+                  </button>
+                )}
+              </div>
+            )}
+
+
+
+
+                {/* モバイル：足元拡大／スケルトン */}
+              <div
+                className="mobile-view-options"
+                style={{
+                  display: 'flex',
+                  gap: 12,
+                  marginTop: isMobile ? 8 : 12,
+                  marginBottom: 8,
+                }}
+              >
+                <button
+                  className={
+                    footZoomEnabled ? 'toggle-btn active' : 'toggle-btn'
+                  }
+                  onClick={() =>
+                    setFootZoomEnabled((prev) => {
+                      const next = !prev;
+                      if (next) {
+                        // スマホは ON にしたら自動的に最大倍率
+                        setZoomScale(4.5);
+                      }
+                      return next;
+                    })
+                  }
+                >
+                  足元拡大 {footZoomEnabled ? 'ON' : 'OFF'}
+                </button>
+
+                <button
+                  className={
+                    showSkeleton ? 'toggle-btn active' : 'toggle-btn'
+                  }
+                  onClick={() => setShowSkeleton((v) => !v)}
+                  disabled={!poseResults.length}
+                >
+                  スケルトン {showSkeleton ? 'ON' : 'OFF'}
+                </button>
+              </div>
+
+                          {/* フレームスライダー（PC / モバイル共通） */}
+              <div
+                className="frame-control"
+                // どの端末でも他のボタンと重ならないように通常フローに固定
+                style={{ marginTop: 8, position: 'static', zIndex: 1 }}
+              >
+                <div className="frame-info">
+                  フレーム: {currentLabel} / {maxLabel} | マーカー数:{' '}
+                  {contactFrames.length}
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(ready && framesCount ? framesCount - 1 : 0, 0)}
+                  step={1}
+                  value={ready ? currentFrame : 0}
+                  onChange={handleSliderChange}
+                  disabled={!ready}
+                  className="frame-range"
+                />
+                <div className="frame-buttons-compact">
+                  <button onClick={() => changeFrame(-10)} disabled={!ready}>
+                    -10
+                  </button>
+                  <button onClick={() => changeFrame(-1)} disabled={!ready}>
+                    -1
+                  </button>
+                  <button onClick={() => changeFrame(1)} disabled={!ready}>
+                    +1
+                  </button>
+                  <button onClick={() => changeFrame(10)} disabled={!ready}>
+                    +10
+                  </button>
+                </div>
+              </div>
+
+              {/* マーカー一覧（接地・離地の微調整：PC / モバイル共通） */}
+              {contactFrames.length >= 2 && (
+                <div
+                  style={{
+                    marginTop: 16,
+                    padding: isMobile ? '12px' : '16px',
+                    borderRadius: 12,
+                    background: '#f9fafb',
+                    maxHeight: isMobile ? 'none' : '420px',
+                    overflowY: isMobile ? 'visible' : 'auto',
+                  }}
+                >
+                  <h4
+                    style={{
+                      margin: '0 0 12px 0',
+                      fontWeight: 'bold',
+                      fontSize: isMobile ? '0.95rem' : '1rem',
+                    }}
+                  >
+                    📍 マーカー一覧（全{' '}
+                    {Math.floor(contactFrames.length / 2)} ステップ）
+                  </h4>
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 8,
+                    }}
+                  >
+                    {Array.from(
+                      { length: Math.floor(contactFrames.length / 2) },
+                      (_: unknown, i: number) => {
+                        const contactIdx = i * 2;
+                        const toeOffIdx = i * 2 + 1;
+                        const contactFrame = contactFrames[contactIdx];
+                        const toeOffFrame = contactFrames[toeOffIdx];
+                        const isAuto = calibrationType === 2;
+                        const isCurrentStep =
+                          currentFrame === contactFrame ||
+                          currentFrame === toeOffFrame;
+
+                        const lastIndex =
+                          framesCount && framesCount > 0
+                            ? framesCount - 1
+                            : 0;
+
+                        const clampFrame = (f: number) =>
+                          Math.min(Math.max(f, 0), lastIndex);
+
+                        return (
+                          <div
+                            key={i}
+                            style={{
+                              border: isCurrentStep
+                                ? '2px solid #3b82f6'
+                                : '1px solid #e5e7eb',
+                              borderRadius: 8,
+                              padding: isMobile ? '8px 10px' : '10px 12px',
+                              background: '#ffffff',
+                              cursor: ready ? 'pointer' : 'default',
+                            }}
+                            // 行全体クリックで「接地フレーム」にジャンプ
+                            onClick={() => {
+                              if (!ready) return;
+                              const base =
+                                manualContactFrames[i] ??
+                                contactFrame ??
+                                currentFrame;
+                              const target = clampFrame(
+                                typeof base === 'number' ? base : 0,
+                              );
+                              changeFrame(target - currentFrame);
+                            }}
+                          >
+                            {/* 見出し行 */}
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 8,
+                                flexWrap: 'wrap',
+                                marginBottom: 4,
+                              }}
+                            >
+                              <div>
+                                <strong>ステップ {i + 1}</strong>
+                                {isAuto && (
+                                  <span
+                                    style={{
+                                      fontSize: '0.75rem',
+                                      marginLeft: 6,
+                                      color: '#6b7280',
+                                    }}
+                                  >
+                                    （離地は自動検出）
+                                  </span>
+                                )}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: '0.8rem',
+                                  color: '#6b7280',
+                                }}
+                              >
+                                接地 {contactFrame} / 離地 {toeOffFrame}
+                              </div>
+                            </div>
+
+                            {/* 接地フレームの微調整 */}
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                flexWrap: 'wrap',
+                                marginBottom: 4,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  color: '#10b981',
+                                  fontWeight: 'bold',
+                                  minWidth: '60px',
+                                }}
+                              >
+                                🟢 接地
+                              </span>
+                              <button
+                                type="button"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  if (!ready) return;
+                                  const base =
+                                    manualContactFrames[i] ??
+                                    contactFrame ??
+                                    currentFrame;
+                                  const updated = clampFrame(
+                                    (typeof base === 'number' ? base : 0) - 1,
+                                  );
+                                  setManualContactFrames(prev => {
+                                    const next = [...prev];
+                                    next[i] = updated;
+                                    return next;
+                                  });
+                                  changeFrame(updated - currentFrame);
+                                }}
+                                disabled={!ready}
+                                style={{
+                                  padding: '4px 8px',
+                                  borderRadius: 4,
+                                  border: '1px solid #d1d5db',
+                                  background: '#f9fafb',
+                                  fontSize: '0.75rem',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                -1
+                              </button>
+                              <button
+                                type="button"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  if (!ready) return;
+                                  const base =
+                                    manualContactFrames[i] ??
+                                    contactFrame ??
+                                    currentFrame;
+                                  const updated = clampFrame(
+                                    (typeof base === 'number' ? base : 0) + 1,
+                                  );
+                                  setManualContactFrames(prev => {
+                                    const next = [...prev];
+                                    next[i] = updated;
+                                    return next;
+                                  });
+                                  changeFrame(updated - currentFrame);
+                                }}
+                                disabled={!ready}
+                                style={{
+                                  padding: '4px 8px',
+                                  borderRadius: 4,
+                                  border: '1px solid #d1d5db',
+                                  background: '#f9fafb',
+                                  fontSize: '0.75rem',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                +1
+                              </button>
+                            </div>
+
+                            {/* 離地フレームの微調整 */}
+                            {toeOffFrame != null && (
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  flexWrap: 'wrap',
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    color: '#ef4444',
+                                    fontWeight: 'bold',
+                                    minWidth: '60px',
+                                  }}
+                                >
+                                  🔴 離地
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    if (!ready) return;
+
+                                    const baseFrame =
+                                      (isAuto
+                                        ? autoToeOffFrames[i]
+                                        : manualToeOffFrames[i]) ??
+                                      toeOffFrame ??
+                                      currentFrame;
+
+                                    const updated = clampFrame(
+                                      (typeof baseFrame === 'number'
+                                        ? baseFrame
+                                        : 0) - 1,
+                                    );
+
+                                    if (isAuto) {
+                                      setAutoToeOffFrames(prev => {
+                                        const next = [...prev];
+                                        next[i] = updated;
+                                        return next;
+                                      });
+                                    } else {
+                                      setManualToeOffFrames(prev => {
+                                        const next = [...prev];
+                                        next[i] = updated;
+                                        return next;
+                                      });
+                                    }
+
+                                    changeFrame(updated - currentFrame);
+                                  }}
+                                  disabled={!ready}
+                                  style={{
+                                    padding: '4px 8px',
+                                    borderRadius: 4,
+                                    border: '1px solid #d1d5db',
+                                    background: '#f9fafb',
+                                    fontSize: '0.75rem',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  -1
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    if (!ready) return;
+
+                                    const baseFrame =
+                                      (isAuto
+                                        ? autoToeOffFrames[i]
+                                        : manualToeOffFrames[i]) ??
+                                      toeOffFrame ??
+                                      currentFrame;
+
+                                    const updated = clampFrame(
+                                      (typeof baseFrame === 'number'
+                                        ? baseFrame
+                                        : 0) + 1,
+                                    );
+
+                                    if (isAuto) {
+                                      setAutoToeOffFrames(prev => {
+                                        const next = [...prev];
+                                        next[i] = updated;
+                                        return next;
+                                      });
+                                    } else {
+                                      setManualToeOffFrames(prev => {
+                                        const next = [...prev];
+                                        next[i] = updated;
+                                        return next;
+                                      });
+                                    }
+
+                                    changeFrame(updated - currentFrame);
+                                  }}
+                                  disabled={!ready}
+                                  style={{
+                                    padding: '4px 8px',
+                                    borderRadius: 4,
+                                    border: '1px solid #d1d5db',
+                                    background: '#f9fafb',
+                                    fontSize: '0.75rem',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  +1
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      },
+                    )}
+                  </div>
                 </div>
               )}
-
-
 
               {/* PC 用：キーボード操作説明 */}
               {!isMobile && (
@@ -7628,167 +8065,6 @@ const [notesInput, setNotesInput] = useState<string>("");
                       <strong>↑ / ↓</strong>: 10フレーム移動
                     </li>
                   </ul>
-                </div>
-              )}
-
-              {/* モバイル：足元拡大／スケルトン（スライダー無し） */}
-              {isMobile && (
-                <div className="mobile-view-options">
-                  <button
-                    className={
-                      footZoomEnabled ? 'toggle-btn active' : 'toggle-btn'
-                    }
-                    onClick={() =>
-                      setFootZoomEnabled(prev => {
-                        const next = !prev;
-                        if (next) {
-                          // スマホは ON にしたら自動的に最大倍率
-                          setZoomScale(4.5);
-                        }
-                        return next;
-                      })
-                    }
-                  >
-                    足元拡大 {footZoomEnabled ? 'ON' : 'OFF'}
-                  </button>
-                  <button
-                    className={
-                      showSkeleton ? 'toggle-btn active' : 'toggle-btn'
-                    }
-                    onClick={() => setShowSkeleton(v => !v)}
-                    disabled={!poseResults.length}
-                  >
-                    スケルトン {showSkeleton ? 'ON' : 'OFF'}
-                  </button>
-                </div>
-              )}
-
-           {/* PC 用：フレームスライダー（モバイルでは非表示） */}
-          {!isMobile && (
-            <div className="frame-control">
-              <div className="frame-info">
-                フレーム: {currentLabel} / {maxLabel} | マーカー数:{" "}
-                {contactFrames.length}
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={Math.max(ready ? framesCount - 1 : 0, 0)}
-                step={1}
-                value={ready ? currentFrame : 0}
-                onChange={handleSliderChange}
-                disabled={!ready}
-                className="frame-range"
-              />
-              <div className="frame-buttons-compact">
-                <button onClick={() => changeFrame(-10)} disabled={!ready}>
-                  -10
-                </button>
-                <button onClick={() => changeFrame(-1)} disabled={!ready}>
-                  -1
-                </button>
-                <button onClick={() => changeFrame(1)} disabled={!ready}>
-                  +1
-                </button>
-                <button onClick={() => changeFrame(10)} disabled={!ready}>
-                  +10
-                </button>
-              </div>
-            </div>
-          )}
-
-
-
-              {/* PC 用：マーカー一覧 */}
-              {!isMobile && contactFrames.length > 0 && (
-                <div
-                  style={{
-                    background: '#f9fafb',
-                    padding: '16px',
-                    borderRadius: '8px',
-                    margin: '16px 0',
-                    maxHeight: '500px',
-                    overflowY: 'auto',
-                  }}
-                >
-                  <h4
-                    style={{
-                      margin: '0 0 12px 0',
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    📍 マーカー一覧（全{' '}
-                    {Math.floor(contactFrames.length / 2)} ステップ）
-                  </h4>
-                  <div style={{ display: 'grid', gap: '8px' }}>
-                    {Array.from(
-                      { length: Math.floor(contactFrames.length / 2) },
-                      (_, i) => {
-                        const contactFrame = contactFrames[i * 2];
-                        const toeOffFrame = contactFrames[i * 2 + 1];
-                        const isAuto = calibrationType === 2;
-
-                        return (
-                          <div
-                            key={i}
-                            style={{
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '8px',
-                              padding: '12px',
-                              background: 'white',
-                              borderRadius: '8px',
-                              fontSize: '0.9rem',
-                              border:
-                                currentFrame === contactFrame ||
-                                currentFrame === toeOffFrame
-                                  ? '2px solid #3b82f6'
-                                  : '1px solid #e5e7eb',
-                            }}
-                          >
-                            <div
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '12px',
-                              }}
-                            >
-                              <strong>ステップ {i + 1}:</strong>
-                              <span
-                                style={{
-                                  color: '#10b981',
-                                  fontWeight: 'bold',
-                                }}
-                              >
-                                🟢 接地 {contactFrame}
-                              </span>
-                              <span>→</span>
-                              <span
-                                style={{
-                                  color: '#ef4444',
-                                  fontWeight: 'bold',
-                                }}
-                              >
-                                🔴 離地 {toeOffFrame}
-                                {isAuto && (
-                                  <span
-                                    style={{
-                                      fontSize: '0.75rem',
-                                      marginLeft: '4px',
-                                      color: '#6b7280',
-                                    }}
-                                  >
-                                    (自動)
-                                  </span>
-                                )}
-                              </span>
-                            </div>
-                            {/* ここに接地・離地の微調整ボタン（元のロジック）をそのまま残しても OK */}
-                          </div>
-                        );
-                      },
-                    )}
-                  </div>
                 </div>
               )}
 
@@ -7849,6 +8125,8 @@ const [notesInput, setNotesInput] = useState<string>("");
                   </button>
                 </div>
               </div>
+
+
             </>
           )}
         </div>
@@ -8088,6 +8366,7 @@ const [notesInput, setNotesInput] = useState<string>("");
                   </button>
                 </div>
               </div>
+
 
               {/* 現在フレームの関節角度（フレームスライダー連動） */}
               {currentAngles && (
