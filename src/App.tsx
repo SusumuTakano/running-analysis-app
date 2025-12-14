@@ -3714,15 +3714,31 @@ const [notesInput, setNotesInput] = useState<string>("");
     }
     
     
-    const maxFpsForLength = Math.floor(MAX_FRAMES / Math.max(duration, 0.001));
-    // FPS制限：ユーザー選択（60 or 120）を尊重、動画長に応じて調整
-    const targetFps = Math.min(confirmedFps, maxFpsForLength);
-    
-    console.log(`🎬 Selected FPS: ${selectedFps}fps, Target FPS: ${targetFps}fps (max for length: ${maxFpsForLength}fps)`);
-    const dt = 1 / targetFps;
-    const totalFrames = Math.max(1, Math.floor(duration * targetFps));
+  const maxFpsForLength = Math.floor(MAX_FRAMES / Math.max(duration, 0.001));
 
-    setUsedTargetFps(targetFps);
+  // ✅ FPSは “選択/確認されたFPS” をそのまま使う（30fpsへ自動ダウンしない）
+  const targetFps = confirmedFps;
+
+  console.log(
+    `🎬 Selected FPS: ${selectedFps}fps, Target FPS: ${targetFps}fps (NO downsample, maxForLength would be: ${maxFpsForLength}fps)`
+  );
+
+  const dt = 1 / targetFps;
+  const totalFrames = Math.max(1, Math.floor(duration * targetFps));
+
+  // ✅ 重すぎる時は fps を落とすのではなく「警告して中止」できるようにする
+  if (totalFrames > MAX_FRAMES) {
+    const ok = confirm(
+      `⚠️ 動画が長いため、${targetFps}fps だと ${totalFrames} フレームになります。\n` +
+        `iPhoneではメモリ不足になる可能性があります。\n\n` +
+        `接地マーク精度のため fps は落とさずに続行しますか？\n\n` +
+        `（重い場合は、解析区間を短くする / fpsを下げる を推奨）`
+    );
+    if (!ok) return;
+  }
+
+setUsedTargetFps(targetFps);
+
 
     // 4K動画の検出と確認（保存された補正済みの解像度を使用）
     const actualVideoWidth = videoWidth || video.videoWidth;
@@ -7390,6 +7406,11 @@ const [notesInput, setNotesInput] = useState<string>("");
 
 /* ===== case 6 START ===== */
 case 6: {
+  // ✅ case6 内で参照するFPS（未定義変数を使わず、安全に）
+  // 基本は selectedFps（あなたのUIで選んだfps）を表示・基準にします。
+  // ※ “実際に抽出に使ったfps” を state で持っているなら、その変数に差し替えてOKです。
+  const step6Fps = typeof selectedFps === "number" && selectedFps > 0 ? selectedFps : 60;
+
   return (
     <div className={`wizard-content step-6 ${calibrationType ? "mode-on" : "mode-off"}`}>
       <div className="wizard-step-header">
@@ -7493,6 +7514,7 @@ case 6: {
               <div className="frame-control step6-frame-control">
                 <div className="frame-info">
                   フレーム: {currentLabel} / {maxLabel} | マーカー数: {contactFrames.length}
+                  <span style={{ marginLeft: 10, color: "#6b7280" }}>FPS: {step6Fps}</span>
                 </div>
 
                 <input
@@ -7883,6 +7905,9 @@ case 6: {
   );
 }
 /* ===== case 6 END ===== */
+
+
+
 
 
 
