@@ -1327,6 +1327,48 @@ const MetricGrid: React.FC<{ items: MetricGridItem[] }> = ({ items }) => {
   );
 };
 
+// ===== iPhone対策: 解析結果詳細モーダルは「本文だけスクロール」 =====
+const sessionDetailModalContainerStyle: React.CSSProperties = {
+  background: "#fff",
+  borderRadius: 16,
+  width: "min(980px, calc(100vw - 24px))",
+  // iPhone Safariの100vhズレ対策: 100dvh を使う
+  maxHeight:
+    "calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden", // 重要: 全体は切って、本文だけスクロール
+};
+
+const sessionDetailModalHeaderStyle: React.CSSProperties = {
+  flexShrink: 0,
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  padding: "20px 20px 12px",
+  background: "#fff",
+};
+
+const sessionDetailTabListStyle: React.CSSProperties = {
+  flexShrink: 0,
+  display: "flex",
+  gap: 8,
+  padding: "0 20px 12px",
+  background: "#fff",
+  borderBottom: "1px solid #e5e7eb",
+  overflowX: "auto",
+  WebkitOverflowScrolling: "touch",
+};
+
+const sessionDetailModalBodyStyle: React.CSSProperties = {
+  flex: "1 1 auto",
+  minHeight: 0, // ✅ 重要（iOS Safari）
+  overflowY: "auto",
+  WebkitOverflowScrolling: "touch",
+  padding: "16px 20px 24px",
+  paddingBottom: "max(24px, env(safe-area-inset-bottom))",
+};
+
 const SessionDetailModal: React.FC<SessionDetailModalProps> = ({
   open,
   data,
@@ -1395,10 +1437,14 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({
     data?.session.source_video_name ?? data?.session.video_filename ?? "解析セッション";
 
   return (
-    <div style={modalOverlayStyle}>
-      <div style={modalContainerStyle}>
-        <div style={modalHeaderStyle}>
-          <div>
+    <div style={modalOverlayStyle} onClick={onClose}>
+      <div
+        style={sessionDetailModalContainerStyle}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header（固定） */}
+        <div style={sessionDetailModalHeaderStyle}>
+          <div style={{ minWidth: 0 }}>
             <h2 style={modalTitleStyle}>解析結果詳細</h2>
             <p style={modalSubTitleStyle}>
               {sessionTitle}（
@@ -1408,16 +1454,26 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({
               ）
             </p>
           </div>
-          <button type="button" style={closeButtonStyle} onClick={onClose} aria-label="閉じる">
+          <button
+            type="button"
+            style={closeButtonStyle}
+            onClick={onClose}
+            aria-label="閉じる"
+          >
             ×
           </button>
         </div>
-        <div style={tabListStyle}>
+
+        {/* Tabs（固定・横スクロール） */}
+        <div style={sessionDetailTabListStyle}>
           {DETAIL_TAB_ITEMS.map((tab) => (
             <button
               key={tab.key}
               type="button"
-              style={tabButtonStyle(tab.key === activeTab)}
+              style={{
+                ...tabButtonStyle(tab.key === activeTab),
+                flex: "0 0 auto", // ✅ 横スクロール時に潰れない
+              }}
               onClick={() => handleTabClick(tab.key)}
             >
               {tab.label}
@@ -1427,10 +1483,13 @@ const SessionDetailModal: React.FC<SessionDetailModalProps> = ({
             </button>
           ))}
         </div>
-        <div style={modalBodyStyle}>{renderContent()}</div>
+
+        {/* Body（ここだけ縦スクロール） */}
+        <div style={sessionDetailModalBodyStyle}>{renderContent()}</div>
       </div>
     </div>
   );
+
 };
 
 const OverviewTabContent: React.FC<{ data: SessionDetailData }> = ({ data }) => {
