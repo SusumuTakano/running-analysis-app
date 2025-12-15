@@ -18,16 +18,17 @@ import { CanvasRoi, getCanvasCoordinates, drawFrameWithOverlay, extractRoiForPos
 import { Step5Simple } from './components/Step5Simple';
 import { Step5Complete } from './components/Step5Complete';
 import Step5IntervalSetting, { Roi as Step5Roi } from './components/Step5IntervalSetting';
-import { 
-  Run, 
-  RunSegment, 
+import type {
+  Run,
+  RunSegment,
   RunAnalysisResult,
-  MultiCameraAnalysisState 
-} from './types/multiCameraTypes';
+  MultiCameraAnalysisState,
+} from "./types/multiCameraTypes";
 // Old imports kept for compatibility during transition
 import { combineSegmentSteps, calculateMultiCameraStats } from './utils/multiCameraUtils';
 import MobileSimplifier from './components/MobileSimplifier';
 import MobileHeader from './components/MobileHeader';
+import MultiCameraAnalyzer from "./components/MultiCameraAnalyzer";
 
 
 /** ウィザードのステップ */
@@ -538,6 +539,9 @@ const [wizardStep, setWizardStep] = useState<WizardStep>(0);
   const [isMultiCameraSetup, setIsMultiCameraSetup] = useState(false);
   const [multiCameraData, setMultiCameraData] = useState<MultiCameraState | null>(null);
   const [multiCameraSummary, setMultiCameraSummary] = useState<MultiCameraSummary | null>(null);
+  const [multiRun, setMultiRun] = useState<Run | null>(null);
+  const [multiSegments, setMultiSegments] = useState<RunSegment[] | null>(null);
+  const [isMultiCameraAnalyzing, setIsMultiCameraAnalyzing] = useState(false);
 
 // ------------- 測定者情報 -------------------
 const initialAthleteInfo: AthleteInfo = {
@@ -5688,13 +5692,6 @@ setUsedTargetFps(targetFps);
   const [multiCameraProcessing, setMultiCameraProcessing] = useState(false);
   const [multiCameraResult, setMultiCameraResult] = useState<RunAnalysisResult | null>(null);
   
-  const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
-    console.log("新マルチカメラ解析開始:", { run, segments });
-    setCurrentRun(run);
-    setRunSegments(segments);
-    setIsMultiCameraSetup(false);
-    setMultiCameraProcessing(true);
-  };
   
   // セグメント単体を解析する専用関数（簡易版 - デモ用）
   const analyzeSegmentInBackground = async (file: File): Promise<any> => {
@@ -5727,43 +5724,40 @@ setUsedTargetFps(targetFps);
     };
   };
   
-  // 既存のマルチカメラ解析を開始（互換性のため残す）
-  const handleMultiCameraStart = (run: Run, segments: RunSegment[], videoFiles: { [key: string]: File }) => {
-    console.log("マルチカメラ解析開始:", { run, segments, videoFiles });
+// ✅ 新 MultiCameraSetup 用：解析開始ボタンから呼ばれる
+const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+  console.log("✅ 新マルチカメラ解析開始:", { run, segments });
 
-    const availableSegments = segments.filter((segment) => videoFiles[segment.id]);
-    const missingSegments = segments.filter((segment) => !videoFiles[segment.id]);
+  const missingVideo = segments.filter((s) => !s.videoFile);
+  if (missingVideo.length > 0) {
+    alert(
+      `動画が入っていない区間があります: ${missingVideo
+        .map((s) => `${s.startDistanceM}-${s.endDistanceM}m`)
+        .join(", ")}`
+    );
+    return;
+  }
 
-    if (availableSegments.length === 0) {
-      alert("動画がアップロードされているセグメントがありません。各セグメントに動画をアップロードしてください。");
-      return;
-    }
+  const missingCalib = segments.filter((s) => !s.calibration);
+  if (missingCalib.length > 0) {
+    alert(
+      `キャリブレーション未完了の区間があります: ${missingCalib
+        .map((s) => `${s.startDistanceM}-${s.endDistanceM}m`)
+        .join(", ")}`
+    );
+    return;
+  }
 
-    if (missingSegments.length > 0) {
-      console.warn("動画が未設定のセグメントがあります:", missingSegments.map((s) => s.segmentIndex));
-      alert("一部のセグメントに動画が設定されていません。アップロード済みのセグメントのみ解析を実行します。");
-    }
+  // ✅ ここが重要：Processor を出すための状態セット
+  setCurrentRun(run);
+  setRunSegments(segments);
+  setAnalysisMode("multi");
+  setIsMultiCameraSetup(true);
 
-    const nextState: MultiCameraState = {
-      run,
-      segments: availableSegments,
-      videoFiles,
-      currentIndex: 0,
-      segmentMetrics: {},
-    };
+  setMultiCameraResult(null);
+  setMultiCameraProcessing(true);
+};
 
-    setCurrentRun(run);
-    setRunSegments(availableSegments);
-    setAnalysisMode("multi");
-    setIsMultiCameraSetup(false);
-    setMultiCameraSummary(null);
-    setMultiCameraData(nextState);
-
-    // 最初のセグメントの処理を開始
-    setTimeout(() => {
-      loadMultiCameraSegment(nextState, 0);
-    }, 100);
-  };
 
   // マルチカメラ解析を中断して設定画面へ戻る
   const handleCancelMultiCamera = () => {
@@ -5873,10 +5867,11 @@ setUsedTargetFps(targetFps);
               setMultiCameraProcessing(false);
             }}
             onCancel={() => {
-              setMultiCameraProcessing(false);
-              setIsMultiCameraSetup(false);
-              setAnalysisMode('single');
-            }}
+            setMultiCameraProcessing(false);
+            setMultiCameraResult(null);
+            setIsMultiCameraSetup(false);
+            setAnalysisMode('single');
+          }}
           />
         );
       }
