@@ -29,6 +29,7 @@ import { combineSegmentSteps, calculateMultiCameraStats } from './utils/multiCam
 import MobileSimplifier from './components/MobileSimplifier';
 import MobileHeader from './components/MobileHeader';
 import MultiCameraAnalyzer from "./components/MultiCameraAnalyzer";
+import { parseMedia } from "@remotion/media-parser";
 
 
 /** ウィザードのステップ */
@@ -693,6 +694,7 @@ useEffect(() => {
   // ------------- 動画・フレーム関連 -------------------
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [sourceVideoFile, setSourceVideoFile] = useState<File | null>(null);
 
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractProgress, setExtractProgress] = useState(0);
@@ -3479,13 +3481,24 @@ const [notesInput, setNotesInput] = useState<string>("");
     }
   };
 
+// ===== 実時間換算用FPS（接地・滞空など） =====
+// usedTargetFps があればそれを優先（＝ユーザーが選んだ120/240を保持している想定）
+const analysisFps = (usedTargetFps ?? selectedFps ?? 30);
+const framesToMs = (frames: number) => (frames * 1000) / analysisFps;
+const framesToSec = (frames: number) => frames / analysisFps;
+
   // ------------ ファイル選択 & リセット ------------
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
-    if (videoUrl) {
-      URL.revokeObjectURL(videoUrl);
-      setVideoUrl(null);
-    }
+  const file = e.target.files?.[0] ?? null;
+
+  // ★ まず必ず保存（初回選択でも入る）
+  setSourceVideoFile(file);
+
+  // 既存URLがあれば破棄
+  if (videoUrl) {
+    URL.revokeObjectURL(videoUrl);
+    setVideoUrl(null);
+  }
 
     framesRef.current = [];
     setFramesCount(0);
@@ -3720,26 +3733,95 @@ const [notesInput, setNotesInput] = useState<string>("");
     
   const maxFpsForLength = Math.floor(MAX_FRAMES / Math.max(duration, 0.001));
 
-  // ✅ FPSは “選択/確認されたFPS” をそのまま使う（30fpsへ自動ダウンしない）
-  const targetFps = confirmedFps;
+// ✅ analysisFps（接地・滞空など“時間換算”用）＝ユーザーが選択/確認したFPS
+const targetFps = Number((confirmedFps ?? selectedFps) ?? 30) || 30;
+setUsedTargetFps(targetFps);
 
-  console.log(
-    `🎬 Selected FPS: ${selectedFps}fps, Target FPS: ${targetFps}fps (NO downsample, maxForLength would be: ${maxFpsForLength}fps)`
+const analysisFpsLocal = targetFps;
+const framesToMsLocal = (f: number) => (f * 1000) / analysisFpsLocal;
+const framesToSecLocal = (f: number) => f / analysisFpsLocal;
+
+
+// ✅ extract（フレーム抽出/seek用）のフレーム数・dtは「動画ファイル実態」から決める
+//    iPhoneスロー動画はファイル上30fps相当のタイムラインになるため、ここを120で回すと破綻します
+let totalFrames = Math.max(1, Math.floor(duration * 30)); // フォールバック
+let seekDt = 1 / 30;
+let extractFps = 30;
+
+if (sourceVideoFile) {
+  const r = await parseMedia({
+    src: sourceVideoFile,
+    acknowledgeRemotionLicense: true, 
+    fields: {
+      slowNumberOfFrames: true,
+      slowDurationInSeconds: true,
+      metadata: true,
+      },
+  });
+
+  console.log("🎞 parseMedia:", {
+  slowFps: (r as any).slowFps,
+  slowNumberOfFrames: (r as any).slowNumberOfFrames,
+  slowDurationInSeconds: (r as any).slowDurationInSeconds,
+  fps: (r as any).fps,
+  durationInSeconds: (r as any).durationInSeconds,
+});
+
+console.log(
+  "📎 metadata keys (first 40):",
+  (r as any).metadata?.slice(0, 40)?.map((m: any) => [m.key, m.value])
+);
+
+console.log(
+  "📎 metadata filter frame:",
+  (r as any).metadata?.filter((m: any) =>
+    String(m.key).toLowerCase().includes("frame")
+  )
+);
+
+  const frames = Math.max(1, r.slowNumberOfFrames);
+  const dur = Math.max(0.001, r.slowDurationInSeconds);
+
+  totalFrames = frames;
+  seekDt = dur / frames;                // ←これが最重要（seekの刻み）
+  extractFps = frames / dur;
+
+  　// ★メタデータが取れない場合に備えて「比率」でスロー判定（保険）
+const slowFactor = targetFps / extractFps;
+const isProbablySlowMo = slowFactor > 1.5;
+console.log(`🐢 slowFactor=${slowFactor.toFixed(2)} isProbablySlowMo=${isProbablySlowMo}`);
+
+const intentRaw =
+  r.metadata?.find((m) => m.key === "com.apple.quicktime.full-frame-rate-playback-intent")?.value ?? 1;
+
+const intent = Number(intentRaw);
+const isSlowMoIntent = intent === 0;
+
+// ★ここで slowIntent を1回だけ確定（統合）
+const slowIntent = isSlowMoIntent || isProbablySlowMo;
+
+// （互換が必要なら）
+// const isSlowMo = slowIntent;
+
+console.log(
+  `🎬 analysisFps=${targetFps} / extractFps=${extractFps.toFixed(2)} / totalFrames=${totalFrames} / slowIntent=${slowIntent}`
+);
+
+}
+
+console.log(`🎬 Video specs: analysisFps=${targetFps}fps, extractFrames=${totalFrames}, duration=${duration.toFixed(2)}s`);
+
+// ✅ 重すぎる時は fps を落とすのではなく「警告して中止」
+if (totalFrames > MAX_FRAMES) {
+  const ok = confirm(
+    `⚠️ 動画が長いため、抽出フレーム数が ${totalFrames} になります。\n` +
+      `iPhoneではメモリ不足になる可能性があります。\n\n` +
+      `接地マーク精度のため analysisFps は落とさず、抽出はこのフレーム数で続行しますか？\n\n` +
+      `（重い場合は、解析区間を短くする / 解像度を下げる を推奨）`
   );
+  if (!ok) return;
+}
 
-  const dt = 1 / targetFps;
-  const totalFrames = Math.max(1, Math.floor(duration * targetFps));
-
-  // ✅ 重すぎる時は fps を落とすのではなく「警告して中止」できるようにする
-  if (totalFrames > MAX_FRAMES) {
-    const ok = confirm(
-      `⚠️ 動画が長いため、${targetFps}fps だと ${totalFrames} フレームになります。\n` +
-        `iPhoneではメモリ不足になる可能性があります。\n\n` +
-        `接地マーク精度のため fps は落とさずに続行しますか？\n\n` +
-        `（重い場合は、解析区間を短くする / fpsを下げる を推奨）`
-    );
-    if (!ok) return;
-  }
 
 setUsedTargetFps(targetFps);
 
@@ -3847,7 +3929,7 @@ setUsedTargetFps(targetFps);
         return;
       }
 
-      const currentTime = index * dt;
+      const currentTime = index * seekDt;
 
       const onSeeked = () => {
         video.removeEventListener("seeked", onSeeked);
