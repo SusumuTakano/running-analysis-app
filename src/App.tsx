@@ -109,7 +109,7 @@ type StepMetric = {
   trunkAngleAtContact?: number | null;  // 接地時の体幹角度
   kneeFlexAtContact?: number | null;    // 接地時の膝角度（支持脚）
 };
-
+type MarkerMode = "semi" | "manual";
 type MultiCameraState = {
   run: Run;
   segments: RunSegment[];
@@ -1806,47 +1806,74 @@ const [notesInput, setNotesInput] = useState<string>("");
       }
     }
   }, [wizardStep, framesCount, poseResults, sectionStartFrame, sectionEndFrame, sectionMidFrame]);
+// 接地/離地を追加（半自動/手動どちらもここを通す）
+type MarkKind = "contact" | "toeOff";
 
+// 接地/離地を追加（半自動/手動どちらもここを通す）
+function handleMarkAtCurrentFrame(kind?: MarkKind) {
+  if (!ready) return;
+  if (!framesCount) return;
+
+  const f = Math.round(currentFrame);
+
+  // 半自動：接地だけ手動、離地は自動検出
+  if (calibrationType === 2) {
+    const nextContacts = [...manualContactFrames, f];
+    setManualContactFrames(nextContacts);
+    console.log(`📍 接地マーク: フレーム ${f}`);
+
+    const toeOff = detectToeOffFrame(f);
+    if (toeOff != null) {
+      setAutoToeOffFrames([...autoToeOffFrames, toeOff]);
+      console.log(`📍 離地(自動): フレーム ${toeOff}`);
+    } else {
+      console.warn(`⚠️ 離地が検出できませんでした（接地: ${f}）`);
+    }
+    return;
+  }
+
+  // 手動：接地/離地をボタンで選ぶ（kind が無ければ交互）
+  if (calibrationType === 3) {
+    const nextKind: MarkKind =
+      kind ??
+      (manualContactFrames.length === manualToeOffFrames.length ? "contact" : "toeOff");
+
+    if (nextKind === "contact") {
+      setManualContactFrames([...manualContactFrames, f]);
+      console.log(`📍 接地マーク: フレーム ${f}`);
+      return;
+    }
+
+    // toeOff
+    if (manualContactFrames.length === 0) {
+      alert("先に接地フレームをマークしてください。");
+      return;
+    }
+    const lastContact = manualContactFrames[manualContactFrames.length - 1];
+    if (typeof lastContact === "number" && f <= lastContact) {
+      alert("離地フレームは接地フレームより後にしてください。");
+      return;
+    }
+    setManualToeOffFrames([...manualToeOffFrames, f]);
+    console.log(`📍 離地マーク: フレーム ${f}`);
+    return;
+  }
+}
+
+
+
+  
   // キーボード操作
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!framesCount) return;
 
-      if (e.code === "Space") {
-        e.preventDefault();
-        
-        // 検出モードに応じてマーク（1歩目から直接マーク可能）
-        if (calibrationType === 2) {
-          // 半自動設定: 接地のみ手動マーク、離地は自動検出
-          const newContactFrames = [...manualContactFrames, currentFrame];
-          setManualContactFrames(newContactFrames);
-          console.log(`📍 接地マーク: フレーム ${currentFrame}`);
-          
-          const toeOffFrame = detectToeOffFrame(currentFrame);
-          if (toeOffFrame !== null) {
-            setAutoToeOffFrames([...autoToeOffFrames, toeOffFrame]);
-          } else {
-            console.warn(`⚠️ 離地が検出できませんでした（接地: ${currentFrame}）`);
-          }
-        } else if (calibrationType === 3) {
-          // 手動マーク設定: すべて手動
-          if (manualContactFrames.length === manualToeOffFrames.length) {
-            // 接地をマーク
-            setManualContactFrames([...manualContactFrames, currentFrame]);
-            console.log(`📍 接地マーク: フレーム ${currentFrame}`);
-          } else {
-            // 離地をマーク
-            const lastContact = manualContactFrames[manualContactFrames.length - 1];
-            if (currentFrame <= lastContact) {
-              alert('離地フレームは接地フレームより後にしてください。');
-              return;
-            }
-            setManualToeOffFrames([...manualToeOffFrames, currentFrame]);
-            console.log(`📍 離地マーク: フレーム ${currentFrame}`);
-          }
-        }
-        return;
-      }
+     if (e.code === "Space") {
+  e.preventDefault();
+  handleMarkAtCurrentFrame(); // 半自動/手動どちらでも動く
+  return;
+}
+
 
       if (e.code === "ArrowRight") {
         e.preventDefault();
@@ -1874,6 +1901,49 @@ const [notesInput, setNotesInput] = useState<string>("");
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [currentFrame, framesCount]);
+
+  // ===== 追加：ボタン操作（半自動/手動） =====
+const addMarkByButton = () => {
+  if (!framesCount) return;
+
+  // 半自動設定: 接地のみ手動マーク、離地は自動検出
+  if (calibrationType === 2) {
+    const newContactFrames = [...manualContactFrames, currentFrame];
+    setManualContactFrames(newContactFrames);
+    console.log(`📍 接地マーク: フレーム ${currentFrame}`);
+
+    const toeOffFrame = detectToeOffFrame(currentFrame);
+    if (toeOffFrame !== null) {
+      setAutoToeOffFrames([...autoToeOffFrames, toeOffFrame]);
+    } else {
+      console.warn(`⚠️ 離地が検出できませんでした（接地: ${currentFrame}）`);
+    }
+    return;
+  }
+
+  // 手動マーク設定: すべて手動（接地→離地→接地→離地…交互）
+  if (calibrationType === 3) {
+    if (manualContactFrames.length === manualToeOffFrames.length) {
+      setManualContactFrames([...manualContactFrames, currentFrame]);
+      console.log(`📍 接地マーク: フレーム ${currentFrame}`);
+    } else {
+      const lastContact = manualContactFrames[manualContactFrames.length - 1];
+      if (currentFrame <= lastContact) {
+        alert("離地フレームは接地フレームより後にしてください。");
+        return;
+      }
+      setManualToeOffFrames([...manualToeOffFrames, currentFrame]);
+      console.log(`📍 離地マーク: フレーム ${currentFrame}`);
+    }
+  }
+};
+
+const clearMarksByButton = () => {
+  setManualContactFrames([]);
+  setManualToeOffFrames([]);
+  setAutoToeOffFrames([]);
+  console.log("🧹 マークをクリアしました");
+};
 
   // ------------ ステップメトリクス ------------
   const stepMetrics: StepMetric[] = useMemo(() => {
@@ -3792,7 +3862,7 @@ const isProbablySlowMo = slowFactor > 1.5;
 console.log(`🐢 slowFactor=${slowFactor.toFixed(2)} isProbablySlowMo=${isProbablySlowMo}`);
 
 const intentRaw =
-  r.metadata?.find((m) => m.key === "com.apple.quicktime.full-frame-rate-playback-intent")?.value ?? 1;
+  r.metadata?.find((m: any) => m.key === "com.apple.quicktime.full-frame-rate-playback-intent")?.value ?? 1;
 
 const intent = Number(intentRaw);
 const isSlowMoIntent = intent === 0;
@@ -7492,18 +7562,73 @@ case 6: {
     <div className={`wizard-content step-6 ${calibrationType ? "mode-on" : "mode-off"}`}>
       <div className="wizard-step-header">
         <h2 className="wizard-step-title">ステップ 6: 接地・離地マーク</h2>
+{/* ✅ 半自動 / 手動 切替（calibrationType=2/3 に直結） */}
+<div style={{ display: "flex", gap: 10, margin: "10px 0 14px" }}>
+  <button
+    type="button"
+    className={calibrationType === 2 ? "toggle-btn active" : "toggle-btn"}
+    onClick={() => {
+      setCalibrationType(2);
+      // 切替時は混線防止で一旦クリア（必要なら外してOK）
+      setManualContactFrames([]);
+      setManualToeOffFrames([]);
+      setAutoToeOffFrames([]);
+       }}
+  >
+    半自動
+  </button>
 
-        {/* スマホ・PC共通：半自動設定の説明カード */}
-        <div className="step6-helpcard">
-          <h3 className="step6-helpcard-title">半自動設定</h3>
-          <p className="step6-helpcard-text">
-            画面下の「<strong>接地マーク</strong>」ボタンをタップすると
-            <strong>接地</strong>を登録（離地は自動検出）します。
-          </p>
-          <p className="step6-helpcard-note">
-            下の<strong>マーカー一覧</strong>から微調整ができます。
-          </p>
-        </div>
+  <button
+    type="button"
+    className={calibrationType === 3 ? "toggle-btn active" : "toggle-btn"}
+    onClick={() => {
+      setCalibrationType(3);
+      setManualContactFrames([]);
+      setManualToeOffFrames([]);
+      setAutoToeOffFrames([]);
+       }}
+  >
+    手動
+  </button>
+</div>
+
+
+
+<div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>
+  {calibrationType === 3
+    ? "手動：接地→離地→接地→離地…の順でマークします（Spaceキー/ボタンどちらでも可）"
+    : "半自動：接地のみ手動、離地は自動検出します（Spaceキー/ボタンどちらでも可）"}
+</div>
+
+  {/* スマホ・PC共通：説明カード（半自動 / 手動で切替） */}
+<div className="step6-helpcard">
+  <h3 className="step6-helpcard-title">
+    {calibrationType === 3 ? "手動設定" : "半自動設定"}
+  </h3>
+
+  {calibrationType === 3 ? (
+    <>
+      <p className="step6-helpcard-text">
+        画面下のボタン（または <strong>Space</strong> キー）で
+        <strong>接地 → 離地 → 接地 → 離地…</strong> の順に登録します。
+      </p>
+      <p className="step6-helpcard-note">
+        下の<strong>マーカー一覧</strong>から微調整ができます。
+      </p>
+    </>
+  ) : (
+    <>
+      <p className="step6-helpcard-text">
+        画面下の「<strong>接地マーク</strong>」ボタン（または <strong>Space</strong> キー）で
+        <strong>接地</strong>を登録します（離地は自動検出）。
+      </p>
+      <p className="step6-helpcard-note">
+        下の<strong>マーカー一覧</strong>から微調整ができます。
+      </p>
+    </>
+  )}
+</div>
+
       </div>
 
       {/* モードが有効なときだけ、以下の UI を表示 */}
