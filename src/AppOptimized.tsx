@@ -3,15 +3,13 @@ import "./App.css";
 import { supabase } from "./lib/supabaseClient";
 import Chart from "chart.js/auto";
 import { generateRunningEvaluation, type RunningEvaluation } from "./runningEvaluation";
-import { 
-  analyzeSimpleToeTrajectory, 
-  detectSimpleSteps, 
-  preprocessForPoseEstimation, 
+import {
+  analyzeSimpleToeTrajectory,
+  detectSimpleSteps,
+  preprocessForPoseEstimation,
   getOptimizedPoseConfig,
-  type SimpleStep,
-  type ToeHeightData
 } from "./SimpleStepDetection";
-import { isMediaPipeAvailable, createSafePose, estimatePoseFallback, getFileType, validateFileSize } from "./SafeMediaPipe";
+import { isMediaPipeAvailable } from "./SafeMediaPipe";
 
 /** ウィザードのステップ */
 type WizardStep = 0 | 1 | 3 | 3.5 | 4 | 5 | 5.5 | 6 | 7 | 8 | 9;
@@ -20,7 +18,7 @@ type WizardStep = 0 | 1 | 3 | 3.5 | 4 | 5 | 5.5 | 6 | 7 | 8 | 9;
 type AthleteInfo = {
   name: string;
   age: number | null;
-  gender: 'male' | 'female' | 'other' | null;
+  gender: "male" | "female" | "other" | null;
   affiliation: string;
   height_cm: number | null;
   current_record: string;
@@ -59,39 +57,16 @@ type StepMetric = {
   acceleration: number | null;
 };
 
-/** 各フレームの姿勢推定結果 */
-type FramePoseData = {
-  landmarks: Array<{ x: number; y: number; z: number; visibility: number }>;
-};
-
-/** 関節角度データ */
-type AngleData = {
-  frame: number;
-  trunkAngle: number | null;
-  hipAnkleAngle: { left: number | null; right: number | null };
-  thighAngle: { left: number | null; right: number | null };
-  shankAngle: { left: number | null; right: number | null };
-  kneeFlex: { left: number | null; right: number | null };
-  ankleFlex: { left: number | null; right: number | null };
-  elbowAngle: { left: number | null; right: number | null };
-  toeHorizontalDistance: { left: number | null; right: number | null };
-};
-
-/** 3局面での角度データ */
-type PhaseAngles = {
-  phase: "initial" | "mid" | "late";
-  frame: number;
-  angles: Omit<AngleData, "frame">;
-};
+type MarkerMode = "semi" | "manual";
 
 /** メモリ効率のための軽量フレームデータ */
 type LightFrameData = {
   frameNumber: number;
   timestamp: number;
-  landmarks: Float32Array; // x, y, z, visibility を圧縮
+  landmarks: Float32Array; // x, y, z, visibility
 };
 
-/** つま先軌道データ */
+/** つま先軌道データ（互換用） */
 type ToeTrajectoryPoint = {
   frame: number;
   height: number;
@@ -107,352 +82,54 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
 const compressLandmarks = (landmarks: any[]): Float32Array => {
   const compressed = new Float32Array(landmarks.length * 4);
   for (let i = 0; i < landmarks.length; i++) {
-    compressed[i * 4] = landmarks[i].x || 0;
-    compressed[i * 4 + 1] = landmarks[i].y || 0;
-    compressed[i * 4 + 2] = landmarks[i].z || 0;
-    compressed[i * 4 + 3] = landmarks[i].visibility || 0;
+    compressed[i * 4] = landmarks[i]?.x ?? 0;
+    compressed[i * 4 + 1] = landmarks[i]?.y ?? 0;
+    compressed[i * 4 + 2] = landmarks[i]?.z ?? 0;
+    compressed[i * 4 + 3] = landmarks[i]?.visibility ?? 0;
   }
   return compressed;
 };
 
-/** 圧縮されたランドマークを展開 */
-const decompressLandmarks = (compressed: Float32Array): Array<{ x: number; y: number; z: number; visibility: number }> => {
-  const landmarks = [];
-  for (let i = 0; i < compressed.length; i += 4) {
-    landmarks.push({
-      x: compressed[i],
-      y: compressed[i + 1],
-      z: compressed[i + 2],
-      visibility: compressed[i + 3]
-    });
-  }
-  return landmarks;
+const sortUniqueFrames = (arr: number[]) => Array.from(new Set(arr)).sort((a, b) => a - b);
+
+/** StepMetric を「型通り」に生成（不足項目は null） */
+const buildStepMetrics = (contactFrames: number[], toeOffFrames: number[], fps: number): StepMetric[] => {
+  const contacts = sortUniqueFrames(contactFrames);
+  const toes = sortUniqueFrames(toeOffFrames);
+  const fpsSafe = fps > 0 ? fps : 30;
+
+  let toeIdx = 0;
+
+  return contacts.map((c, i) => {
+    while (toeIdx < toes.length && toes[toeIdx] <= c) toeIdx++;
+    const toe = toeIdx < toes.length ? toes[toeIdx++] : c + 1;
+
+    const nextContact = i + 1 < contacts.length ? contacts[i + 1] : null;
+
+    const contactTime = (toe - c) / fpsSafe;
+    const flightTime = nextContact != null ? (nextContact - toe) / fpsSafe : null;
+    const stepTime = nextContact != null ? (nextContact - c) / fpsSafe : null;
+    const stepPitch = stepTime && stepTime > 0 ? 1 / stepTime : null;
+
+    return {
+      index: i + 1,
+      contactFrame: c,
+      toeOffFrame: toe,
+      nextContactFrame: nextContact,
+      contactTime,
+      flightTime,
+      stepTime,
+      stepPitch,
+      stride: null,
+      speedMps: null,
+      acceleration: null,
+    };
+  });
 };
 
-/** 高度なつま先軌道分析 - 改善版 */
-const analyzeToeTrajectory = (frames: LightFrameData[]): ToeTrajectoryPoint[] => {
-  const trajectory: ToeTrajectoryPoint[] = [];
-  const windowSize = 3; // ウィンドウサイズを小さくして微細な動きを保持
-  
-  // 1. まず生の高さデータを収集
-  const rawHeights: number[] = [];
-  for (const frame of frames) {
-    const landmarks = decompressLandmarks(frame.landmarks);
-    const leftToe = landmarks[31]; // LEFT_FOOT_INDEX
-    const rightToe = landmarks[32]; // RIGHT_FOOT_INDEX
-    
-    if (leftToe && rightToe && leftToe.visibility > 0.3 && rightToe.visibility > 0.3) {
-      const height = Math.min(leftToe.y, rightToe.y);
-      rawHeights.push(height);
-    } else {
-      rawHeights.push(NaN);
-    }
-  }
-  
-  // 2. 欠損値を補完
-  const filledHeights = fillMissingValues(rawHeights);
-  
-  // 3. 軽度の平滑化（微細な動きを保持）
-  const smoothedHeights = smoothArray(filledHeights, windowSize);
-  
-  // 4. 全体的な統計情報を計算（動的閾値用）
-  const validHeights = smoothedHeights.filter(h => !isNaN(h));
-  const avgHeight = validHeights.reduce((a, b) => a + b, 0) / validHeights.length;
-  const heightRange = Math.max(...validHeights) - Math.min(...validHeights);
-  
-  // 5. 速度と変化を計算（適応的閾値）
-  const descentThreshold = heightRange * 0.05; // 高さ変化の5%を閾値
-  const velocityThreshold = descentThreshold * 0.8;
-  
-  for (let i = 1; i < smoothedHeights.length - 1; i++) {
-    const current = smoothedHeights[i];
-    const prev = smoothedHeights[i - 1];
-    const next = smoothedHeights[i + 1];
-    
-    if (isNaN(current) || isNaN(prev) || isNaN(next)) {
-      trajectory.push({
-        frame: i,
-        height: 0,
-        velocity: 0,
-        isDescending: false,
-        isLowest: false,
-        isRising: false
-      });
-      continue;
-    }
-    
-    const velocity = current - prev;
-    const isDescending = velocity > velocityThreshold;
-    const isRising = velocity < -velocityThreshold;
-    
-    // 最低点検出を改善 - 速度がゼロ近くで、次が上昇
-    const isNearZeroVelocity = Math.abs(velocity) < velocityThreshold * 0.5;
-    const nextIsRising = (next - current) < -velocityThreshold * 0.3;
-    const isLowest = isNearZeroVelocity && nextIsRising;
-    
-    trajectory.push({
-      frame: i,
-      height: current,
-      velocity,
-      isDescending,
-      isLowest,
-      isRising
-    });
-  }
-  
-  return trajectory;
-};
-
-/** 欠損値を補完 */
-const fillMissingValues = (arr: number[]): number[] => {
-  const result = [...arr];
-  
-  // 前方補完
-  let lastValid = NaN;
-  for (let i = 0; i < result.length; i++) {
-    if (!isNaN(result[i])) {
-      lastValid = result[i];
-    } else if (!isNaN(lastValid)) {
-      result[i] = lastValid;
-    }
-  }
-  
-  // 後方補完（前方補完で埋めきれなかった部分）
-  let nextValid = NaN;
-  for (let i = result.length - 1; i >= 0; i--) {
-    if (!isNaN(result[i])) {
-      nextValid = result[i];
-    } else if (!isNaN(nextValid)) {
-      result[i] = nextValid;
-    }
-  }
-  
-  return result;
-};
-
-/** 配列の平滑化 */
-const smoothArray = (arr: number[], windowSize: number): number[] => {
-  const result: number[] = [];
-  const halfWindow = Math.floor(windowSize / 2);
-  
-  for (let i = 0; i < arr.length; i++) {
-    let sum = 0;
-    let count = 0;
-    
-    for (let j = -halfWindow; j <= halfWindow; j++) {
-      const idx = i + j;
-      if (idx >= 0 && idx < arr.length && !isNaN(arr[idx])) {
-        sum += arr[idx];
-        count++;
-      }
-    }
-    
-    result.push(count > 0 ? sum / count : NaN);
-  }
-  
-  return result;
-};
-
-/** 高度な接地/離地検出アルゴリズム - 改善版 */
-const detectContactAndToeOffAdvanced = (
-  frames: LightFrameData[],
-  trajectory: ToeTrajectoryPoint[]
-): { contactFrames: number[], toeOffFrames: number[] } => {
-  const contactFrames: number[] = [];
-  const toeOffFrames: number[] = [];
-  
-  // 1. つま先軌道からの検出（改善版）
-  for (let i = 1; i < trajectory.length - 1; i++) {
-    const current = trajectory[i];
-    const prev = trajectory[i - 1];
-    const next = trajectory[i + 1];
-    
-    // 下降→上昇の転換点（谷）を接地として検出
-    if (prev && current.isLowest && !prev.isLowest) {
-      contactFrames.push(current.frame);
-    }
-    
-    // 上昇開始を離地として検出（より敏感に）
-    if (prev && !prev.isRising && current.isRising) {
-      toeOffFrames.push(current.frame);
-    }
-  }
-  
-  // 2. 関節角度からの補助的検出（感度を上げる）
-  const jointBasedContacts = detectContactFromJoints(frames);
-  const jointBasedToeOffs = detectToeOffFromJoints(frames);
-  
-  // 3. 2つの方法の結果を統合（より緩やかな統合）
-  const finalContacts = mergeDetections(contactFrames, jointBasedContacts, 0.6);
-  const finalToeOffs = mergeDetections(toeOffFrames, jointBasedToeOffs, 0.5);
-  
-  return {
-    contactFrames: finalContacts,
-    toeOffFrames: finalToeOffs
-  };
-};
-
-/** 関節角度から接地を検出 */
-const detectContactFromJoints = (frames: LightFrameData[]): number[] => {
-  const contacts: number[] = [];
-  
-  for (let i = 0; i < frames.length; i++) {
-    const landmarks = decompressLandmarks(frames[i].landmarks);
-    
-    // 膝の角度が急激に変化する点を検出
-    if (i > 0) {
-      const prevLandmarks = decompressLandmarks(frames[i - 1].landmarks);
-      const kneeAngleChange = calculateKneeAngleChange(landmarks, prevLandmarks);
-      
-      if (kneeAngleChange > 15) { // 15度以上の変化
-        contacts.push(i);
-      }
-    }
-  }
-  
-  return contacts;
-};
-
-/** 関節角度から離地を検出 */
-const detectToeOffFromJoints = (frames: LightFrameData[]): number[] => {
-  const toeOffs: number[] = [];
-  
-  for (let i = 1; i < frames.length; i++) {
-    const landmarks = decompressLandmarks(frames[i].landmarks);
-    const prevLandmarks = decompressLandmarks(frames[i - 1].landmarks);
-    
-    // 足首の角度変化と位置変化を検出
-    const anklePlantarflexion = detectAnklePlantarflexion(landmarks, prevLandmarks);
-    
-    if (anklePlantarflexion) {
-      toeOffs.push(i);
-    }
-  }
-  
-  return toeOffs;
-};
-
-/** 膝角度変化を計算 */
-const calculateKneeAngleChange = (current: any[], prev: any[]): number => {
-  const getKneeAngle = (landmarks: any[], side: 'left' | 'right') => {
-    const hip = landmarks[side === 'left' ? 23 : 24];
-    const knee = landmarks[side === 'left' ? 25 : 26];
-    const ankle = landmarks[side === 'left' ? 27 : 28];
-    
-    if (!hip || !knee || !ankle || hip.visibility < 0.5 || knee.visibility < 0.5 || ankle.visibility < 0.5) {
-      return 0;
-    }
-    
-    const v1 = { x: hip.x - knee.x, y: hip.y - knee.y };
-    const v2 = { x: ankle.x - knee.x, y: ankle.y - knee.y };
-    
-    const dot = v1.x * v2.x + v1.y * v2.y;
-    const mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
-    const mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
-    
-    if (mag1 === 0 || mag2 === 0) return 0;
-    
-    const cosAngle = clamp(dot / (mag1 * mag2), -1, 1);
-    return Math.acos(cosAngle) * 180 / Math.PI;
-  };
-  
-  const currentLeft = getKneeAngle(current, 'left');
-  const currentRight = getKneeAngle(current, 'right');
-  const prevLeft = getKneeAngle(prev, 'left');
-  const prevRight = getKneeAngle(prev, 'right');
-  
-  const leftChange = Math.abs(currentLeft - prevLeft);
-  const rightChange = Math.abs(currentRight - prevRight);
-  
-  return Math.max(leftChange, rightChange);
-};
-
-/** 足首の底屈を検出 */
-const detectAnklePlantarflexion = (current: any[], prev: any[]): boolean => {
-  const getAnkleAngle = (landmarks: any[], side: 'left' | 'right') => {
-    const knee = landmarks[side === 'left' ? 25 : 26];
-    const ankle = landmarks[side === 'left' ? 27 : 28];
-    const toe = landmarks[side === 'left' ? 31 : 32];
-    
-    if (!knee || !ankle || !toe || knee.visibility < 0.5 || ankle.visibility < 0.5 || toe.visibility < 0.5) {
-      return 0;
-    }
-    
-    const v1 = { x: knee.x - ankle.x, y: knee.y - ankle.y };
-    const v2 = { x: toe.x - ankle.x, y: toe.y - ankle.y };
-    
-    const dot = v1.x * v2.x + v1.y * v2.y;
-    const mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
-    const mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
-    
-    if (mag1 === 0 || mag2 === 0) return 0;
-    
-    const cosAngle = clamp(dot / (mag1 * mag2), -1, 1);
-    return Math.acos(cosAngle) * 180 / Math.PI;
-  };
-  
-  const currentLeft = getAnkleAngle(current, 'left');
-  const currentRight = getAnkleAngle(current, 'right');
-  const prevLeft = getAnkleAngle(prev, 'left');
-  const prevRight = getAnkleAngle(prev, 'right');
-  
-  // 足首の角度が増加（底屈）しているか
-  const leftPlantarflexion = currentLeft > prevLeft + 5;
-  const rightPlantarflexion = currentRight > prevRight + 5;
-  
-  return leftPlantarflexion || rightPlantarflexion;
-};
-
-/** 検出結果を統合 */
-const mergeDetections = (method1: number[], method2: number[], threshold: number): number[] => {
-  const merged: number[] = [];
-  const used = new Set<number>();
-  
-  // 方法1の結果を優先的に追加
-  for (const frame of method1) {
-    if (!used.has(frame)) {
-      merged.push(frame);
-      used.add(frame);
-    }
-  }
-  
-  // 方法2の結果で、方法1と近い位置にあるものを追加
-  for (const frame of method2) {
-    let isNear = false;
-    for (const existing of method1) {
-      if (Math.abs(frame - existing) < 5) { // 5フレーム以内
-        isNear = true;
-        break;
-      }
-    }
-    
-    if (!isNear && !used.has(frame)) {
-      merged.push(frame);
-      used.add(frame);
-    }
-  }
-  
-  return merged.sort((a, b) => a - b);
-};
-
-/** 回転補正 */
-const rotatePoint = (x: number, y: number, z: number, visibility: number, angle: number, centerX: number, centerY: number) => {
-  const cos = Math.cos(-angle);
-  const sin = Math.sin(-angle);
-  const dx = x - centerX;
-  const dy = y - centerY;
-  
-  return {
-    x: centerX + dx * cos - dy * sin,
-    y: centerY + dx * sin + dy * cos,
-    z,
-    visibility
-  };
-};
-
-/** メインコンポーネント */
 const AppOptimized: React.FC<{ userProfile?: any }> = ({ userProfile }) => {
   const [currentStep, setCurrentStep] = useState<WizardStep>(0);
+
   const [athleteInfo, setAthleteInfo] = useState<AthleteInfo>({
     name: "",
     age: null,
@@ -460,263 +137,510 @@ const AppOptimized: React.FC<{ userProfile?: any }> = ({ userProfile }) => {
     affiliation: "",
     height_cm: null,
     current_record: "",
-    target_record: ""
+    target_record: "",
   });
-  
+
   // メモリ効率のための状態管理
   const [lightFrames, setLightFrames] = useState<LightFrameData[]>([]);
   const [toeTrajectory, setToeTrajectory] = useState<ToeTrajectoryPoint[]>([]);
   const [videoMetadata, setVideoMetadata] = useState({ width: 0, height: 0, fps: 30, totalFrames: 0 });
-  
+
   // UI状態
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  
+
+  // 再生用（解析用 video 要素とは別に、UI 表示用の URL を保持）
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+
   // 分析結果
   const [contactFrames, setContactFrames] = useState<number[]>([]);
   const [toeOffFrames, setToeOffFrames] = useState<number[]>([]);
   const [stepMetrics, setStepMetrics] = useState<StepMetric[]>([]);
   const [runningEvaluation, setRunningEvaluation] = useState<RunningEvaluation | null>(null);
-  
+
+  // マーク方式（半自動 / 手動）
+  const [markerMode, setMarkerMode] = useState<MarkerMode>("semi");
+
+  // 半自動の結果を退避（手動⇄半自動で戻すため）
+  const [semiContactFramesBackup, setSemiContactFramesBackup] = useState<number[] | null>(null);
+  const [semiToeOffFramesBackup, setSemiToeOffFramesBackup] = useState<number[] | null>(null);
+  const [semiStepMetricsBackup, setSemiStepMetricsBackup] = useState<StepMetric[] | null>(null);
+
   // 画面・デバイス対応
   const [isMobile, setIsMobile] = useState(false);
-  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
-  
-  // キャンバス参照
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [orientation, setOrientation] = useState<"portrait" | "landscape">("portrait");
+
+  // 参照
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+  const chartCanvasRef = useRef<HTMLCanvasElement>(null);
+  const chartInstanceRef = useRef<Chart | null>(null);
+
+  // 現在フレーム取得（currentFrame 変数は使わない）
+  const getCurrentFrameFromVideo = useCallback(() => {
+    const fps = videoMetadata.fps || 30;
+    const t = videoRef.current?.currentTime ?? 0;
+    return Math.max(0, Math.round(t * fps));
+  }, [videoMetadata.fps]);
+
+  // 手動モード時のみ stepMetrics を更新（型通り）
+  useEffect(() => {
+    if (markerMode !== "manual") return;
+    setStepMetrics(buildStepMetrics(contactFrames, toeOffFrames, videoMetadata.fps));
+  }, [markerMode, contactFrames, toeOffFrames, videoMetadata.fps]);
+
   // モバイル検出
   useEffect(() => {
     const checkMobile = () => {
       const mobile = window.innerWidth <= 768 || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       setIsMobile(mobile);
-      setOrientation(window.innerWidth > window.innerHeight ? 'landscape' : 'portrait');
+      setOrientation(window.innerWidth > window.innerHeight ? "landscape" : "portrait");
     };
-    
     checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
   }, []);
-  
-  // ステップ1: 動画ファイルの読み込み（メモリ効率化・高精度化）
+
+  // 簡易チャート（任意）：接地時間の推移
+  useEffect(() => {
+    if (!chartCanvasRef.current) return;
+
+    // 破棄
+    if (chartInstanceRef.current) {
+      chartInstanceRef.current.destroy();
+      chartInstanceRef.current = null;
+    }
+
+    if (stepMetrics.length === 0) return;
+
+    const labels = stepMetrics.map((s) => String(s.index));
+    const data = stepMetrics.map((s) => (s.contactTime ?? 0) * 1000); // ms
+
+    chartInstanceRef.current = new Chart(chartCanvasRef.current, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "接地時間（ms）",
+            data,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+      },
+    });
+  }, [stepMetrics]);
+
+  // 解析が終わったら評価生成（シグネチャ不確実のため any で安全に）
+useEffect(() => {
+  if (stepMetrics.length === 0) return;
+
+  try {
+    const phaseAngles: any[] = []; // これ1回だけ
+
+    const avg0 = (arr: Array<number | null | undefined>) => {
+      const v = arr.filter((x): x is number => typeof x === "number" && !Number.isNaN(x));
+      if (v.length === 0) return 0;
+      return v.reduce((a, b) => a + b, 0) / v.length;
+    };
+
+    const stepSummary = {
+      avgContact: avg0(stepMetrics.map((s) => s.contactTime)),
+      avgFlight: avg0(stepMetrics.map((s) => s.flightTime)),
+      avgStepPitch: avg0(stepMetrics.map((s) => s.stepPitch)),
+      avgStride: avg0(stepMetrics.map((s) => s.stride)),
+      avgSpeed: avg0(stepMetrics.map((s) => s.speedMps)),
+    };
+
+    const ev = generateRunningEvaluation(
+      stepMetrics as any,
+      phaseAngles,
+      stepSummary as any,
+      toeTrajectory as any
+    );
+
+    setRunningEvaluation(ev as any);
+  } catch {
+    // 評価生成が失敗しても解析は継続
+  }
+}, [stepMetrics, toeTrajectory]);
+
+
+
+  // Supabase 保存（最小：失敗しても UI は止めない）
+  const saveSessionToSupabase = useCallback(async () => {
+    try {
+      // ここはあなたの DB スキーマに依存するので、最低限の例に留めます
+      // 既に保存ロジックが別にある場合は差し替えてください
+      const payload: Partial<RunningAnalysisSession> = {
+        source_video_name: videoUrl ? "uploaded_video" : imageUrl ? "uploaded_image" : null,
+        frames_count: lightFrames.length,
+        target_fps: videoMetadata.fps,
+      };
+
+      const { data, error: sbErr } = await supabase
+        .from("running_analysis_sessions")
+        .insert(payload as any)
+        .select("id")
+        .single();
+
+      if (!sbErr && data?.id) setSessionId(String(data.id));
+    } catch {
+      // 無視（ローカル解析は続行）
+    }
+  }, [videoUrl, imageUrl, lightFrames.length, videoMetadata.fps]);
+
+  // ステップ0: 動画/画像アップロード
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    
-    // ファイルサイズチェック（100MB制限）
-    const maxSize = 100 * 1024 * 1024;
-    if (file.size > maxSize) {
-      setError('ファイルサイズが大きすぎます。100MB以下のファイルを選択してください。');
-      return;
-    }
-    
-    // 画像ファイル（スクリーンショット）の処理を追加
-    if (file.type.startsWith('image/')) {
+
+    // 前回の URL を解放
+    if (videoUrl) URL.revokeObjectURL(videoUrl);
+    if (imageUrl) URL.revokeObjectURL(imageUrl);
+    setVideoUrl(null);
+    setImageUrl(null);
+
+    setError(null);
+    setSessionId(null);
+    setRunningEvaluation(null);
+
+    // 画像
+    if (file.type.startsWith("image/")) {
+      const url = URL.createObjectURL(file);
+      setImageUrl(url);
       await handleImageUpload(file);
       return;
     }
-    
-    // 動画ファイルの種類チェック
-    if (!file.type.startsWith('video/')) {
-      setError('動画ファイルまたは画像ファイルを選択してください。');
+
+    // 動画
+    if (!file.type.startsWith("video/")) {
+      setError("動画ファイルまたは画像ファイルを選択してください。");
       return;
     }
-    
+
+    const url = URL.createObjectURL(file);
+    setVideoUrl(url);
+
     setIsProcessing(true);
     setProcessingProgress(0);
-    setError(null);
-    
-    // タイムアウト処理
+
     const timeoutId = setTimeout(() => {
-      setError('処理がタイムアウトしました。ファイルサイズを小さくするか、別のファイルをお試しください。');
+      setError("処理がタイムアウトしました。ファイルサイズを小さくするか、別のファイルをお試しください。");
       setIsProcessing(false);
       setProcessingProgress(0);
-    }, 120000); // 2分タイムアウト
-    
-    let video: HTMLVideoElement | null = null;
-    
+    }, 120000);
+
+    let workerVideo: HTMLVideoElement | null = null;
+
     try {
-      // 動画の前処理：明るさ・コントラスト調整
-      video = document.createElement('video');
-      video.src = URL.createObjectURL(file);
-      video.muted = true;
-      
+      if (!isMediaPipeAvailable()) {
+        throw new Error("MediaPipe が利用できません。ブラウザを更新するか、別のブラウザをお試しください。");
+      }
+
+      workerVideo = document.createElement("video");
+      workerVideo.src = url;
+      workerVideo.muted = true;
+      workerVideo.playsInline = true;
+
       await new Promise<void>((resolve) => {
-        video!.onloadedmetadata = () => resolve();
+        workerVideo!.onloadedmetadata = () => resolve();
       });
-      
-      const { videoWidth, videoHeight, duration } = video;
-      const fps = 30; // 標準的なFPSを仮定
-      const totalFrames = Math.floor(duration * fps);
-      
+
+      const { videoWidth, videoHeight, duration } = workerVideo;
+      const fps = 30; // 現状は固定（必要なら将来メタデータ推定）
+      const totalFrames = Math.max(1, Math.floor(duration * fps));
       setVideoMetadata({ width: videoWidth, height: videoHeight, fps, totalFrames });
-      
-      // Canvasを使用してフレームを抽出（前処理付き）
-      const canvas = document.createElement('canvas');
+
+      // Canvas でフレーム抽出
+      const canvas = document.createElement("canvas");
       canvas.width = videoWidth;
       canvas.height = videoHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Canvas context not available');
-      
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas context not available");
+
       const frames: LightFrameData[] = [];
       const frameInterval = 1 / fps;
-      
-      // MediaPipe Poseの設定（簡素化版）
+
+      // MediaPipe Pose（※実行環境で mp がロードされている前提）
       const mp = (window as any).mp;
-      if (!mp || !mp.tasks || !mp.tasks.vision) {
-        throw new Error('MediaPipe が利用できません。ブラウザを更新するか、別のブラウザをお試しください。');
+      if (!mp?.tasks?.vision?.Pose) {
+        throw new Error("MediaPipe Pose がロードされていません。");
       }
-      
+
       const poseConfig = getOptimizedPoseConfig();
       const pose = new mp.tasks.vision.Pose(poseConfig);
-      
+
       for (let i = 0; i < totalFrames; i++) {
         const time = i * frameInterval;
-        video.currentTime = time;
-        
+        workerVideo.currentTime = time;
+
         await new Promise<void>((resolve) => {
-          video!.onseeked = () => resolve();
+          workerVideo!.onseeked = () => resolve();
         });
-        
-        // 簡素化された前処理
-        ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
-        
-        // 画像の前処理：コントラスト調整（簡素化）
+
+        ctx.drawImage(workerVideo, 0, 0, videoWidth, videoHeight);
+
+        // 前処理
         preprocessForPoseEstimation(canvas);
-        
+
         // 姿勢推定
         try {
           const result = await pose.detect(canvas);
-          if (result.landmarks && result.landmarks.length > 0) {
-            const compressed = compressLandmarks(result.landmarks[0]);
+          const lm = result?.landmarks?.[0];
+          if (lm && lm.length > 0) {
             frames.push({
               frameNumber: i,
               timestamp: time,
-              landmarks: compressed
+              landmarks: compressLandmarks(lm),
             });
           }
-        } catch (e) {
-          console.warn(`Frame ${i} processing failed:`, e);
+        } catch {
+          // フレーム単位の失敗は無視
         }
-        
-        // 進捗更新
-        if (i % 10 === 0) {
-          setProcessingProgress((i / totalFrames) * 50); // 50%まで
-        }
+
+        if (i % 10 === 0) setProcessingProgress((i / totalFrames) * 80);
       }
-      
+
       setLightFrames(frames);
-      
-      // 簡素化されたつま先軌道分析
+
+      // つま先軌道（簡素）
       const simpleTrajectory = analyzeSimpleToeTrajectory(frames);
-      
-      // ToeHeightDataをToeTrajectoryPointに変換
-      const trajectory: ToeTrajectoryPoint[] = simpleTrajectory.map(point => ({
-        frame: point.frame,
-        height: point.height,
-        velocity: point.velocity,
-        isDescending: point.velocity > 0.1,
-        isLowest: Math.abs(point.velocity) < 0.05,
-        isRising: point.velocity < -0.1
+      const trajectory: ToeTrajectoryPoint[] = simpleTrajectory.map((p: any) => ({
+        frame: p.frame,
+        height: p.height,
+        velocity: p.velocity,
+        isDescending: p.velocity > 0.1,
+        isLowest: Math.abs(p.velocity) < 0.05,
+        isRising: p.velocity < -0.1,
       }));
-      
       setToeTrajectory(trajectory);
-      
-      // 簡素化された接地・離地検出
-      const steps = detectSimpleSteps(trajectory);
-      
-      // ステップデータをフレームデータに変換
-      const contactFrames = steps.map(step => step.contactFrame);
-      const toeOffFrames = steps.map(step => step.toeOffFrame);
-      
-      setContactFrames(contactFrames);
-      setToeOffFrames(toeOffFrames);
-      
+
+      // 半自動のステップ検出
+      const steps = detectSimpleSteps(trajectory as any);
+
+      const cFrames = steps.map((s: any) => s.contactFrame);
+      const tFrames = steps.map((s: any) => s.toeOffFrame);
+
+      // 半自動として反映
+      setMarkerMode("semi");
+      setContactFrames(cFrames);
+      setToeOffFrames(tFrames);
+      setStepMetrics(buildStepMetrics(cFrames, tFrames, fps));
+
       setProcessingProgress(100);
       setCurrentStep(3);
-      
+
+      // 保存は任意（失敗しても止めない）
+      void saveSessionToSupabase();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '動画処理中にエラーが発生しました');
+      setError(err instanceof Error ? err.message : "動画処理中にエラーが発生しました");
     } finally {
       clearTimeout(timeoutId);
       setIsProcessing(false);
       setProcessingProgress(0);
-      
-      // メモリ解放
-      if (video && video.src) URL.revokeObjectURL(video.src);
     }
   };
-  
+
   // 画像（スクリーンショット）アップロード処理
   const handleImageUpload = async (file: File) => {
     setIsProcessing(true);
     setProcessingProgress(0);
     setError(null);
-    
+
     try {
+      if (!isMediaPipeAvailable()) {
+        throw new Error("MediaPipe が利用できません。ブラウザを更新するか、別のブラウザをお試しください。");
+      }
+
       const img = new Image();
       img.src = URL.createObjectURL(file);
-      
+
       await new Promise<void>((resolve) => {
         img.onload = () => resolve();
       });
-      
-      // Canvasに描画
-      const canvas = document.createElement('canvas');
+
+      const canvas = document.createElement("canvas");
       canvas.width = img.width;
       canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Canvas context not available');
-      
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas context not available");
+
       ctx.drawImage(img, 0, 0);
-      
-      // MediaPipe Poseで姿勢推定（簡素化版）
+
       const mp = (window as any).mp;
-      if (!mp || !mp.tasks || !mp.tasks.vision) {
-        throw new Error('MediaPipe が利用できません。ブラウザを更新するか、別のブラウザをお試しください。');
+      if (!mp?.tasks?.vision?.Pose) {
+        throw new Error("MediaPipe Pose がロードされていません。");
       }
-      
+
       const poseConfig = getOptimizedPoseConfig();
       const pose = new mp.tasks.vision.Pose(poseConfig);
-      
+
       const result = await pose.detect(canvas);
-      
-      if (result.landmarks && result.landmarks.length > 0) {
-        // 単一フレームとして処理
-        const compressed = compressLandmarks(result.landmarks[0]);
-        const frames: LightFrameData[] = [{
+      const lm = result?.landmarks?.[0];
+
+      if (!lm || lm.length === 0) {
+        throw new Error("姿勢を検出できませんでした");
+      }
+
+      const frames: LightFrameData[] = [
+        {
           frameNumber: 0,
           timestamp: 0,
-          landmarks: compressed
-        }];
-        
-        setLightFrames(frames);
-        setVideoMetadata({ width: img.width, height: img.height, fps: 1, totalFrames: 1 });
-        
-        // 画像の場合は手動モードに切り替え
-        setCurrentStep(3.5); // 手動マーカー配置モード
-      } else {
-        throw new Error('姿勢を検出できませんでした');
-      }
-      
+          landmarks: compressLandmarks(lm),
+        },
+      ];
+
+      setLightFrames(frames);
+      setVideoMetadata({ width: img.width, height: img.height, fps: 1, totalFrames: 1 });
+
+      // 画像は手動前提
+      setMarkerMode("manual");
+      setContactFrames([]);
+      setToeOffFrames([]);
+      setStepMetrics([]);
+
+      setCurrentStep(3.5);
       setProcessingProgress(100);
-      
-      // メモリ解放
-      URL.revokeObjectURL(img.src);
-      
     } catch (err) {
-      setError(err instanceof Error ? err.message : '画像処理中にエラーが発生しました');
+      setError(err instanceof Error ? err.message : "画像処理中にエラーが発生しました");
     } finally {
       setIsProcessing(false);
       setProcessingProgress(0);
     }
   };
-  
-  // レスポンシブなUIコンポーネント
+
+  // ===== UI =====
+  const summaryText = useMemo(() => {
+    const c = contactFrames.length;
+    const t = toeOffFrames.length;
+    const s = stepMetrics.length;
+    return `接地: ${c} / 離地: ${t} / 歩数: ${s}`;
+  }, [contactFrames.length, toeOffFrames.length, stepMetrics.length]);
+
+  const MarkerModePanel = () => (
+    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+      <div style={{ fontWeight: 700 }}>マーク設定：</div>
+
+      <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+        <input
+          type="radio"
+          name="markerMode"
+          checked={markerMode === "semi"}
+          onChange={() => {
+            setMarkerMode("semi");
+            if (semiContactFramesBackup) setContactFrames(semiContactFramesBackup);
+            if (semiToeOffFramesBackup) setToeOffFrames(semiToeOffFramesBackup);
+            if (semiStepMetricsBackup) setStepMetrics(semiStepMetricsBackup);
+          }}
+        />
+        半自動
+      </label>
+
+      <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+        <input
+          type="radio"
+          name="markerMode"
+          checked={markerMode === "manual"}
+          onChange={() => {
+            setSemiContactFramesBackup((prev) => prev ?? contactFrames);
+            setSemiToeOffFramesBackup((prev) => prev ?? toeOffFrames);
+            setSemiStepMetricsBackup((prev) => prev ?? stepMetrics);
+
+            setMarkerMode("manual");
+            setContactFrames([]);
+            setToeOffFrames([]);
+            setStepMetrics([]);
+          }}
+        />
+        手動
+      </label>
+
+      <div style={{ marginLeft: "auto", fontSize: 12, opacity: 0.9 }}>{summaryText}</div>
+    </div>
+  );
+
+  const ManualPanel = () => (
+    <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+        <button
+          type="button"
+          onClick={() => {
+            const f = getCurrentFrameFromVideo();
+            setContactFrames((prev) => sortUniqueFrames([...prev, f]));
+          }}
+        >
+          接地を追加（現在フレーム）
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            const f = getCurrentFrameFromVideo();
+            setToeOffFrames((prev) => sortUniqueFrames([...prev, f]));
+          }}
+        >
+          離地を追加（現在フレーム）
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setContactFrames([]);
+            setToeOffFrames([]);
+            setStepMetrics([]);
+          }}
+        >
+          全削除
+        </button>
+      </div>
+
+      <div style={{ fontSize: 12, opacity: 0.8 }}>
+        現在フレーム：{getCurrentFrameFromVideo()}（接地→離地→接地→離地…の順で追加）
+      </div>
+    </div>
+  );
+
+  const FramesList = () => (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div style={{ border: "1px solid rgba(255,255,255,0.25)", borderRadius: 10, padding: 10 }}>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>接地フレーム</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {contactFrames.map((f, i) => (
+            <span
+              key={`c-${f}-${i}`}
+              style={{ background: "rgba(0,0,0,0.35)", padding: "2px 8px", borderRadius: 999, fontSize: 12 }}
+            >
+              {f}
+            </span>
+          ))}
+          {contactFrames.length === 0 && <span style={{ fontSize: 12, opacity: 0.8 }}>なし</span>}
+        </div>
+      </div>
+
+      <div style={{ border: "1px solid rgba(255,255,255,0.25)", borderRadius: 10, padding: 10 }}>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>離地フレーム</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {toeOffFrames.map((f, i) => (
+            <span
+              key={`t-${f}-${i}`}
+              style={{ background: "rgba(0,0,0,0.35)", padding: "2px 8px", borderRadius: 999, fontSize: 12 }}
+            >
+              {f}
+            </span>
+          ))}
+          {toeOffFrames.length === 0 && <span style={{ fontSize: 12, opacity: 0.8 }}>なし</span>}
+        </div>
+      </div>
+    </div>
+  );
+
   const renderMobileUI = () => {
     return (
       <div className="mobile-container">
@@ -724,7 +648,7 @@ const AppOptimized: React.FC<{ userProfile?: any }> = ({ userProfile }) => {
           <h1 className="mobile-title">ランニング分析</h1>
           <p className="mobile-subtitle">AIがあなたの走りを分析します</p>
         </div>
-        
+
         {currentStep === 0 && (
           <div className="mobile-step-0">
             <div className="mobile-upload-area" onClick={() => fileInputRef.current?.click()}>
@@ -737,11 +661,11 @@ const AppOptimized: React.FC<{ userProfile?: any }> = ({ userProfile }) => {
               type="file"
               accept="video/*,image/*"
               onChange={handleFileUpload}
-              style={{ display: 'none' }}
+              style={{ display: "none" }}
             />
           </div>
         )}
-        
+
         {isProcessing && (
           <div className="mobile-processing">
             <div className="mobile-progress-container">
@@ -750,7 +674,7 @@ const AppOptimized: React.FC<{ userProfile?: any }> = ({ userProfile }) => {
             <p className="mobile-progress-text">{processingProgress.toFixed(0)}% 処理中...</p>
           </div>
         )}
-        
+
         {error && (
           <div className="mobile-error">
             <i className="fas fa-exclamation-triangle"></i>
@@ -758,61 +682,186 @@ const AppOptimized: React.FC<{ userProfile?: any }> = ({ userProfile }) => {
             <button onClick={() => setError(null)}>閉じる</button>
           </div>
         )}
-        
-        {/* その他のステップ... */}
+
+        {(currentStep === 3 || currentStep === 3.5) && (
+          <div style={{ color: "white" }}>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>解析結果</div>
+              <div style={{ fontSize: 13, opacity: 0.9 }}>{summaryText}</div>
+              {sessionId && <div style={{ fontSize: 12, opacity: 0.8 }}>sessionId: {sessionId}</div>}
+            </div>
+
+            {videoUrl && (
+              <div style={{ marginBottom: 12 }}>
+                <video
+                  ref={videoRef}
+                  src={videoUrl}
+                  controls
+                  playsInline
+                  style={{ width: "100%", borderRadius: 12, background: "#000" }}
+                />
+              </div>
+            )}
+
+            {imageUrl && (
+              <div style={{ marginBottom: 12 }}>
+                <img src={imageUrl} alt="uploaded" style={{ width: "100%", borderRadius: 12 }} />
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+              <button
+                type="button"
+                onClick={() => setCurrentStep(5)}
+                style={{ padding: "10px 14px", borderRadius: 10 }}
+              >
+                マーク編集へ
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrentStep(0);
+                  setLightFrames([]);
+                  setToeTrajectory([]);
+                  setContactFrames([]);
+                  setToeOffFrames([]);
+                  setStepMetrics([]);
+                  setRunningEvaluation(null);
+                  setSessionId(null);
+                }}
+                style={{ padding: "10px 14px", borderRadius: 10 }}
+              >
+                最初に戻る
+              </button>
+            </div>
+
+            <div style={{ height: 220, background: "rgba(255,255,255,0.1)", borderRadius: 12, padding: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>接地時間（参考）</div>
+              <div style={{ position: "relative", height: 170 }}>
+                <canvas ref={chartCanvasRef} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {currentStep === 5 && (
+          <div style={{ color: "white" }}>
+            <div style={{ fontWeight: 800, marginBottom: 10 }}>接地/離地 マーク編集</div>
+
+            <MarkerModePanel />
+
+            {markerMode === "manual" && <ManualPanel />}
+
+            <FramesList />
+
+            <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => setCurrentStep(3)}
+                style={{ padding: "10px 14px", borderRadius: 10 }}
+              >
+                戻る
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  // semi の現在値をバックアップ（次回の戻し用）
+                  if (markerMode === "semi") {
+                    setSemiContactFramesBackup(contactFrames);
+                    setSemiToeOffFramesBackup(toeOffFrames);
+                    setSemiStepMetricsBackup(stepMetrics);
+                  }
+                  setCurrentStep(6);
+                }}
+                style={{ padding: "10px 14px", borderRadius: 10 }}
+              >
+                次へ
+              </button>
+            </div>
+          </div>
+        )}
+
+        {currentStep === 6 && (
+          <div style={{ color: "white" }}>
+            <div style={{ fontWeight: 800, marginBottom: 10 }}>まとめ</div>
+            <div style={{ marginBottom: 8 }}>{summaryText}</div>
+
+            {runningEvaluation && (
+              <div style={{ background: "rgba(255,255,255,0.1)", padding: 12, borderRadius: 12, marginBottom: 12 }}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>評価（参考）</div>
+                <pre style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: 12 }}>
+                  {JSON.stringify(runningEvaluation, null, 2)}
+                </pre>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setCurrentStep(0)}
+              style={{ padding: "10px 14px", borderRadius: 10 }}
+            >
+              新しい動画で解析
+            </button>
+          </div>
+        )}
       </div>
     );
   };
-  
+
   const renderDesktopUI = () => {
-    // デスクトップもモバイルUIを使用（レスポンシブ対応）
     return renderMobileUI();
   };
-  
+
   return (
-    <div className={`app-container ${isMobile ? 'mobile' : 'desktop'}`}>
+    <div className={`app-container ${isMobile ? "mobile" : "desktop"}`}>
       <div className="app-header">
         <h1>ランニングフォーム分析</h1>
         <div className="device-indicator">
           {isMobile ? (
-            <><i className="fas fa-mobile-alt"></i> モバイルモード</>
+            <>
+              <i className="fas fa-mobile-alt"></i> モバイルモード
+            </>
           ) : (
-            <><i className="fas fa-desktop"></i> デスクトップモード</>
+            <>
+              <i className="fas fa-desktop"></i> デスクトップモード
+            </>
           )}
         </div>
       </div>
-      
+
       {isMobile ? renderMobileUI() : renderDesktopUI()}
-      
+
       <style>{`
         .app-container {
           min-height: 100vh;
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           font-family: 'Noto Sans JP', sans-serif;
         }
-        
+
         .mobile-container {
           padding: 16px;
           max-width: 100%;
         }
-        
+
         .mobile-header {
           text-align: center;
           color: white;
           margin-bottom: 32px;
         }
-        
+
         .mobile-title {
           font-size: 24px;
           font-weight: bold;
           margin-bottom: 8px;
         }
-        
+
         .mobile-subtitle {
           font-size: 14px;
           opacity: 0.9;
         }
-        
+
         .mobile-upload-area {
           background: rgba(255, 255, 255, 0.1);
           border: 2px dashed rgba(255, 255, 255, 0.3);
@@ -823,24 +872,24 @@ const AppOptimized: React.FC<{ userProfile?: any }> = ({ userProfile }) => {
           cursor: pointer;
           transition: all 0.3s ease;
         }
-        
+
         .mobile-upload-area:hover {
           background: rgba(255, 255, 255, 0.2);
           border-color: rgba(255, 255, 255, 0.5);
         }
-        
+
         .mobile-icon {
           font-size: 48px;
           margin-bottom: 16px;
           display: block;
         }
-        
+
         .mobile-processing {
           text-align: center;
           color: white;
           margin-top: 32px;
         }
-        
+
         .mobile-progress-container {
           background: rgba(255, 255, 255, 0.2);
           border-radius: 8px;
@@ -848,13 +897,13 @@ const AppOptimized: React.FC<{ userProfile?: any }> = ({ userProfile }) => {
           margin-bottom: 16px;
           overflow: hidden;
         }
-        
+
         .mobile-progress-bar {
           background: #4CAF50;
           height: 100%;
           transition: width 0.3s ease;
         }
-        
+
         .mobile-error {
           background: rgba(244, 67, 54, 0.9);
           color: white;
@@ -863,7 +912,7 @@ const AppOptimized: React.FC<{ userProfile?: any }> = ({ userProfile }) => {
           margin-top: 16px;
           text-align: center;
         }
-        
+
         .device-indicator {
           position: fixed;
           top: 16px;
@@ -875,11 +924,16 @@ const AppOptimized: React.FC<{ userProfile?: any }> = ({ userProfile }) => {
           font-size: 12px;
           z-index: 1000;
         }
-        
-        /* レスポンシブ対応：モバイルコンテナを全デバイスで表示 */
+
+        /* レスポンシブ */
         .mobile-container {
           max-width: 600px;
           margin: 0 auto;
+        }
+
+        button {
+          border: none;
+          cursor: pointer;
         }
       `}</style>
     </div>
