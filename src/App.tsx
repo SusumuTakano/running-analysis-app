@@ -7586,7 +7586,8 @@ case 6: {
       setManualContactFrames([]);
       setManualToeOffFrames([]);
       setAutoToeOffFrames([]);
-       }}
+     
+    }}
   >
     手動
   </button>
