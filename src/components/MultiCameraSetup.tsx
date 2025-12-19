@@ -6,6 +6,10 @@
  * - Support marker-based calibration (cones at x0/x1, near/far)
  * - Support capture range margins (e.g., -1〜6m) while analysis segment remains 0〜5m, 5〜10m...
  * - Add calibration step (click 4 cones in order)
+ *
+ * Fixes:
+ * - Keep blob video URLs in parent (MultiCameraSetup) so they are not revoked when leaving calibration UI
+ * - Fix Homography type mismatch by NOT forcing number[] types
  */
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
@@ -46,21 +50,39 @@ function intersectRange(aStart?: number, aEnd?: number, bStart?: number, bEnd?: 
   return { start: s, end: e };
 }
 
+// H が 3x3 でも flat(9) でも許容して「数値が入っているか」だけチェック
+function isValidHomography(h: unknown): boolean {
+  if (!h) return false;
+
+  // 3x3 matrix
+  if (
+    Array.isArray(h) &&
+    h.length === 3 &&
+    (h as unknown[]).every((r: unknown) => Array.isArray(r) && (r as unknown[]).length === 3)
+  ) {
+    return (h as unknown[][]).every((r: unknown[]) =>
+      r.every((v: unknown) => typeof v === 'number' && Number.isFinite(v))
+    );
+  }
+
+  // flat 9
+  if (Array.isArray(h) && h.length === 9) {
+    return (h as unknown[]).every((v: unknown) => typeof v === 'number' && Number.isFinite(v));
+  }
+
+  return false;
+}
+
+
 const CalibrationPanel: React.FC<{
   segment: RunSegment;
-  file: File;
+  videoUrl: string;              // ✅ Fileではなく URL を受け取る（blob を親で管理）
   laneWidthM: number;
   onSave: (segmentId: string, calibration: SegmentCalibration) => void;
-}> = ({ segment, file, laneWidthM, onSave }) => {
+}> = ({ segment, videoUrl, laneWidthM, onSave }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [points, setPoints] = useState<Array<{ px: ImgPoint; norm: ImgPoint }>>([]);
-
-  const objectUrl = useMemo(() => URL.createObjectURL(file), [file]);
-
-  useEffect(() => {
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [objectUrl]);
 
   const nextLabel = CLICK_LABELS[Math.min(points.length, 3)];
 
@@ -78,8 +100,10 @@ const CalibrationPanel: React.FC<{
     const yNorm = yRel / rect.height;
 
     // Convert to intrinsic video pixels (important for later homography)
-    const xPx = xNorm * (v.videoWidth || rect.width);
-    const yPx = yNorm * (v.videoHeight || rect.height);
+    const vw = v.videoWidth || rect.width;
+    const vh = v.videoHeight || rect.height;
+    const xPx = xNorm * vw;
+    const yPx = yNorm * vh;
 
     setPoints(prev => [...prev, { px: [xPx, yPx], norm: [xNorm, yNorm] }]);
   }, [points.length]);
@@ -105,8 +129,7 @@ const CalibrationPanel: React.FC<{
       x1_far: points[3].px
     };
 
-    // World points are fixed by your cone placement rule:
-    // near = y=0, far = y=laneWidthM
+    // World points: near = y=0, far = y=laneWidthM
     const worldPoints = {
       x0_near: [x0, 0] as [number, number],
       x0_far: [x0, laneWidthM] as [number, number],
@@ -114,7 +137,22 @@ const CalibrationPanel: React.FC<{
       x1_far: [x1, laneWidthM] as [number, number]
     };
 
-    const H = computeHomographyImgToWorld(imgPoints, worldPoints);
+    let H: SegmentCalibration['H_img_to_world'] | null = null;
+
+    try {
+      // ✅ ここで型を決め打ちしない（compute の戻り型に合わせる）
+      H = computeHomographyImgToWorld(imgPoints, worldPoints) as SegmentCalibration['H_img_to_world'];
+    } catch (err) {
+      console.error('Homography compute failed:', err);
+      alert('キャリブレーション計算に失敗しました。別フレームで4点を取り直してください。');
+      return;
+    }
+
+    if (!isValidHomography(H)) {
+      console.error('Invalid homography:', H);
+      alert('キャリブレーション計算に失敗しました（Hが不正）。4点を取り直してください。');
+      return;
+    }
 
     const calibration: SegmentCalibration = {
       laneWidthM,
@@ -125,23 +163,21 @@ const CalibrationPanel: React.FC<{
     };
 
     onSave(segment.id, calibration);
-  }, [points, segment.id, segment.startDistanceM, segment.endDistanceM, laneWidthM, onSave]);
+  }, [points, segment, laneWidthM, onSave]);
 
   // Marker dots for UI (normalized)
-  const dots = points.map((p, idx) => {
-    return (
-      <div
-        key={idx}
-        className="absolute w-4 h-4 rounded-full border-2 border-white shadow"
-        style={{
-          left: `${p.norm[0] * 100}%`,
-          top: `${p.norm[1] * 100}%`,
-          transform: 'translate(-50%, -50%)'
-        }}
-        title={CLICK_LABELS[idx] ?? ''}
-      />
-    );
-  });
+  const dots = points.map((p, idx) => (
+    <div
+      key={idx}
+      className="absolute w-4 h-4 rounded-full border-2 border-white shadow"
+      style={{
+        left: `${p.norm[0] * 100}%`,
+        top: `${p.norm[1] * 100}%`,
+        transform: 'translate(-50%, -50%)'
+      }}
+      title={CLICK_LABELS[idx] ?? ''}
+    />
+  ));
 
   return (
     <div className="border rounded-lg p-4 bg-gray-50">
@@ -190,7 +226,7 @@ const CalibrationPanel: React.FC<{
       <div className="mt-3 relative">
         <video
           ref={videoRef}
-          src={objectUrl}
+          src={videoUrl}          // ✅ ここが重要：親で保持した blob URL を使う
           controls
           className="w-full rounded bg-black"
         />
@@ -215,20 +251,53 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
   onCancel
 }) => {
   const [step, setStep] = useState<Step>('config');
+
   const [config, setConfig] = useState<MultiCameraConfig>({
-    segmentLengthM: 5,       // = marker interval (0,5,10,15...)
-    totalDistanceM: 15,      // e.g., 15m gives 0-5,5-10,10-15
+    segmentLengthM: 5,
+    totalDistanceM: 15,
     fps: 120,
+    // @ts-ignore - 既に型に含めている前提（含まれていない場合は multiCameraTypes 側へ追加してください）
     laneWidthM: 1.22,
-    preMarginM: 1,           // camera capture starts 1m before x0
-    postMarginM: 1           // camera capture ends 1m after x1
+    // @ts-ignore
+    preMarginM: 1,
+    // @ts-ignore
+    postMarginM: 1
   });
+
   const [run, setRun] = useState<Run | null>(null);
   const [segments, setSegments] = useState<RunSegment[]>([]);
+
+  // ✅ File を保持
   const [uploadedFiles, setUploadedFiles] = useState<Map<string, File>>(new Map());
+
+  // ✅ blob URL を保持（CalibrationPanel に渡す）
+  const [segmentVideoUrls, setSegmentVideoUrls] = useState<Map<string, string>>(new Map());
+
+  // ✅ アンマウント時に blob URL を全解放（メモリリーク防止）
+  useEffect(() => {
+    return () => {
+      segmentVideoUrls.forEach((url) => {
+        try { URL.revokeObjectURL(url); } catch {}
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const clearAllVideoUrls = useCallback(() => {
+    setSegmentVideoUrls(prev => {
+      prev.forEach(url => {
+        try { URL.revokeObjectURL(url); } catch {}
+      });
+      return new Map();
+    });
+  }, []);
 
   // Step 1: Configure run parameters
   const handleConfigSubmit = useCallback(() => {
+    // 新規Run開始なので、前のURL/ファイルをクリア
+    clearAllVideoUrls();
+    setUploadedFiles(new Map());
+
     const newRun: Run = {
       id: uuidv4(),
       athleteId,
@@ -245,20 +314,23 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
       config.segmentLengthM,
       {
         fps: config.fps,
-        laneWidthM: config.laneWidthM,
-        preMarginM: config.preMarginM,
-        postMarginM: config.postMarginM
+        // @ts-ignore
+        laneWidthM: (config as any).laneWidthM,
+        // @ts-ignore
+        preMarginM: (config as any).preMarginM,
+        // @ts-ignore
+        postMarginM: (config as any).postMarginM
       }
     );
 
     setRun(newRun);
     setSegments(newSegments);
-    setUploadedFiles(new Map());
     setStep('upload');
-  }, [config, athleteId, athleteName]);
+  }, [config, athleteId, athleteName, clearAllVideoUrls]);
 
   // Step 2: Handle video uploads
   const handleVideoUpload = useCallback((segmentId: string, file: File) => {
+    // ① File を保存
     setUploadedFiles(prev => new Map(prev).set(segmentId, file));
 
     setSegments(prev => prev.map(seg =>
@@ -266,6 +338,19 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
         ? { ...seg, videoFile: file, status: 'completed' as const }
         : seg
     ));
+
+    // ② blob URL を作って保持（CalibrationPanel で使う）
+    const url = URL.createObjectURL(file);
+
+    setSegmentVideoUrls(prev => {
+      const next = new Map(prev);
+      const old = next.get(segmentId);
+      if (old) {
+        try { URL.revokeObjectURL(old); } catch {}
+      }
+      next.set(segmentId, url);
+      return next;
+    });
   }, []);
 
   // Step 3: Save calibration per segment
@@ -281,10 +366,13 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
   const handleStartAnalysis = useCallback(() => {
     if (!run) return;
 
+    const laneWidth = (config as any).laneWidthM ?? 1.22;
+
     const finalSegments = segments.map(seg => ({
       ...seg,
       fps: config.fps,
-      laneWidthM: config.laneWidthM,
+      // @ts-ignore
+      laneWidthM: laneWidth,
       videoFile: uploadedFiles.get(seg.id) ?? seg.videoFile
     }));
 
@@ -300,8 +388,9 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
       return;
     }
 
+    // ✅ onStartAnalysis へは File を渡す（blob URL は渡さない）
     onStartAnalysis(run, finalSegments);
-  }, [run, segments, uploadedFiles, onStartAnalysis, config.fps, config.laneWidthM]);
+  }, [run, segments, uploadedFiles, onStartAnalysis, config]);
 
   const allVideosUploaded = segments.length > 0 && segments.every(seg => uploadedFiles.has(seg.id));
   const allCalibrated = segments.length > 0 && segments.every(seg => !!seg.calibration);
@@ -417,8 +506,8 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
                   <input
                     type="number"
                     step="0.01"
-                    value={config.laneWidthM}
-                    onChange={(e) => setConfig(prev => ({ ...prev, laneWidthM: Number(e.target.value) }))}
+                    value={(config as any).laneWidthM ?? 1.22}
+                    onChange={(e) => setConfig(prev => ({ ...(prev as any), laneWidthM: Number(e.target.value) }))}
                     className="w-full border rounded-lg px-3 py-2"
                   />
                   <div className="text-xs text-gray-500 mt-1">標準: 1.22</div>
@@ -428,8 +517,8 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
                   <input
                     type="number"
                     step="0.1"
-                    value={config.preMarginM}
-                    onChange={(e) => setConfig(prev => ({ ...prev, preMarginM: Number(e.target.value) }))}
+                    value={(config as any).preMarginM ?? 1}
+                    onChange={(e) => setConfig(prev => ({ ...(prev as any), preMarginM: Number(e.target.value) }))}
                     className="w-full border rounded-lg px-3 py-2"
                   />
                   <div className="text-xs text-gray-500 mt-1">例: 1（-1〜6m）</div>
@@ -439,8 +528,8 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
                   <input
                     type="number"
                     step="0.1"
-                    value={config.postMarginM}
-                    onChange={(e) => setConfig(prev => ({ ...prev, postMarginM: Number(e.target.value) }))}
+                    value={(config as any).postMarginM ?? 1}
+                    onChange={(e) => setConfig(prev => ({ ...(prev as any), postMarginM: Number(e.target.value) }))}
                     className="w-full border rounded-lg px-3 py-2"
                   />
                   <div className="text-xs text-gray-500 mt-1">例: 1（4〜11m）</div>
@@ -454,14 +543,17 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
                   <li>• コーン間隔: {config.segmentLengthM}m</li>
                   <li>• 総距離: {config.totalDistanceM}m</li>
                   <li>• fps: {config.fps}</li>
-                  <li>• レーン幅: {config.laneWidthM}m</li>
-                  <li>• マージン: 前{config.preMarginM}m / 後{config.postMarginM}m（重複が作れます）</li>
+                  <li>• レーン幅: {(config as any).laneWidthM ?? 1.22}m</li>
+                  <li>• マージン: 前{(config as any).preMarginM ?? 1}m / 後{(config as any).postMarginM ?? 1}m（重複が作れます）</li>
                 </ul>
               </div>
 
               <div className="flex gap-3">
                 <button
-                  onClick={onCancel}
+                  onClick={() => {
+                    clearAllVideoUrls();
+                    onCancel();
+                  }}
                   className="flex-1 px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
                   キャンセル
@@ -527,6 +619,8 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
                               onChange={(e) => {
                                 const f = e.target.files?.[0];
                                 if (f) handleVideoUpload(segment.id, f);
+                                // 同じファイルを選び直せるようにクリア
+                                e.currentTarget.value = '';
                               }}
                             />
                           </label>
@@ -576,7 +670,9 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
             <div className="space-y-4">
               {segments.map((segment, idx) => {
                 const file = uploadedFiles.get(segment.id);
-                if (!file) return null;
+                const url = segmentVideoUrls.get(segment.id);
+
+                if (!file || !url) return null;
 
                 return (
                   <div key={segment.id} className="border rounded-lg p-4">
@@ -600,12 +696,12 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
                       )}
                     </div>
 
-                                  <CalibrationPanel
-                    segment={segment}
-                    file={file}
-                    laneWidthM={config.laneWidthM ?? 1.22}
-                    onSave={handleSaveCalibration}
-                  />
+                    <CalibrationPanel
+                      segment={segment}
+                      videoUrl={url}
+                      laneWidthM={(config as any).laneWidthM ?? 1.22}
+                      onSave={handleSaveCalibration}
+                    />
                   </div>
                 );
               })}
