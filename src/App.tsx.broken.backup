@@ -29,6 +29,7 @@ import MobileHeader from './components/MobileHeader';
 import MultiCameraAnalyzer from "./components/MultiCameraAnalyzer";
 import { parseMedia } from "@remotion/media-parser";
 
+
 /** ウィザードのステップ */
 type WizardStep = 0 | 1 | 2 | 3 | 3.5 | 4 | 5 | 5.5 | 6 | 6.5 | 7 | 8 | 9;
 
@@ -536,37 +537,6 @@ const [wizardStep, setWizardStep] = useState<WizardStep>(0);
   const [runSegments, setRunSegments] = useState<RunSegment[]>([]);
   const [isMultiCameraSetup, setIsMultiCameraSetup] = useState(false);
   const [multiCameraData, setMultiCameraData] = useState<MultiCameraState | null>(null);
-// ✅ multiで setState が反映される前に参照できるようにする（同期Ref）
-  const videoFileRef = useRef<File | null>(null);
-  const setVideoFileSync = (f: File | null) => { videoFileRef.current = f; setVideoFile(f); };
-  // ✅ multi/単一どちらでも「今使うべき動画ファイル」を返す
-const getActiveVideoFile = (): File | null => {
-  // single は従来通り
-  if (analysisMode !== "multi") return videoFile ?? null;
-
-  // 1) 同期Refがあれば最優先
-  if (videoFileRef.current) return videoFileRef.current;
-
-  // 2) multiCameraData から「現在セグメントのfile」を復元
-  const data = multiCameraData;
-  if (data) {
-    const idx = data.currentIndex ?? 0;
-    const seg = data.segments?.[idx];
-    const idxKey = String((seg as any)?.segmentIndex ?? idx);
-
-    const f =
-      (seg ? data.videoFiles?.[seg.id] : null) ??
-      data.videoFiles?.[idxKey] ??
-      null;
-
-    if (f) return f;
-  }
-
-  // 3) 最後に state の videoFile にフォールバック
-  return videoFile ?? null;
-};
-
-
   const [multiCameraSummary, setMultiCameraSummary] = useState<MultiCameraSummary | null>(null);
   const [multiRun, setMultiRun] = useState<Run | null>(null);
   const [multiSegments, setMultiSegments] = useState<RunSegment[] | null>(null);
@@ -3626,7 +3596,7 @@ const framesToSec = (frames: number) => frames / analysisFps;
 
     if (file && file.type.startsWith("video/")) {
       const url = URL.createObjectURL(file);
-      setVideoFileSync(file);
+      setVideoFile(file);
       setVideoUrl(url);
       
       // ビデオ要素の事前ロード
@@ -3647,52 +3617,14 @@ const framesToSec = (frames: number) => frames / analysisFps;
   // このステップでは設定のみを行い、実際の処理はhandleExtractFramesで行います
 
   // ------------ フレーム抽出 ------------
-type ExtractFramesOpts = {
-  mode?: "single" | "multi";
-  file?: File | null;
-  url?: string | null;
-};
-
-const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
-  console.log("🎬 === Frame Extraction Started ===");
-  const activeFile = getActiveVideoFile(); // 既に App.tsx 内にある関数（542行目付近）
-  console.log("🎬 activeFile:", activeFile?.name, activeFile?.size);
-
-
-  // stateを信じない（stale対策）。引数→stateの順で確定させる
-  const mode = opts.mode ?? analysisMode;
-  const vf = opts.file ?? videoFile;
-  const vu = opts.url ?? videoUrl;
-
-  // single のときだけ必須チェック（multi は vf/vu を後段で使う）
-  if (mode !== "multi" && !vf) {
-    alert("動画ファイルを選択してください。");
-    return;
-  }
-
-  // multi で vf/vu が両方 null の場合はここで止める（原因が明確になる）
-  if (mode === "multi" && !vf && !vu) {
-    alert("動画ファイルが未設定です。セグメント動画の読み込みを確認してください。");
-    return;
-  }
-
-  // 以降の処理で使えるように、UI側stateも合わせる（任意だが安全）
-  if (mode === "multi" && vf) {
-    setVideoFileSync(vf);
-    if (vu) {
-      setVideoUrl(vu);
-    } else {
-      // URLが無いならここで作ってセット（後段は vu/vf を使うこと）
-      const url = URL.createObjectURL(vf);
-      setVideoUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return url;
-      });
+  const handleExtractFrames = async () => {
+    console.log('🎬 === Frame Extraction Started ===');
+    
+    if (!videoFile) {
+      alert("動画ファイルを選択してください。");
+      setWizardStep(1);
+      return;
     }
-  }
-
-  // ★ここから先（3672行目以降）は、いまある処理をそのまま残す
-
     
     // DOM要素の準備を確認
     let retryCount = 0;
@@ -3742,7 +3674,7 @@ const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
           // 3840x2160が誤って報告される場合の修正
           // iPhoneやiPadで撮影した動画は誤って4K報告されることがある
           if (actualWidth === 3840 && actualHeight === 2160) {
-            const fileSizeMB = (videoFile?.size ?? 0) / (1024 * 1024);
+            const fileSizeMB = videoFile.size / (1024 * 1024);
             console.log(`📹 ファイルサイズ: ${fileSizeMB.toFixed(2)}MB`);
             
             // 200MB以下は確実にHD動画（4K動画は最低でも300MB以上）
@@ -3778,35 +3710,13 @@ const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
         video.addEventListener("loadedmetadata", onLoaded);
         video.addEventListener("error", onError);
 
-       // --- video の入力ソースを確定（multi は state が間に合わないことがあるのでここで確実に作る） ---
-      let srcUrl: string | null = videoUrl ?? null;
-
-      // videoUrl がまだ state に乗っていない / クリアされた場合でも、File が取れればここで必ず復元する
-      if (!srcUrl && activeFile) {
-        const created = URL.createObjectURL(activeFile);
-        srcUrl = created;
-
-        // 古い blob URL が残っているとメモリリークするので revoke して差し替え
-        setVideoUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
-          return created;
-        });
-      }
-
-      if (!srcUrl) {
-        console.warn("⚠️ active video source is missing", {
-          analysisMode,
-          videoUrl,
-          hasActiveFile: !!activeFile,
-        });
-        setStatus("⚠️ 動画ファイルが未設定です。セグメント動画の読み込みを確認してください。");
-        alert("動画ファイルを選択してください。");
-        return;
-      }
-
-      video.src = srcUrl;
-
-
+        if (videoUrl) {
+          video.src = videoUrl;
+        } else {
+          const url = URL.createObjectURL(videoFile);
+          setVideoUrl(url);
+          video.src = url;
+        }
       });
     } catch (err) {
       console.error(err);
@@ -5799,48 +5709,18 @@ setUsedTargetFps(targetFps);
       return;
     }
 
-const idxKey = String((targetSegment as any).segmentIndex ?? index);
-
-// ✅ id / segmentIndex の両方で拾う（どちらのキーで保存されていても対応）
-const file =
-  data.videoFiles?.[targetSegment.id] ??
-  data.videoFiles?.[idxKey];
-
-if (!file) {
-  alert(`セグメント${index + 1}の動画ファイルが見つかりません。アップロードを確認してください。`);
-  return;
-}
-
-// ✅ 重要：single UI が参照する state + ref を必ずセット（multi は setState 遅延があるため）
-setVideoFileSync(file);
-
-// ✅ URL を一度だけ作って、state と video 要素の両方に同じものを流す
-const segmentUrl = URL.createObjectURL(file);
-
-setVideoUrl((prev) => {
-  if (prev) URL.revokeObjectURL(prev);
-  return segmentUrl;
-});
-
-if (videoRef.current) {
-  videoRef.current.src = segmentUrl;
-  videoRef.current.load();
-}
-
-
-
-// 念のため video 要素にも即反映（ここが無い環境がある）
-if (videoRef.current) {
-  const nextUrl = URL.createObjectURL(file);
-  videoRef.current.src = nextUrl;
-  videoRef.current.load();
-  // 直前で作った setVideoUrl のURLと二重になるのが嫌なら、上の setVideoUrl を nextUrl に合わせて1本化してください
-}
-
-
+    const file = data.videoFiles[targetSegment.id];
+    if (!file) {
+      alert(`セグメント${index + 1}の動画ファイルが見つかりません。アップロードを確認してください。`);
+      return;
+    }
 
     console.log(`📹 マルチカメラ: セグメント${index + 1}/${data.segments.length} (${targetSegment.startDistanceM}m〜${targetSegment.endDistanceM}m) を処理開始`);
     
+    // 完全な状態リセット（重要：新しいセグメントの処理前に必ず実行）
+    if (videoUrl) {
+      URL.revokeObjectURL(videoUrl);
+    }
     
     // フレーム関連
     framesRef.current = [];
@@ -5882,21 +5762,16 @@ if (videoRef.current) {
     
     setStatus("");
     
-   // ✅ 単一UI側が確実に参照できるよう「同期Ref + state」を更新
-setVideoFileSync(file);
-
-const url = URL.createObjectURL(file);
-setVideoUrl((prev) => {
-  if (prev) URL.revokeObjectURL(prev);
-  return url;
-});
-
-// ✅ video要素にも即反映（黒画面防止）
-if (videoRef.current) {
-  videoRef.current.src = url;
-  videoRef.current.load();
-}
-
+    // 動画ファイルを設定
+    const url = URL.createObjectURL(file);
+    setVideoFile(file);
+    setVideoUrl(url);
+    
+    // ビデオ要素の事前ロード
+    if (videoRef.current) {
+      videoRef.current.src = url;
+      videoRef.current.load();
+    }
     
     // 距離とラベルを設定
     setDistanceInput(String(targetSegment.endDistanceM - targetSegment.startDistanceM));
@@ -6000,79 +5875,76 @@ if (videoRef.current) {
   };
   
 // ✅ 新 MultiCameraSetup 用：解析開始ボタンから呼ばれる
-// ✅ 新 MultiCameraSetup 用：解析開始ボタンから呼ばれる
 const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
   console.log("✅ 新Setup → 旧(手動)フローへ切替:", { run, segments });
 
-  // 1) 「結果に飛ぶ」原因になりやすい state をリセット
+  // まず「結果画面に飛ぶ原因」になりやすい state を消す
   setMultiCameraResult(null);
   setMultiCameraProcessing(false);
   setMultiCameraSummary(null);
   setMultiCameraData(null);
 
-  // 2) videoFiles マップを作成（キーは id と segmentIndex の両方で保持）
-  const videoFiles: Record<string, File> = {};
-  segments.forEach((seg, i) => {
-    const f = (seg as any).videoFile as File | undefined;
-    if (!f) return;
-
-    if (seg.id) videoFiles[seg.id] = f;
-
-    const idxKey = String((seg as any).segmentIndex ?? i);
-    videoFiles[idxKey] = f;
-  });
-
-  // 3) 解析対象（動画あり）だけに絞る
-  const availableSegments = segments.filter((seg, i) => {
-    const idxKey = String((seg as any).segmentIndex ?? i);
-    return !!videoFiles[seg.id] || !!videoFiles[idxKey];
-  });
-
-  if (availableSegments.length === 0) {
+  // 動画チェック（Setup側でもチェックしている想定だが念のため）
+  const missingVideo = segments.filter((s) => !s.videoFile);
+  if (missingVideo.length > 0) {
     alert(
-      "動画がアップロードされているセグメントがありません。各セグメントに動画をアップロードしてください。"
+      `動画が入っていない区間があります: ${missingVideo
+        .map((s) => `${s.startDistanceM}-${s.endDistanceM}m`)
+        .join(", ")}`
     );
     return;
   }
 
-  const nextState: MultiCameraState = {
-    run,
-    segments: availableSegments,
-    videoFiles,
-    currentIndex: 0,
-    segmentMetrics: {},
-  };
-
-  // 4) 重要：Step3 に行く前に「単一フローが参照する videoFile / videoUrl」を必ずセット
-  const firstSeg = availableSegments[0];
-  const firstIdxKey = String((firstSeg as any).segmentIndex ?? 0);
-  const firstFile = videoFiles[firstSeg.id] ?? videoFiles[firstIdxKey];
-
-  if (firstFile) {
-    setVideoFile(firstFile);
-    setVideoUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return URL.createObjectURL(firstFile);
-    });
+  // 新Setupの segments(videoFile) → 旧フローの videoFiles マップへ変換
+  const videoFiles: { [key: string]: File } = {};
+  for (const seg of segments) {
+    if (seg.videoFile) videoFiles[seg.id] = seg.videoFile;
   }
+// ✅ 旧手動フロー開始：ここから区間設定・マーカー設定へ入る（inline版）
 
-  // 5) マルチカメラ解析フローへ（Setup 画面を抜ける）
-  setCurrentRun(run);
-  setRunSegments(availableSegments);
-  setAnalysisMode("multi");
-  setIsMultiCameraSetup(false);
+const availableSegments = segments.filter((seg) => videoFiles[seg.id]);
+const missingSegments = segments.filter((seg) => !videoFiles[seg.id]);
 
-  setMultiCameraSummary(null);
-  setMultiCameraData(nextState);
+if (availableSegments.length === 0) {
+  alert("動画がアップロードされているセグメントがありません。各セグメントに動画をアップロードしてください。");
+  return;
+}
 
-  // あなたの画面では「ステップ3: フレーム抽出中」なので 3 にする
-  setWizardStep(3);
+if (missingSegments.length > 0) {
+  console.warn("動画が未設定のセグメントがあります:", missingSegments.map((s) => s.segmentIndex));
+  alert("一部のセグメントに動画が設定されていません。アップロード済みのセグメントのみ解析を実行します。");
+}
 
-  // 6) 最初のセグメントを読み込み（描画が切り替わった後に）
-  setTimeout(() => {
-    loadMultiCameraSegment(nextState, 0);
-  }, 0);
+const nextState: any = {
+  run,
+  segments: availableSegments,
+  videoFiles,
+  currentIndex: 0,
+  segmentMetrics: {},
 };
+
+setCurrentRun(run);
+setRunSegments(availableSegments);
+setAnalysisMode("multi");
+
+// 重要：Setup/Processor/Results分岐から抜けて、手動ステップへ行く
+setIsMultiCameraSetup(false);
+
+setMultiCameraSummary(null);
+setMultiCameraData(nextState);
+
+// 手動の区間・マーカー設定へ（先生のUIでは Step5 が該当）
+setWizardStep(5);
+
+// 最初のセグメントを読み込み
+setTimeout(() => {
+  loadMultiCameraSegment(nextState, 0);
+}, 100);
+
+  // ✅ 旧手動フロー開始：ここから区間設定・マーカー設定へ入る
+  
+};
+
 
 
   // マルチカメラ解析を中断して設定画面へ戻る
@@ -6881,42 +6753,10 @@ if (analysisMode === 'multi' && isMultiCameraSetup) {
         <button
           className="btn-primary-large"
           onClick={() => {
-           // ✅ multi の時は multiCameraData から videoFile を復元してみる
-if (!videoFile && analysisMode === "multi" && multiCameraData) {
-  const idx = (multiCameraData as any).currentIndex ?? 0;
-  const seg = (multiCameraData as any).segments?.[idx];
-  const segAny = seg as any;
-
-  const map = ((multiCameraData as any).videoFiles ?? {}) as Record<string, File>;
-
-  const bySegVideoFile = segAny?.videoFile as File | undefined;
-  const byId = seg?.id ? map[seg.id] : undefined;
-  const bySegIndex =
-    typeof segAny?.segmentIndex === "number" ? map[String(segAny.segmentIndex)] : undefined;
-  const byIndex = map[String(idx)];
-
-  const recovered = bySegVideoFile || byId || bySegIndex || byIndex;
-
-  if (recovered) {
-    setVideoFile(recovered);
-
-    // videoUrl を使っている構成ならURLも作る（既存のvideoUrlを使っている場合のみ）
-    try {
-      const url = URL.createObjectURL(recovered);
-      setVideoUrl((prev: string | null) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return url;
-      });
-    } catch {
-      // videoUrl を使っていない構成なら無視でOK
-    }
-  }
-}
-
-if (analysisMode !== "multi" && !videoFile) {
-  alert("動画ファイルを選択してください。");
-  return;
-}
+            if (!videoFile) {
+              alert("動画ファイルを選択してください。");
+              return;
+            }
 
             if (
               analysisMode !== "multi" &&

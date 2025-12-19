@@ -26,6 +26,7 @@ import AdminUsersPage from "./pages/admin/AdminUsersPage";
 
 import { supabase } from "./lib/supabaseClient";
 
+
 /** 解析ウィザード（ログイン必須） */
 const ProtectedApp: React.FC = () => {
   const navigate = useNavigate();
@@ -137,11 +138,12 @@ const AppTopNav: React.FC = () => {
     checkAuth();
 
     // 認証状態の変更を監視
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null);
-    });
+const {
+  data: { subscription },
+} = supabase.auth.onAuthStateChange((_event: any, session: any) => {
+  setUser(session?.user ?? null);
+});
+
 
     return () => {
       subscription.unsubscribe();
