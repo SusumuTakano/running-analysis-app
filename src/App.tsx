@@ -102,9 +102,16 @@ type StepMetric = {
   // 🆕 追加フィールド
   leg?: "left" | "right";      // どちらの足のステップか（現時点では未使用でOK）
   quality?: "good" | "warning" | "bad"; // 解析の信頼度（色分けに使用）
+  isInterpolated?: boolean;    // 補間ステップかどうか（ストライド再計算から除外）
   // 🎯 ステップごとの姿勢データ（加速局面の段階的評価用）
   trunkAngleAtContact?: number | null;  // 接地時の体幹角度
   kneeFlexAtContact?: number | null;    // 接地時の膝角度（支持脚）
+  // 🎯 マルチカメラ用：ピクセル座標（Homography変換用）
+  contactPixelX?: number;      // 接地時の足のX座標（ピクセル）
+  segmentId?: string;          // マルチカメラ: どのセグメントのステップか
+  contactPixelY?: number;      // 接地時の足のY座標（ピクセル）
+  toeOffPixelX?: number;       // 離地時の足のX座標（ピクセル）
+  toeOffPixelY?: number;       // 離地時の足のY座標（ピクセル）
 };
 type MarkerMode = "semi" | "manual";
 type MultiCameraState = {
@@ -113,6 +120,9 @@ type MultiCameraState = {
   videoFiles: { [key: string]: File };
   currentIndex: number;
   segmentMetrics: Record<string, StepMetric[]>;
+  initialFps?: number; // マルチカメラ解析開始時のFPS設定を保持
+  segmentFrames?: Record<string, ImageData[]>; // 各セグメントのフレームデータ
+  segmentPoseResults?: Record<string, (FramePoseData | null)[]>; // 各セグメントのポーズデータ
 };
 
 type MultiCameraSummary = {
@@ -123,6 +133,8 @@ type MultiCameraSummary = {
   avgContact: number | null;
   avgFlight: number | null;
   avgSpeed: number | null;
+  totalTime?: number;
+  avgSpeedCalculated?: number | null;
 };
 
 /** 走行タイプ: accel=加速走（フライングスタート）, dash=スタートダッシュ */
@@ -571,6 +583,8 @@ const getActiveVideoFile = (): File | null => {
   const [multiRun, setMultiRun] = useState<Run | null>(null);
   const [multiSegments, setMultiSegments] = useState<RunSegment[] | null>(null);
   const [isMultiCameraAnalyzing, setIsMultiCameraAnalyzing] = useState(false);
+  const [mergedStepMetrics, setMergedStepMetrics] = useState<StepMetric[]>([]);
+  const [currentVideoSegmentIndex, setCurrentVideoSegmentIndex] = useState<number>(0);
 
 // ------------- 測定者情報 -------------------
 const initialAthleteInfo: AthleteInfo = {
@@ -936,6 +950,14 @@ const [notesInput, setNotesInput] = useState<string>("");
   const [manualRoi, setManualRoi] = useState<CanvasRoi | null>(null);
   const [isSelectingPerson, setIsSelectingPerson] = useState<boolean>(false);
   
+  // 🎯 補間ステップの表示/非表示トグル
+  const [showInterpolatedSteps, setShowInterpolatedSteps] = useState<boolean>(false);
+  
+  // 🎯 4コーンキャリブレーション（Homography変換用）
+  const [isCalibrating, setIsCalibrating] = useState<boolean>(false);
+  const [coneClicks, setConeClicks] = useState<Array<{ x: number; y: number }>>([]);
+  const [calibrationInstructions, setCalibrationInstructions] = useState<string>('');
+  
   // 🎓 1歩目学習データ（検出精度向上）
   const [learnedStepPattern, setLearnedStepPattern] = useState<{
     contactDuration: number;  // 接地時間（フレーム数）
@@ -1255,8 +1277,23 @@ const [notesInput, setNotesInput] = useState<string>("");
       if (pose?.landmarks) {
         drawSkeleton(ctx, pose.landmarks, canvas.width, canvas.height);
       }
+      
+      // キャリブレーション中はコーン位置を描画
+      if (isCalibrating && coneClicks.length > 0) {
+        coneClicks.forEach((click, index) => {
+          ctx.fillStyle = index < 2 ? '#00ff00' : '#ff0000'; // スタート=緑、フィニッシュ=赤
+          ctx.beginPath();
+          ctx.arc(click.x, click.y, 10, 0, 2 * Math.PI);
+          ctx.fill();
+          
+          // 番号を表示
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 16px Arial';
+          ctx.fillText(`${index + 1}`, click.x - 5, click.y + 5);
+        });
+      }
     }
-  }, [wizardStep, currentFrame, sectionStartFrame, sectionEndFrame, contactFrames, showSkeleton]);
+  }, [wizardStep, currentFrame, sectionStartFrame, sectionEndFrame, contactFrames, showSkeleton, isCalibrating, coneClicks]);
 
   // 完全自動検出：全フレームから接地と離地を検出（つま先の動き検出方式）
   // 新方式では閾値不要、つま先の速度変化のみで判定
@@ -1975,6 +2012,12 @@ const clearMarksByButton = () => {
 
   // ------------ ステップメトリクス ------------
   const stepMetrics: StepMetric[] = useMemo(() => {
+    // マルチカメラモードで結合データがある場合は、それを返す
+    if (analysisMode === 'multi' && mergedStepMetrics.length > 0) {
+      console.log(`📊 Using merged step metrics: ${mergedStepMetrics.length} steps`);
+      return mergedStepMetrics;
+    }
+    
     if (!usedTargetFps) return [];
     
     // calibrationType=2（接地のみ）の場合は最低2つの接地が必要
@@ -1994,6 +2037,76 @@ const clearMarksByButton = () => {
         return (hip23.x + hip24.x) / 2; // 正規化座標 (0-1)
       }
       return null;
+    };
+    
+    // 🎯 Homography変換: ピクセル座標 → 実世界座標（メートル）
+    const applyHomography = (pixelX: number, pixelY: number, H: number[][]): { x: number; y: number } | null => {
+      if (!H || H.length !== 3 || H[0].length !== 3) {
+        console.warn('⚠️ Invalid Homography matrix');
+        return null;
+      }
+      
+      try {
+        // 同次座標系での変換: [x', y', w'] = H * [x, y, 1]
+        const w = H[2][0] * pixelX + H[2][1] * pixelY + H[2][2];
+        if (Math.abs(w) < 1e-10) {
+          console.warn('⚠️ Homography division by zero');
+          return null;
+        }
+        
+        const worldX = (H[0][0] * pixelX + H[0][1] * pixelY + H[0][2]) / w;
+        const worldY = (H[1][0] * pixelX + H[1][1] * pixelY + H[1][2]) / w;
+        
+        return { x: worldX, y: worldY };
+      } catch (e) {
+        console.error('❌ Homography transformation error:', e);
+        return null;
+      }
+    };
+    
+    // 🎯 ビデオの実際の解像度を取得（キャリブレーションと一致させる）
+    const actualVideoWidth = videoRef.current?.videoWidth || 1920;
+    const actualVideoHeight = videoRef.current?.videoHeight || 1080;
+    
+    // 接地時の足のピクセル座標を取得（左右の足首・つま先から判定）
+    const getContactFootPixel = (frame: number): { x: number; y: number } | null => {
+      if (!poseResults[frame]?.landmarks) return null;
+      
+      const landmarks = poseResults[frame]!.landmarks;
+      // 左足: 足首27, つま先31
+      const leftAnkle = landmarks[27];
+      const leftToe = landmarks[31];
+      // 右足: 足首28, つま先32
+      const rightAnkle = landmarks[28];
+      const rightToe = landmarks[32];
+      
+      // 接地している方の足（Y座標が大きい = 画面下側）を選択
+      const leftY = Math.max(leftAnkle.y, leftToe.y);
+      const rightY = Math.max(rightAnkle.y, rightToe.y);
+      
+      let footX: number, footY: number;
+      if (leftY > rightY) {
+        // 左足が接地
+        footX = (leftAnkle.x + leftToe.x) / 2;
+        footY = leftY;
+      } else {
+        // 右足が接地
+        footX = (rightAnkle.x + rightToe.x) / 2;
+        footY = rightY;
+      }
+      
+      // 🎯 CRITICAL FIX: キャリブレーションと同じ解像度を使用
+      // 正規化座標(0-1)をピクセル座標に変換（videoRef.currentから取得）
+      const pixelX = footX * actualVideoWidth;
+      const pixelY = footY * actualVideoHeight;
+      
+      // 🔍 デバッグ: 初回のみビデオサイズとサンプル座標を出力
+      if (frame === (contactFrames[0] || 0)) {
+        console.log(`🔍 [DEBUG] Video dimensions for pixel conversion: ${actualVideoWidth}x${actualVideoHeight} (from videoRef.current)`);
+        console.log(`🔍 [DEBUG] Sample: normalized(${footX.toFixed(3)}, ${footY.toFixed(3)}) → pixel(${pixelX.toFixed(0)}, ${pixelY.toFixed(0)})`);
+      }
+      
+      return { x: pixelX, y: pixelY };
     };
     
     // スタートライン・フィニッシュラインの正規化x座標を取得
@@ -2047,6 +2160,11 @@ const clearMarksByButton = () => {
       ? [...manualContactFrames]
       : contactFrames.filter((_, i) => i % 2 === 0); // 偶数インデックス = 接地
     
+    // 🔴 CRITICAL FIX: 接地フレームを昇順にソート（時系列順に並べる）
+    console.log(`   ⚠️ BEFORE SORT: 接地フレーム: ${contactFrameList.join(', ')}`);
+    contactFrameList.sort((a, b) => a - b);
+    console.log(`   ✅ AFTER SORT: 接地フレーム: ${contactFrameList.join(', ')}`);
+    
     // 各接地時のスタートラインからの距離を計算
     const sContacts = contactFrameList.map(f => distanceAtFrame(f));
     
@@ -2060,12 +2178,22 @@ const clearMarksByButton = () => {
       // 🔥 autoToeOffFrames から離地データを取得して接地時間・滞空時間を計算
       console.log(`🎯 モード2（半自動設定）: ${manualContactFrames.length}個の接地フレーム, ${autoToeOffFrames.length}個の離地フレーム`);
       
-      for (let i = 0; i < manualContactFrames.length - 1; i++) {
-        const contact = manualContactFrames[i];
-        const nextContact = manualContactFrames[i + 1];
+      // 🔴 CRITICAL FIX: 接地と離地のペアを作成してソート
+      const originalPairs = manualContactFrames.map((contact, i) => ({
+        contact,
+        toeOff: autoToeOffFrames[i],
+        originalIndex: i
+      }));
+      
+      // 接地フレームでソート（時系列順）
+      originalPairs.sort((a, b) => a.contact - b.contact);
+      
+      for (let i = 0; i < originalPairs.length - 1; i++) {
+        const contact = originalPairs[i].contact;
+        const nextContact = originalPairs[i + 1].contact;
         
         // 🔥 autoToeOffFrames から離地フレームを取得（存在しなければ推定）
-        let toeOff = autoToeOffFrames[i];
+        let toeOff = originalPairs[i].toeOff;
         if (toeOff === undefined || toeOff <= contact) {
           // 離地データがない or 不正な場合は、次の接地との中間点を離地と推定
           toeOff = Math.floor(contact + (nextContact - contact) * 0.4);
@@ -2114,6 +2242,9 @@ const clearMarksByButton = () => {
         // 速度 = ストライド / 時間
         const stride = fullStride;
         const speedMps = stride != null && stepTime > 0 ? stride / stepTime : null;
+        
+        // 接地時の足のピクセル座標を取得
+        const contactFootPixel = getContactFootPixel(contact);
 
         metrics.push({
           index: i + 1,
@@ -2131,6 +2262,8 @@ const clearMarksByButton = () => {
           sectionStride: sectionStride ?? undefined,
           distanceAtContact: distanceAtContact ?? undefined,
           isFirstStepFromStart,
+          contactPixelX: contactFootPixel?.x,
+          contactPixelY: contactFootPixel?.y,
         });
       }
     } else {
@@ -2179,6 +2312,9 @@ const clearMarksByButton = () => {
         // 速度 = ストライド / 時間
         const stride = fullStride;
         const speedMps = stride != null && stepTime != null && stepTime > 0 ? stride / stepTime : null;
+        
+        // 接地時の足のピクセル座標を取得
+        const contactFootPixel = getContactFootPixel(contact);
 
         metrics.push({
           index: metrics.length + 1,
@@ -2196,6 +2332,8 @@ const clearMarksByButton = () => {
           sectionStride: sectionStride ?? undefined,
           distanceAtContact: distanceAtContact ?? undefined,
           isFirstStepFromStart,
+          contactPixelX: contactFootPixel?.x,
+          contactPixelY: contactFootPixel?.y,
         });
       }
     }
@@ -2261,7 +2399,7 @@ const clearMarksByButton = () => {
     }
     
     return metricsWithRatios;
-  }, [contactFrames, manualContactFrames, usedTargetFps, poseResults, distanceValue, isPanMode, calibrationType, runType, savedStartHipX, savedEndHipX, sectionStartFrame, sectionEndFrame]);
+  }, [analysisMode, mergedStepMetrics, contactFrames, manualContactFrames, usedTargetFps, poseResults, distanceValue, isPanMode, calibrationType, runType, savedStartHipX, savedEndHipX, sectionStartFrame, sectionEndFrame]);
 
   // 🎯 10mタイム・スピード計算（トルソーが0m→10mを通過する時間、線形補間でサブフレーム精度）
   const sectionTimeSpeed = useMemo(() => {
@@ -2376,7 +2514,10 @@ const clearMarksByButton = () => {
     let sumSpeed = 0,
       nSpeed = 0;
 
-    for (const s of stepMetrics) {
+    // 🎯 補間ステップ（quality='warning'）を除外して統計計算
+    const realSteps = stepMetrics.filter(s => s.quality !== 'warning');
+    
+    for (const s of realSteps) {
       if (s.contactTime != null) {
         sumContact += s.contactTime;
         nContact++;
@@ -3651,18 +3792,22 @@ type ExtractFramesOpts = {
   mode?: "single" | "multi";
   file?: File | null;
   url?: string | null;
+  fps?: number; // マルチカメラモードで明示的にFPSを指定
+  forcedDuration?: number; // マルチカメラモードで強制的にdurationを指定（videoのdurationを無視）
 };
 
 const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
   console.log("🎬 === Frame Extraction Started ===");
-  const activeFile = getActiveVideoFile(); // 既に App.tsx 内にある関数（542行目付近）
-  console.log("🎬 activeFile:", activeFile?.name, activeFile?.size);
-
+  console.log("🎬 opts:", { file: opts.file?.name, url: opts.url, mode: opts.mode });
 
   // stateを信じない（stale対策）。引数→stateの順で確定させる
   const mode = opts.mode ?? analysisMode;
   const vf = opts.file ?? videoFile;
   const vu = opts.url ?? videoUrl;
+  
+  // activeFileは引数から優先的に取得
+  const activeFile = opts.file ?? getActiveVideoFile();
+  console.log("🎬 activeFile:", activeFile?.name, activeFile?.size);
 
   // single のときだけ必須チェック（multi は vf/vu を後段で使う）
   if (mode !== "multi" && !vf) {
@@ -3724,16 +3869,32 @@ const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
 
     try {
       await new Promise<void>((resolve, reject) => {
-        const onLoaded = () => {
+        const onLoaded = async () => {
           video.removeEventListener("loadedmetadata", onLoaded);
           video.removeEventListener("error", onError);
-          // 動画のサイズを保存
-          // デバッグ: 実際の値を確認
-          const actualWidth = video.videoWidth;
-          const actualHeight = video.videoHeight;
+          
+          // ビデオサイズが取得できるまで少し待つ（一部のブラウザで必要）
+          let actualWidth = video.videoWidth;
+          let actualHeight = video.videoHeight;
+          let retries = 0;
+          
+          while ((actualWidth === 0 || actualHeight === 0) && retries < 10) {
+            console.log(`⏳ Waiting for video dimensions... retry ${retries + 1}`);
+            await new Promise(r => setTimeout(r, 100));
+            actualWidth = video.videoWidth;
+            actualHeight = video.videoHeight;
+            retries++;
+          }
+          
           console.log(`📹 実際の動画サイズ: ${actualWidth} × ${actualHeight}`);
           console.log(`📹 ビデオ要素の表示サイズ: ${video.width || 'N/A'} × ${video.height || 'N/A'}`);
-          console.log(`📹 ビデオ要素: `, video);
+          
+          // サイズが取得できない場合はエラー
+          if (actualWidth === 0 || actualHeight === 0) {
+            console.error("❌ ビデオサイズが取得できませんでした");
+            reject(new Error("動画サイズが取得できません。"));
+            return;
+          }
           
           // 異常な値の場合は修正
           let correctedWidth = actualWidth;
@@ -3742,7 +3903,7 @@ const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
           // 3840x2160が誤って報告される場合の修正
           // iPhoneやiPadで撮影した動画は誤って4K報告されることがある
           if (actualWidth === 3840 && actualHeight === 2160) {
-            const fileSizeMB = (videoFile?.size ?? 0) / (1024 * 1024);
+            const fileSizeMB = (vf?.size ?? activeFile?.size ?? 0) / (1024 * 1024);
             console.log(`📹 ファイルサイズ: ${fileSizeMB.toFixed(2)}MB`);
             
             // 200MB以下は確実にHD動画（4K動画は最低でも300MB以上）
@@ -3779,10 +3940,12 @@ const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
         video.addEventListener("error", onError);
 
        // --- video の入力ソースを確定（multi は state が間に合わないことがあるのでここで確実に作る） ---
-      let srcUrl: string | null = videoUrl ?? null;
+      // 優先順位: opts.url > vu > videoUrl > activeFile から作成
+      let srcUrl: string | null = opts.url ?? vu ?? videoUrl ?? null;
 
       // videoUrl がまだ state に乗っていない / クリアされた場合でも、File が取れればここで必ず復元する
       if (!srcUrl && activeFile) {
+        console.log("🎬 Creating new URL from activeFile:", activeFile.name);
         const created = URL.createObjectURL(activeFile);
         srcUrl = created;
 
@@ -3794,16 +3957,21 @@ const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
       }
 
       if (!srcUrl) {
-        console.warn("⚠️ active video source is missing", {
-          analysisMode,
+        console.error("⚠️ active video source is missing", {
+          mode,
+          opts_url: opts.url,
+          vu,
           videoUrl,
           hasActiveFile: !!activeFile,
+          hasOptsFile: !!opts.file,
         });
         setStatus("⚠️ 動画ファイルが未設定です。セグメント動画の読み込みを確認してください。");
         alert("動画ファイルを選択してください。");
+        setIsExtracting(false);
         return;
       }
 
+      console.log("🎬 Setting video.src:", srcUrl);
       video.src = srcUrl;
 
 
@@ -3832,7 +4000,10 @@ const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
     console.log(`📹 Video info: ${video.videoWidth}x${video.videoHeight}, duration: ${video.duration.toFixed(2)}s, estimated size: ${videoSizeMB.toFixed(1)}MB`);
     console.log(`📱 Device: ${isMobile ? 'Mobile' : 'Desktop'}, iOS: ${isIOS}`);
 
-    const duration = video.duration;
+    const duration = opts.forcedDuration ?? video.duration;
+    if (opts.forcedDuration) {
+      console.log(`🔴 FORCING DURATION: ${opts.forcedDuration}s (ignoring video.duration=${video.duration}s)`);
+    }
     
     // 🔧 デバイスに応じたメモリ制限（メモリ問題対策で厳しめに設定）
     let MAX_FRAMES: number;
@@ -3892,30 +4063,104 @@ const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
   const maxFpsForLength = Math.floor(MAX_FRAMES / Math.max(duration, 0.001));
 
 // ✅ analysisFps（接地・滞空など“時間換算”用）＝ユーザーが選択/確認したFPS
-const targetFps = Number((confirmedFps ?? selectedFps) ?? 30) || 30;
+const targetFps = Number((opts.fps ?? confirmedFps ?? selectedFps) ?? 30) || 30;
 setUsedTargetFps(targetFps);
+console.log(`🎯 Target FPS set to: ${targetFps} (opts.fps=${opts.fps}, confirmedFps=${confirmedFps}, selectedFps=${selectedFps})`);
 
 const analysisFpsLocal = targetFps;
 const framesToMsLocal = (f: number) => (f * 1000) / analysisFpsLocal;
 const framesToSecLocal = (f: number) => f / analysisFpsLocal;
 
 
-// ✅ extract（フレーム抽出/seek用）のフレーム数・dtは「動画ファイル実態」から決める
-//    iPhoneスロー動画はファイル上30fps相当のタイムラインになるため、ここを120で回すと破綻します
-let totalFrames = Math.max(1, Math.floor(duration * 30)); // フォールバック
-let seekDt = 1 / 30;
-let extractFps = 30;
+// ✅ マルチカメラモードでは、targetFpsを強制使用（parseMedia解析をスキップ）
+let totalFrames: number;
+let seekDt: number;
+let extractFps: number;
 
-if (sourceVideoFile) {
-  const r = await parseMedia({
-    src: sourceVideoFile,
-    acknowledgeRemotionLicense: true, 
-    fields: {
-      slowNumberOfFrames: true,
-      slowDurationInSeconds: true,
-      metadata: true,
+// ✅ マルチカメラモードでもparseMediaを実行して実際のFPSを取得
+let detectedFileFps: number | null = null;
+
+if (mode === "multi" && vf) {
+  console.log(`🔴 MULTI-CAMERA MODE: Detecting actual FPS...`);
+  console.log(`🔴 duration=${duration}s, targetFps=${targetFps}, opts.fps=${opts.fps}`);
+  
+  try {
+    const r = await parseMedia({
+      src: vf,
+      acknowledgeRemotionLicense: true,
+      fields: {
+        slowNumberOfFrames: true,
+        slowDurationInSeconds: true,
       },
-  });
+    });
+    
+    const frames = Math.max(1, r.slowNumberOfFrames);
+    const dur = Math.max(0.001, r.slowDurationInSeconds);
+    detectedFileFps = frames / dur;
+    
+    console.log(`📊 Detected file FPS: ${detectedFileFps.toFixed(2)} (${frames} frames / ${dur.toFixed(2)}s)`);
+  } catch (err) {
+    console.warn(`⚠️ parseMedia failed for multi-camera, using fallback`, err);
+  }
+}
+
+if (mode === "multi") {
+  // 🔴 CRITICAL FIX: 実際のコンテナFPSに基づいて補正を決定
+  // タイプA（スロー焼き込み）: fileFps=30 → duration × 30 でフレーム数計算
+  // タイプB（オリジナル高FPS）: fileFps=120 → duration × 120 でフレーム数計算
+  
+  if (detectedFileFps !== null) {
+    // ✅ 実際のFPSを検出できた場合
+    const isSlowBaked = detectedFileFps < 40; // 30fps前後 → スロー焼き込み
+    
+    if (isSlowBaked) {
+      // タイプA: スロー焼き込み（30fps container）
+      console.log(`🔴 TYPE A: Slow-motion baked (fileFps=${detectedFileFps.toFixed(2)})`);
+      console.log(`  - Using fileFps as extractFps`);
+      totalFrames = Math.floor(duration * detectedFileFps);
+      seekDt = 1 / detectedFileFps;
+      extractFps = detectedFileFps;
+    } else {
+      // タイプB: オリジナル高FPS（120fps container）
+      console.log(`🔴 TYPE B: Original high FPS (fileFps=${detectedFileFps.toFixed(2)})`);
+      console.log(`  - Using targetFps=${targetFps} for analysis`);
+      totalFrames = Math.floor(duration * targetFps);
+      seekDt = 1 / targetFps;
+      extractFps = targetFps;
+    }
+    
+    console.log(`🔴 RESULT: totalFrames=${totalFrames}, seekDt=${seekDt.toFixed(5)}, extractFps=${extractFps}`);
+  } else {
+    // ⚠️ FPS検出失敗時のフォールバック
+    console.warn(`⚠️ Could not detect FPS, using targetFps=${targetFps}`);
+    totalFrames = Math.floor(duration * targetFps);
+    seekDt = 1 / targetFps;
+    extractFps = targetFps;
+  }
+} else {
+  // 🔴 SINGLE-CAMERA MODE: Use same TYPE A/B detection as multi-camera
+  totalFrames = Math.max(1, Math.floor(duration * 30)); // フォールバック
+  seekDt = 1 / 30;
+  extractFps = 30;
+
+  // マルチカメラモードではvf（opts.file）を使用、シングルモードではsourceVideoFileを使用
+  const fileToAnalyze = vf ?? sourceVideoFile;
+
+  console.log(`🔧 DEBUG: vf=${vf?.name}, sourceVideoFile=${sourceVideoFile?.name}, fileToAnalyze=${fileToAnalyze?.name}`);
+
+  if (fileToAnalyze) {
+    console.log(`🔍 Analyzing video file: ${fileToAnalyze.name} (${(fileToAnalyze.size / 1024 / 1024).toFixed(2)}MB)`);
+    
+    try {
+      const r = await parseMedia({
+      src: fileToAnalyze,
+      acknowledgeRemotionLicense: true, 
+      fields: {
+        slowNumberOfFrames: true,
+        slowDurationInSeconds: true,
+        metadata: true,
+      },
+    });
 
   console.log("🎞 parseMedia:", {
   slowFps: (r as any).slowFps,
@@ -3940,31 +4185,48 @@ console.log(
   const frames = Math.max(1, r.slowNumberOfFrames);
   const dur = Math.max(0.001, r.slowDurationInSeconds);
 
-  totalFrames = frames;
-  seekDt = dur / frames;                // ←これが最重要（seekの刻み）
-  extractFps = frames / dur;
+  // ファイル上のフレーム数とFPS
+  const fileFrames = frames;
+  const fileFps = frames / dur;
+  
+  console.log(`📊 File metadata: frames=${fileFrames}, duration=${dur.toFixed(2)}s, fileFps=${fileFps.toFixed(2)}`);
 
-  　// ★メタデータが取れない場合に備えて「比率」でスロー判定（保険）
-const slowFactor = targetFps / extractFps;
-const isProbablySlowMo = slowFactor > 1.5;
-console.log(`🐢 slowFactor=${slowFactor.toFixed(2)} isProbablySlowMo=${isProbablySlowMo}`);
+  // 🔴 CRITICAL FIX: Same TYPE A/B detection logic as multi-camera mode
+  // TYPE A (Slow-baked): fileFps=30 → calculate frames with fileFps
+  // TYPE B (Original high FPS): fileFps=120 → calculate frames with targetFps
+  
+  const isSlowBaked = fileFps < 40; // 30fps前後 → スロー焼き込み
+  
+  if (isSlowBaked) {
+    // タイプA: スロー焼き込み（30fps container）
+    console.log(`🟢 SINGLE-CAM TYPE A: Slow-motion baked (fileFps=${fileFps.toFixed(2)})`);
+    console.log(`  - Container duration: ${duration}s`);
+    console.log(`  - Using fileFps (${fileFps.toFixed(2)}) for extraction`);
+    totalFrames = Math.floor(duration * fileFps);
+    seekDt = 1 / fileFps;
+    extractFps = fileFps;
+  } else {
+    // タイプB: オリジナル高FPS（120fps container）
+    console.log(`🟢 SINGLE-CAM TYPE B: Original high FPS (fileFps=${fileFps.toFixed(2)})`);
+    console.log(`  - Container duration: ${duration}s`);
+    console.log(`  - Using targetFps (${targetFps}) for analysis`);
+    totalFrames = Math.floor(duration * targetFps);
+    seekDt = 1 / targetFps;
+    extractFps = targetFps;
+  }
 
-const intentRaw =
-  r.metadata?.find((m: any) => m.key === "com.apple.quicktime.full-frame-rate-playback-intent")?.value ?? 1;
+  console.log(
+    `🎬 SINGLE-CAM RESULT: analysisFps=${targetFps} / extractFps=${extractFps.toFixed(2)} / totalFrames=${totalFrames} / isSlowBaked=${isSlowBaked}`
+  );
 
-const intent = Number(intentRaw);
-const isSlowMoIntent = intent === 0;
-
-// ★ここで slowIntent を1回だけ確定（統合）
-const slowIntent = isSlowMoIntent || isProbablySlowMo;
-
-// （互換が必要なら）
-// const isSlowMo = slowIntent;
-
-console.log(
-  `🎬 analysisFps=${targetFps} / extractFps=${extractFps.toFixed(2)} / totalFrames=${totalFrames} / slowIntent=${slowIntent}`
-);
-
+    } catch (error) {
+      console.error('❌ parseMedia failed:', error);
+      console.log('⚠️ Falling back to default frame extraction (30fps × duration)');
+      // フォールバック：デフォルト値を使用
+    }
+  } else {
+    console.warn('⚠️ No file to analyze! Using fallback: totalFrames = duration * 30');
+  }
 }
 
 console.log(`🎬 Video specs: analysisFps=${targetFps}fps, extractFrames=${totalFrames}, duration=${duration.toFixed(2)}s`);
@@ -4055,37 +4317,34 @@ setUsedTargetFps(targetFps);
 
     let index = 0;
 
-    const grabFrame = () => {
-      if (index >= totalFrames) {
-        setIsExtracting(false);
-        setExtractProgress(100);
-        setFramesCount(framesRef.current.length);
-        setCurrentFrame(0);
-        setStatus(`✅ フレーム抽出完了（${framesRef.current.length} フレーム）`);
-        
-        // 🎥 マルチカメラモードの場合は直接姿勢推定へ、それ以外はパン撮影モード選択画面へ
-        setTimeout(async () => {
-          if (analysisMode === "multi") {
-            // マルチカメラモードは固定カメラなのでパン撮影選択をスキップ
-            console.log('📹 Multi-camera mode: Processing current segment...');
-            setIsPanMode(false);
-            
-            // 姿勢推定を実行
-            setWizardStep(4);
-            await runPoseEstimation();
-            
-            // 姿勢推定後は区間設定へ（ステップ5）
-            setSectionStartFrame(0);
-            setSectionEndFrame(framesRef.current.length - 1);
-          } else {
-            // シングルカメラモードは姿勢推定へ
+    // Promise でラップして、フレーム抽出の完了を await できるようにする
+    return new Promise<void>((resolveExtraction, rejectExtraction) => {
+      const grabFrame = () => {
+        if (index >= totalFrames) {
+          setIsExtracting(false);
+          setExtractProgress(100);
+          setFramesCount(framesRef.current.length);
+          setCurrentFrame(0);
+          setStatus(`✅ フレーム抽出完了（${framesRef.current.length} フレーム）`);
+          console.log(`✅ フレーム抽出完了: ${framesRef.current.length}フレーム`);
+          
+          // マルチカメラモードの場合は、ここでは何もせず、呼び出し元に制御を返す
+          // （loadMultiCameraSegment が次の処理を行う）
+          if (mode === "multi") {
+            console.log('📹 Multi-camera mode: Extraction complete, returning control to loadMultiCameraSegment');
+            resolveExtraction(); // フレーム抽出完了を通知
+            return;
+          }
+          
+          // シングルカメラモードの場合は従来通り
+          setTimeout(async () => {
             console.log('📹 Single camera mode: Starting pose estimation...');
             setWizardStep(4);
-            runPoseEstimation();
-          }
-        }, 1000);
-        return;
-      }
+            await runPoseEstimation();
+            resolveExtraction(); // フレーム抽出完了を通知
+          }, 1000);
+          return;
+        }
 
       const currentTime = index * seekDt;
 
@@ -4116,9 +4375,11 @@ setUsedTargetFps(targetFps);
               setFramesCount(framesRef.current.length);
               setCurrentFrame(0);
               alert(`メモリ不足のため、${index}フレームまでで処理を中断しました。\n抽出済みの${framesRef.current.length}フレームは使用できます。\n\nより短い動画や低解像度の動画をお試しください。`);
+              resolveExtraction(); // 部分的に完了として通知
             } else {
               alert('フレーム抽出中にエラーが発生しました。\nより短い動画や低解像度の動画をお試しください。');
               setWizardStep(1);
+              rejectExtraction(error); // エラーを通知
             }
           }
         });
@@ -4137,9 +4398,11 @@ setUsedTargetFps(targetFps);
           setFramesCount(framesRef.current.length);
           setCurrentFrame(0);
           alert(`動画の読み込み中にエラーが発生しました。\n抽出済みの${framesRef.current.length}フレームは使用できます。`);
+          resolveExtraction(); // 部分的に完了として通知
         } else {
           alert('動画の読み込み中にエラーが発生しました。\n別の動画ファイルをお試しください。');
           setWizardStep(1);
+          rejectExtraction(new Error('Video seek error')); // エラーを通知
         }
       };
 
@@ -4148,7 +4411,10 @@ setUsedTargetFps(targetFps);
       video.currentTime = clamp(currentTime, 0, duration);
     };
 
-    grabFrame();
+      // フレーム抽出開始
+      console.log('🎬 Starting grabFrame loop...');
+      grabFrame();
+    }); // Promise の終わり
   };
 
   // ------------ 腰の位置を計算するヘルパー関数 ------------
@@ -5793,11 +6059,13 @@ setUsedTargetFps(targetFps);
   
   // マルチカメラ: 指定したセグメントの動画を読み込み、解析ステップを初期化
   const loadMultiCameraSegment = async (data: MultiCameraState, index: number) => {
+    console.log(`🎬🎬🎬 === loadMultiCameraSegment CALLED === index: ${index}`);
     const targetSegment = data.segments[index];
     if (!targetSegment) {
       console.error("マルチカメラ: 無効なセグメントインデックスです", index, data.segments.length);
       return;
     }
+    console.log(`🎬 targetSegment:`, targetSegment);
 
 const idxKey = String((targetSegment as any).segmentIndex ?? index);
 
@@ -5825,16 +6093,6 @@ setVideoUrl((prev) => {
 if (videoRef.current) {
   videoRef.current.src = segmentUrl;
   videoRef.current.load();
-}
-
-
-
-// 念のため video 要素にも即反映（ここが無い環境がある）
-if (videoRef.current) {
-  const nextUrl = URL.createObjectURL(file);
-  videoRef.current.src = nextUrl;
-  videoRef.current.load();
-  // 直前で作った setVideoUrl のURLと二重になるのが嫌なら、上の setVideoUrl を nextUrl に合わせて1本化してください
 }
 
 
@@ -5882,20 +6140,7 @@ if (videoRef.current) {
     
     setStatus("");
     
-   // ✅ 単一UI側が確実に参照できるよう「同期Ref + state」を更新
-setVideoFileSync(file);
 
-const url = URL.createObjectURL(file);
-setVideoUrl((prev) => {
-  if (prev) URL.revokeObjectURL(prev);
-  return url;
-});
-
-// ✅ video要素にも即反映（黒画面防止）
-if (videoRef.current) {
-  videoRef.current.src = url;
-  videoRef.current.load();
-}
 
     
     // 距離とラベルを設定
@@ -5942,25 +6187,210 @@ if (videoRef.current) {
       checkVideo();
     });
     
-    // FPSを自動設定（標準60fps）
-    console.log(`📹 Setting FPS to 60 for segment ${index + 1}`);
-    setSelectedFps(60);
+    // FPSを取得（マルチカメラ解析開始時のFPSを優先）
+    const fpsToUse = data.initialFps ?? selectedFps ?? 120;
+    console.log(`📹 Using FPS: ${fpsToUse} for segment ${index + 1} (initialFps=${data.initialFps}, selectedFps=${selectedFps})`);
+    
+    // 念のためstateも更新
+    if (data.initialFps && data.initialFps !== selectedFps) {
+      setSelectedFps(data.initialFps);
+    }
+    
+    // 🔴 CRITICAL FIX: 120fpsスロー動画の実際のdurationを待つ
+    // video.durationはコンテナのduration（30fps相当の時間）を返す可能性がある
+    // しかし、実際のフレーム数は120fpsで抽出する必要がある
+    
+    // videoのdurationを取得（メタデータ完全ロード済み）
+    const videoDuration = videoRef.current?.duration || 5;
+    
+    console.log(`🔴 VIDEO ANALYSIS:`);
+    console.log(`  - video.duration: ${videoDuration}s`);
+    console.log(`  - targetFps: ${fpsToUse}`);
+    console.log(`  - file name: ${file.name}`);
+    
+    // ✅ マルチカメラモードでは、常にtargetFps × video.durationで計算
+    // これにより、120fpsスロー動画でも正しいフレーム数が得られる
+    const expectedFrames = Math.floor(videoDuration * fpsToUse);
+    console.log(`  - Expected frames: ${expectedFrames} (${videoDuration}s × ${fpsToUse}fps)`);
     
     // 少し待機してから開始（状態更新を確実にする）
     await new Promise(resolve => setTimeout(resolve, 500));
     
-    // フレーム抽出を実行
+    // フレーム抽出を実行（fpsを明示的に渡す）
+    console.log(`🚀 === ABOUT TO CALL handleExtractFrames ===`);
+    console.log(`🚀 file:`, file?.name, file?.size);
+    console.log(`🚀 segmentUrl:`, segmentUrl);
+    console.log(`🚀 fps:`, fpsToUse);
     console.log(`📹 Starting frame extraction for segment ${index + 1}...`);
-    await handleExtractFrames();
+    await handleExtractFrames({ 
+      file, 
+      url: segmentUrl, 
+      mode: 'multi', 
+      fps: fpsToUse
+      // forcedDurationは使用しない - video.durationを信頼
+    });
+    console.log(`✅ === handleExtractFrames COMPLETED ===`);
     
     // フレーム抽出が完了したら、姿勢推定を自動で開始
     console.log(`📹 セグメント ${index + 1}: 姿勢推定を開始します...`);
     setWizardStep(4);
     await runPoseEstimation();
     
-    // 姿勢推定が完了したら、マーカー設定へ移行（区間設定はスキップ）
-    console.log(`📹 セグメント ${index + 1}: マーカー設定へ移行します`);
-    setWizardStep(6); // 手動マーカー設定へ
+    // 姿勢推定が完了したら、キャリブレーションステップへ（既にキャリブレーション済みならスキップ）
+    const segment = data.segments[index];
+    if (segment.calibration?.H_img_to_world) {
+      console.log(`📹 セグメント ${index + 1}: キャリブレーション済みです。マーカー設定へ進みます`);
+      setStatus(`キャリブレーション済み。マーカー設定へ進みます`);
+      setWizardStep(6); // 手動マーカー設定へ
+    } else {
+      console.log(`📹 セグメント ${index + 1}: 4コーンキャリブレーションを開始します`);
+      startConeCalibration(data, index);
+    }
+  };
+  
+  // 🎯 4コーンキャリブレーションを開始
+  const startConeCalibration = (data: MultiCameraState, segmentIndex: number) => {
+    const segment = data.segments[segmentIndex];
+    setIsCalibrating(true);
+    setConeClicks([]);
+    setCalibrationInstructions(
+      `セグメント${segmentIndex + 1}: ${segment.startDistanceM}m地点の手前コーン（カメラ側）をクリック`
+    );
+    setStatus(`4コーンキャリブレーション: 1/4コーンを設定してください`);
+  };
+  
+  // 🎯 キャンバスクリックでコーンを設定
+  const handleConeClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isCalibrating || !multiCameraData) return;
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    const clickX = (event.clientX - rect.left) * scaleX;
+    const clickY = (event.clientY - rect.top) * scaleY;
+    
+    const newClicks = [...coneClicks, { x: clickX, y: clickY }];
+    setConeClicks(newClicks);
+    
+    const { currentIndex, segments } = multiCameraData;
+    const segment = segments[currentIndex];
+    
+    // 次のコーンの指示を設定
+    if (newClicks.length === 1) {
+      setCalibrationInstructions(
+        `セグメント${currentIndex + 1}: ${segment.startDistanceM}m地点の奥コーン（レーン反対側）をクリック`
+      );
+      setStatus(`4コーンキャリブレーション: 2/4コーンを設定してください`);
+    } else if (newClicks.length === 2) {
+      setCalibrationInstructions(
+        `セグメント${currentIndex + 1}: ${segment.endDistanceM}m地点の手前コーン（カメラ側）をクリック`
+      );
+      setStatus(`4コーンキャリブレーション: 3/4コーンを設定してください`);
+    } else if (newClicks.length === 3) {
+      setCalibrationInstructions(
+        `セグメント${currentIndex + 1}: ${segment.endDistanceM}m地点の奥コーン（レーン反対側）をクリック`
+      );
+      setStatus(`4コーンキャリブレーション: 4/4コーンを設定してください`);
+    } else if (newClicks.length === 4) {
+      // 4つのコーンが設定されたので、Homography行列を計算
+      completeCalibration(newClicks, currentIndex);
+    }
+  };
+  
+  // 🎯 キャリブレーション完了：Homography行列を計算して保存
+  const completeCalibration = async (clicks: Array<{ x: number; y: number }>, segmentIndex: number) => {
+    if (!multiCameraData) return;
+    
+    const { segments } = multiCameraData;
+    const segment = segments[segmentIndex];
+    
+    console.log(`🎯 Calculating Homography for segment ${segmentIndex + 1}...`);
+    console.log(`  Cone clicks (pixels):`, clicks);
+    
+    // Import computeHomographyImgToWorld
+    const { computeHomographyImgToWorld } = await import('./utils/multiCameraAnalysis');
+    
+    // 画像上の4点（ピクセル座標）
+    const imgPoints = {
+      x0_near: [clicks[0].x, clicks[0].y] as [number, number],
+      x0_far: [clicks[1].x, clicks[1].y] as [number, number],
+      x1_near: [clicks[2].x, clicks[2].y] as [number, number],
+      x1_far: [clicks[3].x, clicks[3].y] as [number, number],
+    };
+    
+    // 実世界座標（メートル）
+    // World coordinate system:
+    //   x-axis = レーン幅方向 (0=カメラ側, 1.22=反対側)
+    //   y-axis = 走行方向 (startDistanceM ~ endDistanceM)
+    const laneWidth = 1.22; // 標準レーン幅
+    const worldPoints = {
+      x0_near: [0, segment.startDistanceM] as [number, number],         // カメラ側スタート
+      x0_far: [laneWidth, segment.startDistanceM] as [number, number],  // 反対側スタート
+      x1_near: [0, segment.endDistanceM] as [number, number],           // カメラ側エンド
+      x1_far: [laneWidth, segment.endDistanceM] as [number, number],    // 反対側エンド
+    };
+    
+    console.log(`  Image points:`, imgPoints);
+    console.log(`  World points:`, worldPoints);
+    
+    // 座標検証: 4点が有効かチェック
+    const clicksValid = clicks.every(c => !isNaN(c.x) && !isNaN(c.y) && c.x > 0 && c.y > 0);
+    if (!clicksValid) {
+      throw new Error('Invalid cone click coordinates detected');
+    }
+    
+    try {
+      // Homography行列を計算
+      const H = computeHomographyImgToWorld(imgPoints, worldPoints);
+      
+      console.log(`✅ Homography matrix calculated:`);
+      console.log(`  H[0]: [${H[0][0].toFixed(6)}, ${H[0][1].toFixed(6)}, ${H[0][2].toFixed(6)}]`);
+      console.log(`  H[1]: [${H[1][0].toFixed(6)}, ${H[1][1].toFixed(6)}, ${H[1][2].toFixed(6)}]`);
+      console.log(`  H[2]: [${H[2][0].toFixed(6)}, ${H[2][1].toFixed(6)}, ${H[2][2].toFixed(6)}]`);
+      
+      // セグメントのキャリブレーションデータを更新
+      const updatedSegments = [...segments];
+      updatedSegments[segmentIndex] = {
+        ...segment,
+        calibration: {
+          laneWidthM: laneWidth,
+          x0_m: segment.startDistanceM,
+          x1_m: segment.endDistanceM,
+          imgPoints,
+          H_img_to_world: H,
+        },
+      };
+      
+      // MultiCameraDataを更新
+      setMultiCameraData({
+        ...multiCameraData,
+        segments: updatedSegments,
+      });
+      
+      console.log(`✅ Segment ${segmentIndex + 1} calibration saved`);
+      setStatus(`キャリブレーション完了！マーカー設定へ進みます`);
+      
+      // キャリブレーションモードを終了してマーカー設定へ
+      setIsCalibrating(false);
+      setConeClicks([]);
+      setCalibrationInstructions('');
+      setWizardStep(6); // 手動マーカー設定へ
+      
+    } catch (error) {
+      console.error('❌ Homography calculation failed:', error);
+      alert(`キャリブレーションエラー: ${error instanceof Error ? error.message : 'Unknown error'}\n\nコーンの位置を正しく指定してください。`);
+      
+      // リトライ
+      setConeClicks([]);
+      setCalibrationInstructions(
+        `セグメント${segmentIndex + 1}: ${segment.startDistanceM}m地点の手前コーン（カメラ側）をクリック`
+      );
+      setStatus(`4コーンキャリブレーション: 1/4コーンを設定してください (エラーのため再試行)`);
+    }
   };
 
   // 新しいマルチカメラシステムのハンドラー
@@ -6002,36 +6432,33 @@ if (videoRef.current) {
 // ✅ 新 MultiCameraSetup 用：解析開始ボタンから呼ばれる
 // ✅ 新 MultiCameraSetup 用：解析開始ボタンから呼ばれる
 const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
-  console.log("✅ 新Setup → 旧(手動)フローへ切替:", { run, segments });
+  console.log("✅ マルチカメラ解析開始（既存フロー使用）:", { run, segments });
 
-  // 1) 「結果に飛ぶ」原因になりやすい state をリセット
-  setMultiCameraResult(null);
-  setMultiCameraProcessing(false);
-  setMultiCameraSummary(null);
-  setMultiCameraData(null);
+  // セグメントにキャリブレーションが設定されているか確認
+  const hasCalibration = segments.every(seg => !!seg.calibration);
+  console.log(`📊 Calibration check: ${hasCalibration ? 'All segments calibrated ✅' : 'Missing calibration ❌'}`);
 
-  // 2) videoFiles マップを作成（キーは id と segmentIndex の両方で保持）
+  // キャリブレーション情報は保持するが、既存の解析フローを使用
+  // （将来的にキャリブレーション情報を活用する場合のために保持）
+
+  // videoFiles マップを作成
   const videoFiles: Record<string, File> = {};
   segments.forEach((seg, i) => {
-    const f = (seg as any).videoFile as File | undefined;
+    const f = seg.videoFile;
     if (!f) return;
-
     if (seg.id) videoFiles[seg.id] = f;
-
-    const idxKey = String((seg as any).segmentIndex ?? i);
+    const idxKey = String(seg.segmentIndex ?? i);
     videoFiles[idxKey] = f;
   });
 
-  // 3) 解析対象（動画あり）だけに絞る
+  // 解析対象（動画あり）だけに絞る
   const availableSegments = segments.filter((seg, i) => {
-    const idxKey = String((seg as any).segmentIndex ?? i);
+    const idxKey = String(seg.segmentIndex ?? i);
     return !!videoFiles[seg.id] || !!videoFiles[idxKey];
   });
 
   if (availableSegments.length === 0) {
-    alert(
-      "動画がアップロードされているセグメントがありません。各セグメントに動画をアップロードしてください。"
-    );
+    alert("動画がアップロードされているセグメントがありません。");
     return;
   }
 
@@ -6041,37 +6468,37 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     videoFiles,
     currentIndex: 0,
     segmentMetrics: {},
+    initialFps: selectedFps, // 現在のFPS設定を保存
   };
+  
+  console.log(`💾 Saving initial FPS: ${selectedFps} for multi-camera analysis`);
 
-  // 4) 重要：Step3 に行く前に「単一フローが参照する videoFile / videoUrl」を必ずセット
+  // 最初のセグメントのファイルを設定
   const firstSeg = availableSegments[0];
-  const firstIdxKey = String((firstSeg as any).segmentIndex ?? 0);
+  const firstIdxKey = String(firstSeg.segmentIndex ?? 0);
   const firstFile = videoFiles[firstSeg.id] ?? videoFiles[firstIdxKey];
 
   if (firstFile) {
     setVideoFile(firstFile);
-    setVideoUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return URL.createObjectURL(firstFile);
-    });
+    const newUrl = URL.createObjectURL(firstFile);
+    setVideoUrl(newUrl);
   }
 
-  // 5) マルチカメラ解析フローへ（Setup 画面を抜ける）
+  // マルチカメラ解析フローへ
   setCurrentRun(run);
   setRunSegments(availableSegments);
   setAnalysisMode("multi");
   setIsMultiCameraSetup(false);
-
   setMultiCameraSummary(null);
   setMultiCameraData(nextState);
 
-  // あなたの画面では「ステップ3: フレーム抽出中」なので 3 にする
+  // Step 3（フレーム抽出）へ
   setWizardStep(3);
 
-  // 6) 最初のセグメントを読み込み（描画が切り替わった後に）
+  // 最初のセグメントを読み込み
   setTimeout(() => {
     loadMultiCameraSegment(nextState, 0);
-  }, 0);
+  }, 100);
 };
 
 
@@ -6110,6 +6537,17 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
       ...segmentMetrics,
       [currentSegment.id]: metricsSnapshot,
     };
+    
+    // フレームデータとポーズデータも保存
+    const updatedFrames: Record<string, ImageData[]> = {
+      ...(multiCameraData.segmentFrames || {}),
+      [currentSegment.id]: [...framesRef.current],
+    };
+    
+    const updatedPoseResults: Record<string, (FramePoseData | null)[]> = {
+      ...(multiCameraData.segmentPoseResults || {}),
+      [currentSegment.id]: [...poseResults],
+    };
 
     const nextIndex = currentIndex + 1;
     const hasNext = nextIndex < segments.length;
@@ -6117,6 +6555,8 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     const updatedState: MultiCameraState = {
       ...multiCameraData,
       segmentMetrics: updatedMetrics,
+      segmentFrames: updatedFrames,
+      segmentPoseResults: updatedPoseResults,
       currentIndex: hasNext ? nextIndex : currentIndex,
     };
 
@@ -6144,7 +6584,339 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
       return;
     }
 
-    const allMetrics = Object.values(updatedMetrics).flat();
+    // ==========================================
+    // 🎯 本格的なキャリブレーションベース結合
+    // ==========================================
+    console.log("🔗 Merging all segment steps with calibration-based coordinates...");
+    
+    // Homography適用関数（multiCameraAnalysis.tsから）
+    const applyHomography = (H: number[][], u: number, v: number): [number, number] => {
+      const x = H[0][0] * u + H[0][1] * v + H[0][2];
+      const y = H[1][0] * u + H[1][1] * v + H[1][2];
+      const w = H[2][0] * u + H[2][1] * v + H[2][2];
+      if (Math.abs(w) < 1e-12) return [NaN, NaN];
+      return [x / w, y / w];
+    };
+    
+    const mergedSteps: StepMetric[] = [];
+    let globalStepIndex = 0;
+    let totalTime = 0;
+    
+    segments.forEach((segment, segIdx) => {
+      const segmentSteps = updatedMetrics[segment.id] || [];
+      const calibration = segment.calibration;
+      
+      console.log(`📊 Segment ${segIdx + 1} (${segment.startDistanceM}-${segment.endDistanceM}m): ${segmentSteps.length} steps, segment.id=${segment.id}`);
+      
+      if (!calibration || !calibration.H_img_to_world) {
+        console.warn(`⚠️ Segment ${segIdx + 1} has no calibration data. Using fallback distance calculation.`);
+        
+        // キャリブレーションがない場合はフォールバック
+        segmentSteps.forEach((step, localIdx) => {
+          const localDistance = step.distanceAtContact || (localIdx * (step.stride || 0));
+          const globalDistance = segment.startDistanceM + localDistance;
+          
+          console.log(`  [Fallback] Step ${localIdx}: localDistance=${localDistance.toFixed(2)}m + offset=${segment.startDistanceM}m = globalDistance=${globalDistance.toFixed(2)}m`);
+          
+          mergedSteps.push({
+            ...step,
+            distanceAtContact: globalDistance,
+            index: globalStepIndex++,
+            segmentId: segment.id, // セグメント識別子を追加
+          });
+          
+          totalTime += (step.contactTime || 0) + (step.flightTime || 0);
+        });
+        return;
+      }
+      
+      // ✅ キャリブレーションがある場合：Homographyを使って正確な距離を計算
+      console.log(`✅ Segment ${segIdx + 1} has calibration. Applying Homography transformation.`);
+      const H = calibration.H_img_to_world;
+      console.log(`  📐 H matrix for segment ${segIdx + 1}:`);
+      console.log(`    H[0]: [${H[0][0]}, ${H[0][1]}, ${H[0][2]}]`);
+      console.log(`    H[1]: [${H[1][0]}, ${H[1][1]}, ${H[1][2]}]`);
+      console.log(`    H[2]: [${H[2][0]}, ${H[2][1]}, ${H[2][2]}]`);
+      
+      // Homography変換ヘルパー関数（ここで定義）
+      const applyHomographyLocal = (pixelX: number, pixelY: number): { x: number; y: number } | null => {
+        if (!H || H.length !== 3 || H[0].length !== 3) {
+          console.warn('⚠️ Invalid Homography matrix');
+          return null;
+        }
+        
+        try {
+          const w = H[2][0] * pixelX + H[2][1] * pixelY + H[2][2];
+          if (Math.abs(w) < 1e-10) return null;
+          
+          const worldX = (H[0][0] * pixelX + H[0][1] * pixelY + H[0][2]) / w;
+          const worldY = (H[1][0] * pixelX + H[1][1] * pixelY + H[1][2]) / w;
+          
+          return { x: worldX, y: worldY };
+        } catch (e) {
+          console.error('❌ Homography error:', e);
+          return null;
+        }
+      };
+      
+      segmentSteps.forEach((step, localIdx) => {
+        let localDistance = step.distanceAtContact || 0;
+        let recalculatedStride = step.stride;
+        
+        // 🎯 Homography変換を使用して実世界座標を取得
+        if (step.contactPixelX != null && step.contactPixelY != null) {
+          const worldPos = applyHomographyLocal(step.contactPixelX, step.contactPixelY);
+          
+          if (worldPos) {
+            // 実世界座標のY成分を距離として使用（走行方向＝y軸）
+            // X成分はレーン幅方向（0〜1.22m）、Y成分は走行方向（0〜15m）
+            localDistance = Math.abs(worldPos.y - segment.startDistanceM);
+            
+            console.log(`  🎯 Step ${localIdx}: Pixel(${step.contactPixelX.toFixed(0)}, ${step.contactPixelY.toFixed(0)}) → World(${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)})m (x=lane, y=distance) → localDistance=${localDistance.toFixed(2)}m`);
+            
+            // 次のステップのピクセル座標があれば、ストライドも再計算
+            const nextStep = segmentSteps[localIdx + 1];
+            if (nextStep?.contactPixelX != null && nextStep?.contactPixelY != null) {
+              const nextWorldPos = applyHomographyLocal(nextStep.contactPixelX, nextStep.contactPixelY);
+              if (nextWorldPos) {
+                // 実世界座標でのストライドを計算（ユークリッド距離）
+                // dx = レーン幅方向の移動, dy = 走行方向の移動
+                const dx = nextWorldPos.x - worldPos.x;
+                const dy = nextWorldPos.y - worldPos.y;
+                recalculatedStride = Math.sqrt(dx * dx + dy * dy);
+                
+                console.log(`    ✅ Recalculated stride using Homography: ${recalculatedStride.toFixed(2)}m (dx=${dx.toFixed(2)}, dy=${dy.toFixed(2)}) (was ${step.stride?.toFixed(2) ?? 'N/A'}m)`);
+              }
+            }
+          } else {
+            console.warn(`  ⚠️ Step ${localIdx}: Homography failed, using fallback distance`);
+          }
+        } else {
+          console.warn(`  ⚠️ Step ${localIdx}: No pixel coordinates, using fallback distance`);
+        }
+        
+        const globalDistance = segment.startDistanceM + localDistance;
+        
+        console.log(`  Step ${localIdx}: localDistance=${localDistance.toFixed(2)}m + offset=${segment.startDistanceM}m = globalDistance=${globalDistance.toFixed(2)}m`);
+        
+        mergedSteps.push({
+          ...step,
+          stride: recalculatedStride, // TrueStride: Homographyで再計算されたストライド
+          fullStride: recalculatedStride ?? undefined, // UIで表示されるfullStrideも更新
+          distanceAtContact: globalDistance,
+          index: globalStepIndex++,
+          segmentId: segment.id,
+        });
+        
+        totalTime += (step.contactTime || 0) + (step.flightTime || 0);
+      });
+    });
+    
+    // ==========================================
+    // 🔗 セグメント間の重複ステップを検出・統合
+    // ==========================================
+    console.log("🔍 Detecting and merging overlapping steps between segments...");
+    
+    // 🎯 Homography補正後の代表ストライドを計算（欠損補間用）
+    const validStrides = mergedSteps
+      .map(s => s.stride)
+      .filter((s): s is number => typeof s === 'number' && s > 0.5 && s < 3.0);
+    
+    // 中央値を使用（外れ値の影響を受けにくい）
+    const sortedStrides = [...validStrides].sort((a, b) => a - b);
+    const medianStride = sortedStrides.length > 0 
+      ? sortedStrides[Math.floor(sortedStrides.length / 2)]
+      : 1.5; // デフォルトは1.5m（補正後の期待値）
+    
+    console.log(`📏 Representative stride for gap interpolation: ${medianStride.toFixed(2)}m (median of ${validStrides.length} Homography-corrected strides)`);
+    console.log(`   Valid strides: ${validStrides.map(s => s.toFixed(2)).join(', ')}`);
+    
+    const finalSteps: StepMetric[] = [];
+    let prevSegmentEndDistance = 0;
+    
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      const segmentSteps = mergedSteps.filter(s => {
+        // このセグメントに属するステップを抽出
+        const dist = s.distanceAtContact || 0;
+        return dist >= segment.startDistanceM && dist < segment.endDistanceM;
+      });
+      
+      if (i === 0) {
+        // 最初のセグメントはそのまま追加
+        finalSteps.push(...segmentSteps);
+        prevSegmentEndDistance = segment.endDistanceM;
+      } else {
+        // 2つ目以降のセグメント：重複区間をチェック
+        const overlapThreshold = 0.5; // 0.5m以内なら重複とみなす
+        const crossSegmentThreshold = 2.0; // セグメント境界を跨ぐステップの閾値
+        
+        segmentSteps.forEach(step => {
+          const stepDist = step.distanceAtContact || 0;
+          
+          // 前のセグメントの最後のステップとの距離を確認
+          const lastStep = finalSteps[finalSteps.length - 1];
+          const lastStepDist = lastStep?.distanceAtContact || 0;
+          
+          // 重複判定とギャップ補間
+          const gap = stepDist - lastStepDist;
+          
+          // 🎯 改善された重複検出：セグメント境界付近（前セグメント終端±0.5m）のステップをチェック
+          const prevSegmentEnd = segments[i - 1]?.endDistanceM || 0;
+          const isNearBoundary = Math.abs(lastStepDist - prevSegmentEnd) < 0.5;
+          const isStepAcrossBoundary = lastStepDist < prevSegmentEnd && stepDist > prevSegmentEnd;
+          
+          // セグメント境界を跨ぐステップで、ギャップが通常ストライドの1.5倍以内なら重複の可能性
+          const isLikelyDuplicate = isNearBoundary && gap < (medianStride * 1.5);
+          
+          if (gap < overlapThreshold) {
+            // 重複している可能性が高い → スキップ（前のセグメントのデータを優先）
+            console.log(`⚠️ Skipping duplicate step at ${stepDist.toFixed(2)}m (gap: ${gap.toFixed(2)}m)`);
+          } else if (isLikelyDuplicate && isStepAcrossBoundary) {
+            // 🆕 セグメント境界を跨ぐ重複ステップ（同じ接地を両セグメントでマーク）
+            console.log(`⚠️ Skipping cross-segment duplicate at ${stepDist.toFixed(2)}m (boundary at ${prevSegmentEnd.toFixed(2)}m, gap: ${gap.toFixed(2)}m)`);
+          } else if (gap > crossSegmentThreshold) {
+            // 🔴 CRITICAL: ギャップが大きすぎる（2m以上）→ 境界を跨ぐステップが欠落
+            // Homography補正後の代表ストライド（中央値）を使用して補間
+            const estimatedMissingSteps = Math.floor(gap / medianStride) - 1;
+            
+            console.log(`🔶 Large gap detected: ${gap.toFixed(2)}m between segments`);
+            console.log(`   Last step: ${lastStepDist.toFixed(2)}m, Current step: ${stepDist.toFixed(2)}m`);
+            console.log(`   Estimated missing steps: ${estimatedMissingSteps} (using Homography-corrected median stride: ${medianStride.toFixed(2)}m)`);
+            
+            // 欠落ステップを補間
+            for (let j = 1; j <= estimatedMissingSteps; j++) {
+              const interpolatedDistance = lastStepDist + (medianStride * j);
+              
+              // 補間ステップを作成（前のステップをベースに）
+              const interpolatedStep: StepMetric = {
+                ...lastStep,
+                index: finalSteps.length,
+                distanceAtContact: interpolatedDistance,
+                stride: medianStride, // Homography補正後の代表ストライドを使用
+                fullStride: medianStride, // UIで表示されるfullStrideも設定
+                // 補間データであることを示すフラグ
+                quality: 'warning', // 警告として表示
+                isInterpolated: true, // 補間ステップフラグ（ストライド再計算から除外）
+              };
+              
+              console.log(`   ➕ Interpolating step at ${interpolatedDistance.toFixed(2)}m`);
+              finalSteps.push(interpolatedStep);
+            }
+            
+            // 現在のステップを追加
+            finalSteps.push(step);
+          } else {
+            // 通常のステップとして追加
+            finalSteps.push(step);
+          }
+        });
+        
+        prevSegmentEndDistance = segment.endDistanceM;
+      }
+    }
+    
+    // 🎯 ChatGPT推奨: TrueStrideをマージ後に再計算（正しい実装）
+    // ============================================================
+    // 修正A: ストライドは「マージ後」に必ず再計算する
+    // - セグメント内計算は捨てる
+    // - 全接地をglobalDistでソート後、連続する差分がTrueStride
+    // ============================================================
+    console.log("\n🔧 === Recalculating TrueStride from globalDistance (ChatGPT method) ===");
+    
+    // 実測ステップのみをフィルタ（補間は除外）
+    const realStepsForStride = finalSteps.filter(s => !s.isInterpolated && Number.isFinite(s.distanceAtContact));
+    
+    // globalDistでソート（時系列順）
+    realStepsForStride.sort((a, b) => (a.distanceAtContact || 0) - (b.distanceAtContact || 0));
+    
+    console.log(`\n📊 Real steps (excluding interpolated): ${realStepsForStride.length}`);
+    console.log(`📋 Calculating TrueStride[i] = globalDist[i+1] - globalDist[i]\n`);
+    
+    // TrueStrideを計算（各ステップで次の接地までの距離）
+    for (let i = 0; i < realStepsForStride.length; i++) {
+      const currentDist = realStepsForStride[i].distanceAtContact || 0;
+      const nextStep = realStepsForStride[i + 1];
+      const nextDist = nextStep?.distanceAtContact;
+      
+      // 🎯 ChatGPT詳細ログ
+      console.log(`[Step ${i}] contactFrame=${realStepsForStride[i].contactFrame}, segmentId=${realStepsForStride[i].segmentId ?? 'N/A'}`);
+      console.log(`  contact_globalDist: ${currentDist.toFixed(3)}m`);
+      
+      if (nextDist != null) {
+        const trueStride = nextDist - currentDist;
+        console.log(`  next_contact_globalDist: ${nextDist.toFixed(3)}m`);
+        console.log(`  TrueStride (difference): ${trueStride.toFixed(3)}m`);
+        
+        // 異常値フラグ（0.6m未満、2.2m超）
+        if (trueStride < 0.6 || trueStride > 2.2) {
+          console.warn(`  ⚠️ strideAnomaly: true (unusual stride)`);
+          realStepsForStride[i].quality = 'warning'; // UIで赤く表示
+        }
+        
+        // ストライドを更新
+        realStepsForStride[i].stride = trueStride;
+        realStepsForStride[i].fullStride = trueStride;
+        
+        console.log(`  → UPDATED stride to ${trueStride.toFixed(3)}m`);
+      } else {
+        console.log(`  → Last step, no next contact`);
+        realStepsForStride[i].stride = null;
+        realStepsForStride[i].fullStride = undefined;
+      }
+    }
+    
+    console.log("\n✅ TrueStride recalculation complete (ChatGPT method)\n");
+    
+    // 🔍 重要: realStepsForStrideは更新されているので、finalStepsも自動的に更新されている
+    // （フィルタで作成したrealStepsForStrideは元のfinalStepsの要素への参照を保持）
+    // 補間ステップは既にfinalStepsに含まれているので、再構築は不要
+    
+    // globalDistで再ソート（時系列順に戻す）
+    finalSteps.sort((a, b) => (a.distanceAtContact || 0) - (b.distanceAtContact || 0));
+    
+    console.log(`\n📊 Final steps after TrueStride recalculation: ${finalSteps.length} (real: ${realStepsForStride.length}, interpolated: ${finalSteps.filter(s => s.isInterpolated).length})`);
+    
+    // グローバルインデックスを再割り当て
+    finalSteps.forEach((step, idx) => {
+      step.index = idx;
+    });
+    
+    console.log(`✅ Final merged steps: ${finalSteps.length} (removed ${mergedSteps.length - finalSteps.length} duplicates)`);
+    
+    // 🔍 セグメントごとの整合性チェック（ChatGPT推奨）
+    console.log(`\n🔍 === Per-Segment Validation ===`);
+    segments.forEach((seg, idx) => {
+      const segSteps = finalSteps.filter(s => {
+        const dist = s.distanceAtContact || 0;
+        return dist >= seg.startDistanceM && dist < seg.endDistanceM;
+      });
+      
+      if (segSteps.length === 0) {
+        console.warn(`⚠️ Segment ${idx + 1} (${seg.startDistanceM}-${seg.endDistanceM}m): No steps found`);
+        return;
+      }
+      
+      // 最初と最後のステップの距離から区間内カバー距離を計算
+      const firstDist = segSteps[0].distanceAtContact || seg.startDistanceM;
+      const lastDist = segSteps[segSteps.length - 1].distanceAtContact || seg.endDistanceM;
+      const coveredDistance = lastDist - firstDist;
+      const segmentLength = seg.endDistanceM - seg.startDistanceM;
+      
+      console.log(`   Segment ${idx + 1} (${seg.startDistanceM}-${seg.endDistanceM}m):`);
+      console.log(`      Steps: ${segSteps.length}`);
+      console.log(`      First step: ${firstDist.toFixed(2)}m`);
+      console.log(`      Last step: ${lastDist.toFixed(2)}m`);
+      console.log(`      Covered distance: ${coveredDistance.toFixed(2)}m`);
+      console.log(`      Expected: ${segmentLength.toFixed(2)}m`);
+      console.log(`      Avg stride in segment: ${(coveredDistance / segSteps.length).toFixed(2)}m`);
+      
+      // 整合性警告
+      if (Math.abs(coveredDistance - segmentLength) > 0.5) {
+        console.warn(`      ⚠️ Distance mismatch: ${Math.abs(coveredDistance - segmentLength).toFixed(2)}m difference`);
+      }
+    });
+    
     const average = (values: Array<number | null | undefined>): number | null => {
       const filtered = values.filter((v): v is number => typeof v === "number" && !Number.isNaN(v));
       return filtered.length ? filtered.reduce((sum, value) => sum + value, 0) / filtered.length : null;
@@ -6154,18 +6926,45 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
       ? segments[segments.length - 1].endDistanceM - segments[0].startDistanceM
       : run.totalDistanceM;
 
+    // 最終的な総合結果を計算（重複除去後のfinalStepsを使用）
+    const finalTotalTime = finalSteps.reduce((sum, s) => sum + (s.contactTime || 0) + (s.flightTime || 0), 0);
+    
+    // 🎯 重要: 平均ストライドは totalDistance / totalSteps で計算（ChatGPT推奨）
+    // これにより、シングルカメラと同じ定義になる
+    const realSteps = finalSteps.filter(s => !s.isInterpolated); // 補間ステップを除外
+    const avgStrideFromDistance = realSteps.length > 0 ? totalDistance / realSteps.length : null;
+    
+    // 🔍 整合性チェックログ
+    console.log(`\n📊 === Multi-Camera Summary Statistics ===`);
+    console.log(`   Total Distance: ${totalDistance.toFixed(2)}m`);
+    console.log(`   Total Steps (real): ${realSteps.length}`);
+    console.log(`   Avg Stride (totalDist/steps): ${avgStrideFromDistance?.toFixed(2) ?? 'N/A'}m`);
+    console.log(`   Total Time: ${finalTotalTime.toFixed(2)}s`);
+    console.log(`   Avg Speed (totalDist/time): ${(totalDistance / finalTotalTime).toFixed(2)}m/s`);
+    
     setMultiCameraSummary({
       totalDistance,
       totalSegments: segments.length,
-      totalSteps: allMetrics.length,
-      avgStride: average(allMetrics.map((m) => m.stride)),
-      avgContact: average(allMetrics.map((m) => m.contactTime)),
-      avgFlight: average(allMetrics.map((m) => m.flightTime)),
-      avgSpeed: average(allMetrics.map((m) => m.speedMps)),
+      totalSteps: realSteps.length, // 補間ステップを除外
+      avgStride: avgStrideFromDistance, // totalDistance / totalSteps
+      avgContact: average(realSteps.map((m) => m.contactTime)),
+      avgFlight: average(realSteps.map((m) => m.flightTime)),
+      avgSpeed: finalTotalTime > 0 ? totalDistance / finalTotalTime : null, // totalDistance / totalTime
+      totalTime: finalTotalTime,
+      avgSpeedCalculated: finalTotalTime > 0 ? totalDistance / finalTotalTime : null,
     });
+    
+    // ✅ 結合されたステップデータを保存（Step 9で表示するため）
+    setMergedStepMetrics(finalSteps);
+    console.log(`💾 Saved ${finalSteps.length} merged steps to state`);
 
-    setStatus("全てのセグメントの解析が完了しました。ページ下部の「マルチカメラ総合結果」をご確認ください。");
-    alert("全てのセグメントの解析が完了しました！\nページ下部に総合結果を表示しました。");
+    setStatus("全てのセグメントの解析が完了しました。総合結果を表示します。");
+    
+    // 結果画面（Step 7）に遷移
+    setTimeout(() => {
+      setWizardStep(7);
+      alert("全てのセグメントの解析が完了しました！\n総合結果を表示しました。");
+    }, 500);
   };
 
   const renderStepContent = () => {
@@ -6183,6 +6982,33 @@ if (analysisMode === 'multi' && isMultiCameraSetup) {
     />
   );
 }
+
+    // マルチカメラ解析処理中（MultiCameraAnalyzer使用）
+    // 注: 現在は既存のloadMultiCameraSegmentフローを使用するため、この分岐は使用しない
+    // 将来的にキャリブレーション情報を活用する場合はこちらを有効化
+    /*
+    if (analysisMode === 'multi' && multiCameraProcessing && currentRun && runSegments.length > 0) {
+      return (
+        <MultiCameraAnalyzer
+          run={currentRun}
+          segments={runSegments}
+          analyzeSingle={async (file: File) => {
+            console.log(`🎥 Analyzing segment: ${file.name}`);
+            return {
+              stepMetrics: [],
+              totalFrames: 0,
+              successfulPoseFrames: 0,
+              poseSuccessRate: 0
+            };
+          }}
+          onBackToSetup={() => {
+            setMultiCameraProcessing(false);
+            setIsMultiCameraSetup(true);
+          }}
+        />
+      );
+    }
+    */
 
     // 通常のシングルカメラモードのステップ処理
     switch (wizardStep) {
@@ -6652,19 +7478,6 @@ if (analysisMode === 'multi' && isMultiCameraSetup) {
                 📹📹 マルチ固定カメラ
               </label>
             </div>
-            
-            {analysisMode === 'multi' && (
-              <div style={{
-                marginTop: '16px',
-                padding: '12px',
-                background: '#fef3c7',
-                borderRadius: '8px',
-                fontSize: '0.9rem'
-              }}>
-                ⚠️ マルチカメラモードでは、10mごとに複数の動画を撮影し、
-                結合して解析します。
-              </div>
-            )}
           </div>
           )}
 
@@ -7802,8 +8615,36 @@ case 6: {
               {/* キャンバス */}
               <div className="step6-canvas-area">
                 <div className="step6-canvas-frame">
-                  <canvas ref={displayCanvasRef} className="preview-canvas" />
+                  <canvas 
+                    ref={displayCanvasRef} 
+                    className="preview-canvas"
+                    onClick={isCalibrating ? handleConeClick : undefined}
+                    style={isCalibrating ? { cursor: 'crosshair' } : undefined}
+                  />
                 </div>
+                {isCalibrating && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '10px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    color: 'white',
+                    padding: '15px 25px',
+                    borderRadius: '10px',
+                    fontSize: '16px',
+                    fontWeight: 'bold',
+                    zIndex: 1000,
+                    textAlign: 'center',
+                    maxWidth: '80%',
+                  }}>
+                    🎯 {calibrationInstructions}
+                    <br />
+                    <small style={{ fontSize: '12px', opacity: 0.8 }}>
+                      ({coneClicks.length}/4) コーンをクリック
+                    </small>
+                  </div>
+                )}
               </div>
 
               {/* 表示オプション（PC/モバイル） */}
@@ -8253,9 +9094,21 @@ case 6: {
                 <button className="btn-ghost" onClick={() => setWizardStep(5)}>
                   前へ
                 </button>
-                <button className="btn-primary-large" onClick={() => setWizardStep(7)} disabled={contactFrames.length < 3}>
-                  次へ：解析結果
-                </button>
+                {analysisMode === "multi" && multiCameraData ? (
+                  <button 
+                    className="btn-primary-large" 
+                    onClick={handleMultiSegmentNext} 
+                    disabled={contactFrames.length < 3}
+                  >
+                    {multiCameraData.currentIndex < multiCameraData.segments.length - 1
+                      ? `次のセグメントへ (${multiCameraData.currentIndex + 2}/${multiCameraData.segments.length})`
+                      : "マルチカメラ解析を完了する"}
+                  </button>
+                ) : (
+                  <button className="btn-primary-large" onClick={() => setWizardStep(7)} disabled={contactFrames.length < 3}>
+                    次へ：解析結果
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -8476,8 +9329,92 @@ case 6: {
                 </button>
               </div>
 
-              <div className="canvas-area">
-                <canvas ref={displayCanvasRef} className="preview-canvas" />
+              {/* マルチカメラの場合：動画セグメント切り替えタブ */}
+              {isMultiModeActive && multiCameraData && multiCameraData.segments.length > 1 && (
+                <div style={{
+                  display: 'flex',
+                  gap: '8px',
+                  marginBottom: '12px',
+                  flexWrap: 'wrap'
+                }}>
+                  {multiCameraData.segments.map((segment, idx) => (
+                    <button
+                      key={segment.id}
+                      onClick={() => {
+                        setCurrentVideoSegmentIndex(idx);
+                        
+                        // 対応する動画を読み込む
+                        const videoFile = multiCameraData.videoFiles[segment.id];
+                        if (videoFile && videoRef.current) {
+                          const url = URL.createObjectURL(videoFile);
+                          videoRef.current.src = url;
+                          videoRef.current.load();
+                          console.log(`📹 Switched to segment ${idx + 1} video`);
+                        }
+                        
+                        // フレームデータを復元
+                        const segmentFrames = multiCameraData.segmentFrames?.[segment.id];
+                        if (segmentFrames && segmentFrames.length > 0) {
+                          framesRef.current = segmentFrames;
+                          setFramesCount(segmentFrames.length);
+                          setCurrentFrame(0);
+                          console.log(`🖼️ Restored ${segmentFrames.length} frames for segment ${idx + 1}`);
+                        }
+                        
+                        // ポーズデータを復元
+                        const segmentPoses = multiCameraData.segmentPoseResults?.[segment.id];
+                        if (segmentPoses && segmentPoses.length > 0) {
+                          setPoseResults(segmentPoses);
+                          console.log(`🤸 Restored ${segmentPoses.length} pose results for segment ${idx + 1}`);
+                        }
+                      }}
+                      style={{
+                        padding: '8px 16px',
+                        borderRadius: '8px',
+                        border: currentVideoSegmentIndex === idx ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                        background: currentVideoSegmentIndex === idx ? '#dbeafe' : '#f8fafc',
+                        color: currentVideoSegmentIndex === idx ? '#1e40af' : '#475569',
+                        fontWeight: currentVideoSegmentIndex === idx ? 600 : 400,
+                        cursor: 'pointer',
+                        fontSize: '0.9rem'
+                      }}
+                    >
+                      📹 {segment.startDistanceM}-{segment.endDistanceM}m
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="canvas-area" style={{ position: 'relative' }}>
+                <canvas 
+                  ref={displayCanvasRef} 
+                  className="preview-canvas"
+                  onClick={isCalibrating ? handleConeClick : undefined}
+                  style={isCalibrating ? { cursor: 'crosshair' } : undefined}
+                />
+                {isCalibrating && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '10px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    color: 'white',
+                    padding: '15px 25px',
+                    borderRadius: '10px',
+                    fontSize: '16px',
+                    fontWeight: 'bold',
+                    zIndex: 1000,
+                    textAlign: 'center',
+                    maxWidth: '80%',
+                  }}>
+                    🎯 {calibrationInstructions}
+                    <br />
+                    <small style={{ fontSize: '12px', opacity: 0.8 }}>
+                      ({coneClicks.length}/4) コーンをクリック
+                    </small>
+                  </div>
+                )}
               </div>
 
               {/* フレームスライダー（PC / モバイル共通） */}
@@ -8981,7 +9918,32 @@ case 6: {
             <>
                 {/* ステップメトリクス */}
                 <div className="result-card">
-                <h3 className="result-card-title">ステップメトリクス</h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h3 className="result-card-title" style={{ margin: 0 }}>ステップメトリクス</h3>
+                  
+                  {/* マルチカメラモードで補間ステップがある場合のみトグル表示 */}
+                  {analysisMode === 'multi' && stepMetrics.some(s => s.quality === 'warning') && (
+                    <label style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '8px',
+                      cursor: 'pointer',
+                      fontSize: '0.9rem',
+                      background: 'rgba(255, 193, 7, 0.1)',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      border: '1px solid rgba(255, 193, 7, 0.3)'
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={showInterpolatedSteps}
+                        onChange={(e) => setShowInterpolatedSteps(e.target.checked)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      <span>🔶 補間ステップを表示</span>
+                    </label>
+                  )}
+                </div>
                 {stepMetrics.length > 0 ? (
                   <>
                     {/* 中間地点がある場合は前半・後半の比較を表示 */}
@@ -9215,7 +10177,9 @@ case 6: {
                           </tr>
                         </thead>
                         <tbody>
-                          {stepMetrics.map((s, idx) => (
+                          {stepMetrics
+                            .filter(s => showInterpolatedSteps || s.quality !== 'warning')
+                            .map((s, idx) => (
                             <tr 
                               key={s.index}
                               style={{
@@ -9527,8 +10491,36 @@ case 6: {
                         </button>
                       </div>
                     </div>
-                    <div className="canvas-area" style={{ maxHeight: '300px', overflow: 'hidden' }}>
-                      <canvas ref={displayCanvasRef} className="preview-canvas" style={{ maxHeight: '280px', objectFit: 'contain' }} />
+                    <div className="canvas-area" style={{ maxHeight: '600px', overflow: 'hidden', display: 'flex', justifyContent: 'center', position: 'relative' }}>
+                      <canvas 
+                        ref={displayCanvasRef} 
+                        className="preview-canvas" 
+                        style={{ maxHeight: '560px', maxWidth: '100%', objectFit: 'contain', ...(isCalibrating ? { cursor: 'crosshair' } : {}) }}
+                        onClick={isCalibrating ? handleConeClick : undefined}
+                      />
+                      {isCalibrating && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '10px',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                          color: 'white',
+                          padding: '15px 25px',
+                          borderRadius: '10px',
+                          fontSize: '16px',
+                          fontWeight: 'bold',
+                          zIndex: 1000,
+                          textAlign: 'center',
+                          maxWidth: '80%',
+                        }}>
+                          🎯 {calibrationInstructions}
+                          <br />
+                          <small style={{ fontSize: '12px', opacity: 0.8 }}>
+                            ({coneClicks.length}/4) コーンをクリック
+                          </small>
+                        </div>
+                      )}
                     </div>
                     <div style={{ 
                       display: 'flex', 
@@ -9624,29 +10616,104 @@ case 6: {
               )}
 
               {/* 保存・エクスポート */}
-              <div className="result-card">
-                <h3 className="result-card-title">保存とエクスポート</h3>
+              <div className="result-card" style={{ 
+                background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                border: '3px solid #f59e0b',
+                boxShadow: '0 8px 24px rgba(245, 158, 11, 0.3)'
+              }}>
+                <h3 className="result-card-title" style={{ 
+                  fontSize: '1.5rem',
+                  color: '#92400e',
+                  marginBottom: '20px'
+                }}>
+                  💾 保存とエクスポート
+                </h3>
 
-                <div className="action-buttons">
+                <div style={{ display: 'flex', gap: '16px', flexDirection: 'column' }}>
                   <button
-                    className="btn-action"
                     onClick={handleSaveSession}
                     disabled={saving}
+                    style={{
+                      padding: '20px 32px',
+                      fontSize: '1.3rem',
+                      fontWeight: 'bold',
+                      borderRadius: '12px',
+                      border: '3px solid #10b981',
+                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      color: 'white',
+                      cursor: saving ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.2s',
+                      boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '12px',
+                      opacity: saving ? 0.6 : 1
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!saving) {
+                        (e.target as HTMLButtonElement).style.transform = 'translateY(-4px)';
+                        (e.target as HTMLButtonElement).style.boxShadow = '0 8px 20px rgba(16, 185, 129, 0.5)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.target as HTMLButtonElement).style.transform = 'translateY(0)';
+                      (e.target as HTMLButtonElement).style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.4)';
+                    }}
                   >
-                    💾 サーバーに保存
+                    <span style={{ fontSize: '1.5rem' }}>💾</span>
+                    <span>{saving ? '保存中...' : 'サーバーに保存する'}</span>
                   </button>
 
                   <button
-                    className="btn-action"
                     onClick={exportAnglesToCSV}
                     disabled={!poseResults.length}
+                    style={{
+                      padding: '16px 28px',
+                      fontSize: '1.1rem',
+                      fontWeight: 'bold',
+                      borderRadius: '10px',
+                      border: '2px solid #3b82f6',
+                      background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                      color: 'white',
+                      cursor: !poseResults.length ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.2s',
+                      boxShadow: '0 4px 12px rgba(59, 130, 246, 0.4)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '10px',
+                      opacity: !poseResults.length ? 0.6 : 1
+                    }}
+                    onMouseEnter={(e) => {
+                      if (poseResults.length) {
+                        (e.target as HTMLButtonElement).style.transform = 'translateY(-2px)';
+                        (e.target as HTMLButtonElement).style.boxShadow = '0 6px 16px rgba(59, 130, 246, 0.5)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.target as HTMLButtonElement).style.transform = 'translateY(0)';
+                      (e.target as HTMLButtonElement).style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.4)';
+                    }}
                   >
-                    📊 角度をCSV出力
+                    <span style={{ fontSize: '1.3rem' }}>📊</span>
+                    <span>角度をCSV出力</span>
                   </button>
                 </div>
 
                 {saveResult && (
-                  <div className="save-result-msg">{saveResult}</div>
+                  <div style={{ 
+                    marginTop: '16px',
+                    padding: '12px 16px',
+                    background: saveResult.includes('成功') ? '#d1fae5' : '#fee2e2',
+                    color: saveResult.includes('成功') ? '#065f46' : '#991b1b',
+                    borderRadius: '8px',
+                    fontWeight: 'bold',
+                    fontSize: '1.05rem',
+                    textAlign: 'center'
+                  }}>
+                    {saveResult}
+                  </div>
                 )}
               </div>
             </>
