@@ -6701,8 +6701,8 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
         
         mergedSteps.push({
           ...step,
-          stride: recalculatedStride, // Homographyで再計算されたストライドを使用
-          fullStride: recalculatedStride ?? undefined, // UIで表示されるfullStrideも更新（nullはundefinedに変換）
+          stride: recalculatedStride, // TrueStride: Homographyで再計算されたストライド
+          fullStride: recalculatedStride ?? undefined, // UIで表示されるfullStrideも更新
           distanceAtContact: globalDistance,
           index: globalStepIndex++,
           segmentId: segment.id,
@@ -6864,6 +6864,39 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     
     console.log(`✅ Final merged steps: ${finalSteps.length} (removed ${mergedSteps.length - finalSteps.length} duplicates)`);
     
+    // 🔍 セグメントごとの整合性チェック（ChatGPT推奨）
+    console.log(`\n🔍 === Per-Segment Validation ===`);
+    segments.forEach((seg, idx) => {
+      const segSteps = finalSteps.filter(s => {
+        const dist = s.distanceAtContact || 0;
+        return dist >= seg.startDistanceM && dist < seg.endDistanceM;
+      });
+      
+      if (segSteps.length === 0) {
+        console.warn(`⚠️ Segment ${idx + 1} (${seg.startDistanceM}-${seg.endDistanceM}m): No steps found`);
+        return;
+      }
+      
+      // 最初と最後のステップの距離から区間内カバー距離を計算
+      const firstDist = segSteps[0].distanceAtContact || seg.startDistanceM;
+      const lastDist = segSteps[segSteps.length - 1].distanceAtContact || seg.endDistanceM;
+      const coveredDistance = lastDist - firstDist;
+      const segmentLength = seg.endDistanceM - seg.startDistanceM;
+      
+      console.log(`   Segment ${idx + 1} (${seg.startDistanceM}-${seg.endDistanceM}m):`);
+      console.log(`      Steps: ${segSteps.length}`);
+      console.log(`      First step: ${firstDist.toFixed(2)}m`);
+      console.log(`      Last step: ${lastDist.toFixed(2)}m`);
+      console.log(`      Covered distance: ${coveredDistance.toFixed(2)}m`);
+      console.log(`      Expected: ${segmentLength.toFixed(2)}m`);
+      console.log(`      Avg stride in segment: ${(coveredDistance / segSteps.length).toFixed(2)}m`);
+      
+      // 整合性警告
+      if (Math.abs(coveredDistance - segmentLength) > 0.5) {
+        console.warn(`      ⚠️ Distance mismatch: ${Math.abs(coveredDistance - segmentLength).toFixed(2)}m difference`);
+      }
+    });
+    
     const average = (values: Array<number | null | undefined>): number | null => {
       const filtered = values.filter((v): v is number => typeof v === "number" && !Number.isNaN(v));
       return filtered.length ? filtered.reduce((sum, value) => sum + value, 0) / filtered.length : null;
@@ -6876,14 +6909,27 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     // 最終的な総合結果を計算（重複除去後のfinalStepsを使用）
     const finalTotalTime = finalSteps.reduce((sum, s) => sum + (s.contactTime || 0) + (s.flightTime || 0), 0);
     
+    // 🎯 重要: 平均ストライドは totalDistance / totalSteps で計算（ChatGPT推奨）
+    // これにより、シングルカメラと同じ定義になる
+    const realSteps = finalSteps.filter(s => !s.isInterpolated); // 補間ステップを除外
+    const avgStrideFromDistance = realSteps.length > 0 ? totalDistance / realSteps.length : null;
+    
+    // 🔍 整合性チェックログ
+    console.log(`\n📊 === Multi-Camera Summary Statistics ===`);
+    console.log(`   Total Distance: ${totalDistance.toFixed(2)}m`);
+    console.log(`   Total Steps (real): ${realSteps.length}`);
+    console.log(`   Avg Stride (totalDist/steps): ${avgStrideFromDistance?.toFixed(2) ?? 'N/A'}m`);
+    console.log(`   Total Time: ${finalTotalTime.toFixed(2)}s`);
+    console.log(`   Avg Speed (totalDist/time): ${(totalDistance / finalTotalTime).toFixed(2)}m/s`);
+    
     setMultiCameraSummary({
       totalDistance,
       totalSegments: segments.length,
-      totalSteps: finalSteps.length,
-      avgStride: average(finalSteps.map((m) => m.stride)),
-      avgContact: average(finalSteps.map((m) => m.contactTime)),
-      avgFlight: average(finalSteps.map((m) => m.flightTime)),
-      avgSpeed: average(finalSteps.map((m) => m.speedMps)),
+      totalSteps: realSteps.length, // 補間ステップを除外
+      avgStride: avgStrideFromDistance, // totalDistance / totalSteps
+      avgContact: average(realSteps.map((m) => m.contactTime)),
+      avgFlight: average(realSteps.map((m) => m.flightTime)),
+      avgSpeed: finalTotalTime > 0 ? totalDistance / finalTotalTime : null, // totalDistance / totalTime
       totalTime: finalTotalTime,
       avgSpeedCalculated: finalTotalTime > 0 ? totalDistance / finalTotalTime : null,
     });
