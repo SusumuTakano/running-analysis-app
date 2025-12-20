@@ -6224,9 +6224,16 @@ if (videoRef.current) {
     setWizardStep(4);
     await runPoseEstimation();
     
-    // 姿勢推定が完了したら、キャリブレーションステップへ
-    console.log(`📹 セグメント ${index + 1}: 4コーンキャリブレーションを開始します`);
-    startConeCalibration(data, index);
+    // 姿勢推定が完了したら、キャリブレーションステップへ（既にキャリブレーション済みならスキップ）
+    const segment = data.segments[index];
+    if (segment.calibration?.H_img_to_world) {
+      console.log(`📹 セグメント ${index + 1}: キャリブレーション済みです。マーカー設定へ進みます`);
+      setStatus(`キャリブレーション済み。マーカー設定へ進みます`);
+      setWizardStep(6); // 手動マーカー設定へ
+    } else {
+      console.log(`📹 セグメント ${index + 1}: 4コーンキャリブレーションを開始します`);
+      startConeCalibration(data, index);
+    }
   };
   
   // 🎯 4コーンキャリブレーションを開始
@@ -6304,21 +6311,34 @@ if (videoRef.current) {
     };
     
     // 実世界座標（メートル）
-    // near = y=0 (カメラ側), far = y=1.22 (レーン反対側)
-    // x = 走行方向の距離
+    // World coordinate system:
+    //   x-axis = レーン幅方向 (0=カメラ側, 1.22=反対側)
+    //   y-axis = 走行方向 (startDistanceM ~ endDistanceM)
     const laneWidth = 1.22; // 標準レーン幅
     const worldPoints = {
-      x0_near: [segment.startDistanceM, 0] as [number, number],
-      x0_far: [segment.startDistanceM, laneWidth] as [number, number],
-      x1_near: [segment.endDistanceM, 0] as [number, number],
-      x1_far: [segment.endDistanceM, laneWidth] as [number, number],
+      x0_near: [0, segment.startDistanceM] as [number, number],         // カメラ側スタート
+      x0_far: [laneWidth, segment.startDistanceM] as [number, number],  // 反対側スタート
+      x1_near: [0, segment.endDistanceM] as [number, number],           // カメラ側エンド
+      x1_far: [laneWidth, segment.endDistanceM] as [number, number],    // 反対側エンド
     };
+    
+    console.log(`  Image points:`, imgPoints);
+    console.log(`  World points:`, worldPoints);
+    
+    // 座標検証: 4点が有効かチェック
+    const clicksValid = clicks.every(c => !isNaN(c.x) && !isNaN(c.y) && c.x > 0 && c.y > 0);
+    if (!clicksValid) {
+      throw new Error('Invalid cone click coordinates detected');
+    }
     
     try {
       // Homography行列を計算
       const H = computeHomographyImgToWorld(imgPoints, worldPoints);
       
-      console.log(`✅ Homography matrix calculated:`, H);
+      console.log(`✅ Homography matrix calculated:`);
+      console.log(`  H[0]: [${H[0][0].toFixed(6)}, ${H[0][1].toFixed(6)}, ${H[0][2].toFixed(6)}]`);
+      console.log(`  H[1]: [${H[1][0].toFixed(6)}, ${H[1][1].toFixed(6)}, ${H[1][2].toFixed(6)}]`);
+      console.log(`  H[2]: [${H[2][0].toFixed(6)}, ${H[2][1].toFixed(6)}, ${H[2][2].toFixed(6)}]`);
       
       // セグメントのキャリブレーションデータを更新
       const updatedSegments = [...segments];
@@ -6601,6 +6621,10 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
       // ✅ キャリブレーションがある場合：Homographyを使って正確な距離を計算
       console.log(`✅ Segment ${segIdx + 1} has calibration. Applying Homography transformation.`);
       const H = calibration.H_img_to_world;
+      console.log(`  📐 H matrix for segment ${segIdx + 1}:`);
+      console.log(`    H[0]: [${H[0][0]}, ${H[0][1]}, ${H[0][2]}]`);
+      console.log(`    H[1]: [${H[1][0]}, ${H[1][1]}, ${H[1][2]}]`);
+      console.log(`    H[2]: [${H[2][0]}, ${H[2][1]}, ${H[2][2]}]`);
       
       // Homography変換ヘルパー関数（ここで定義）
       const applyHomographyLocal = (pixelX: number, pixelY: number): { x: number; y: number } | null => {
@@ -6632,22 +6656,24 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
           const worldPos = applyHomographyLocal(step.contactPixelX, step.contactPixelY);
           
           if (worldPos) {
-            // 実世界座標のX成分を距離として使用（スタートラインから何m地点か）
-            localDistance = Math.abs(worldPos.x - segment.startDistanceM);
+            // 実世界座標のY成分を距離として使用（走行方向＝y軸）
+            // X成分はレーン幅方向（0〜1.22m）、Y成分は走行方向（0〜15m）
+            localDistance = Math.abs(worldPos.y - segment.startDistanceM);
             
-            console.log(`  🎯 Step ${localIdx}: Pixel(${step.contactPixelX.toFixed(0)}, ${step.contactPixelY.toFixed(0)}) → World(${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)})m → localDistance=${localDistance.toFixed(2)}m`);
+            console.log(`  🎯 Step ${localIdx}: Pixel(${step.contactPixelX.toFixed(0)}, ${step.contactPixelY.toFixed(0)}) → World(${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)})m (x=lane, y=distance) → localDistance=${localDistance.toFixed(2)}m`);
             
             // 次のステップのピクセル座標があれば、ストライドも再計算
             const nextStep = segmentSteps[localIdx + 1];
             if (nextStep?.contactPixelX != null && nextStep?.contactPixelY != null) {
               const nextWorldPos = applyHomographyLocal(nextStep.contactPixelX, nextStep.contactPixelY);
               if (nextWorldPos) {
-                // 実世界座標でのストライドを計算
+                // 実世界座標でのストライドを計算（ユークリッド距離）
+                // dx = レーン幅方向の移動, dy = 走行方向の移動
                 const dx = nextWorldPos.x - worldPos.x;
                 const dy = nextWorldPos.y - worldPos.y;
                 recalculatedStride = Math.sqrt(dx * dx + dy * dy);
                 
-                console.log(`    ✅ Recalculated stride using Homography: ${recalculatedStride.toFixed(2)}m (was ${step.stride?.toFixed(2) ?? 'N/A'}m)`);
+                console.log(`    ✅ Recalculated stride using Homography: ${recalculatedStride.toFixed(2)}m (dx=${dx.toFixed(2)}, dy=${dy.toFixed(2)}) (was ${step.stride?.toFixed(2) ?? 'N/A'}m)`);
               }
             }
           } else {
@@ -6664,6 +6690,7 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
         mergedSteps.push({
           ...step,
           stride: recalculatedStride, // Homographyで再計算されたストライドを使用
+          fullStride: recalculatedStride ?? undefined, // UIで表示されるfullStrideも更新（nullはundefinedに変換）
           distanceAtContact: globalDistance,
           index: globalStepIndex++,
           segmentId: segment.id,
@@ -6677,6 +6704,20 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     // 🔗 セグメント間の重複ステップを検出・統合
     // ==========================================
     console.log("🔍 Detecting and merging overlapping steps between segments...");
+    
+    // 🎯 Homography補正後の代表ストライドを計算（欠損補間用）
+    const validStrides = mergedSteps
+      .map(s => s.stride)
+      .filter((s): s is number => typeof s === 'number' && s > 0.5 && s < 3.0);
+    
+    // 中央値を使用（外れ値の影響を受けにくい）
+    const sortedStrides = [...validStrides].sort((a, b) => a - b);
+    const medianStride = sortedStrides.length > 0 
+      ? sortedStrides[Math.floor(sortedStrides.length / 2)]
+      : 1.5; // デフォルトは1.5m（補正後の期待値）
+    
+    console.log(`📏 Representative stride for gap interpolation: ${medianStride.toFixed(2)}m (median of ${validStrides.length} Homography-corrected strides)`);
+    console.log(`   Valid strides: ${validStrides.map(s => s.toFixed(2)).join(', ')}`);
     
     const finalSteps: StepMetric[] = [];
     let prevSegmentEndDistance = 0;
@@ -6712,23 +6753,24 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
             console.log(`⚠️ Skipping duplicate step at ${stepDist.toFixed(2)}m (gap: ${gap.toFixed(2)}m)`);
           } else if (gap > 2.0) {
             // 🔴 CRITICAL: ギャップが大きすぎる（2m以上）→ 境界を跨ぐステップが欠落
-            // 前のセグメントの最後のステップのストライドを使用して補間
-            const prevStride = lastStep?.stride || 1.2; // デフォルト1.2m
-            const estimatedMissingSteps = Math.floor(gap / prevStride) - 1;
+            // Homography補正後の代表ストライド（中央値）を使用して補間
+            const estimatedMissingSteps = Math.floor(gap / medianStride) - 1;
             
             console.log(`🔶 Large gap detected: ${gap.toFixed(2)}m between segments`);
             console.log(`   Last step: ${lastStepDist.toFixed(2)}m, Current step: ${stepDist.toFixed(2)}m`);
-            console.log(`   Estimated missing steps: ${estimatedMissingSteps} (using stride: ${prevStride.toFixed(2)}m)`);
+            console.log(`   Estimated missing steps: ${estimatedMissingSteps} (using Homography-corrected median stride: ${medianStride.toFixed(2)}m)`);
             
             // 欠落ステップを補間
             for (let j = 1; j <= estimatedMissingSteps; j++) {
-              const interpolatedDistance = lastStepDist + (prevStride * j);
+              const interpolatedDistance = lastStepDist + (medianStride * j);
               
               // 補間ステップを作成（前のステップをベースに）
               const interpolatedStep: StepMetric = {
                 ...lastStep,
                 index: finalSteps.length,
                 distanceAtContact: interpolatedDistance,
+                stride: medianStride, // Homography補正後の代表ストライドを使用
+                fullStride: medianStride, // UIで表示されるfullStrideも設定
                 // 補間データであることを示すフラグ
                 quality: 'warning', // 警告として表示
               };
@@ -6747,6 +6789,32 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
         
         prevSegmentEndDistance = segment.endDistanceM;
       }
+    }
+    
+    // 🎯 グローバル距離からストライドを再計算（ChatGPT提案）
+    // Homography変換後のglobalDistanceが最も正確なので、これを基準にストライドを再計算
+    console.log("🔧 Recalculating strides from globalDistance (Homography-corrected world coordinates)...");
+    
+    for (let i = 0; i < finalSteps.length; i++) {
+      if (i === 0) {
+        // 最初のステップはそのまま
+        console.log(`  Step ${i}: Initial step at ${finalSteps[i].distanceAtContact?.toFixed(2)}m, stride=${finalSteps[i].stride?.toFixed(2)}m (kept as-is)`);
+        continue;
+      }
+      
+      const currentDist = finalSteps[i].distanceAtContact || 0;
+      const prevDist = finalSteps[i - 1].distanceAtContact || 0;
+      const recalculatedStride = currentDist - prevDist;
+      
+      // 異常値チェック（0.5m未満、3.0m超は警告）
+      if (recalculatedStride < 0.5 || recalculatedStride > 3.0) {
+        console.warn(`  ⚠️ Step ${i}: Unusual stride ${recalculatedStride.toFixed(2)}m (dist: ${prevDist.toFixed(2)}→${currentDist.toFixed(2)}m)`);
+      } else {
+        console.log(`  Step ${i}: Stride recalculated from globalDistance: ${recalculatedStride.toFixed(2)}m (was ${finalSteps[i].stride?.toFixed(2) ?? 'N/A'}m)`);
+      }
+      
+      finalSteps[i].stride = recalculatedStride;
+      finalSteps[i].fullStride = recalculatedStride;
     }
     
     // グローバルインデックスを再割り当て
