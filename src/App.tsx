@@ -2064,6 +2064,10 @@ const clearMarksByButton = () => {
       }
     };
     
+    // 🎯 ビデオの実際の解像度を取得（キャリブレーションと一致させる）
+    const actualVideoWidth = videoRef.current?.videoWidth || 1920;
+    const actualVideoHeight = videoRef.current?.videoHeight || 1080;
+    
     // 接地時の足のピクセル座標を取得（左右の足首・つま先から判定）
     const getContactFootPixel = (frame: number): { x: number; y: number } | null => {
       if (!poseResults[frame]?.landmarks) return null;
@@ -2091,13 +2095,14 @@ const clearMarksByButton = () => {
         footY = rightY;
       }
       
-      // 正規化座標(0-1)をピクセル座標に変換
-      const pixelX = footX * (videoWidth || 1920);
-      const pixelY = footY * (videoHeight || 1080);
+      // 🎯 CRITICAL FIX: キャリブレーションと同じ解像度を使用
+      // 正規化座標(0-1)をピクセル座標に変換（videoRef.currentから取得）
+      const pixelX = footX * actualVideoWidth;
+      const pixelY = footY * actualVideoHeight;
       
       // 🔍 デバッグ: 初回のみビデオサイズとサンプル座標を出力
       if (frame === (contactFrames[0] || 0)) {
-        console.log(`🔍 [DEBUG] Video dimensions for pixel conversion: ${videoWidth}x${videoHeight}`);
+        console.log(`🔍 [DEBUG] Video dimensions for pixel conversion: ${actualVideoWidth}x${actualVideoHeight} (from videoRef.current)`);
         console.log(`🔍 [DEBUG] Sample: normalized(${footX.toFixed(3)}, ${footY.toFixed(3)}) → pixel(${pixelX.toFixed(0)}, ${pixelY.toFixed(0)})`);
       }
       
