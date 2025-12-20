@@ -2095,6 +2095,12 @@ const clearMarksByButton = () => {
       const pixelX = footX * (videoWidth || 1920);
       const pixelY = footY * (videoHeight || 1080);
       
+      // 🔍 デバッグ: 初回のみビデオサイズとサンプル座標を出力
+      if (frame === (contactFrames[0] || 0)) {
+        console.log(`🔍 [DEBUG] Video dimensions for pixel conversion: ${videoWidth}x${videoHeight}`);
+        console.log(`🔍 [DEBUG] Sample: normalized(${footX.toFixed(3)}, ${footY.toFixed(3)}) → pixel(${pixelX.toFixed(0)}, ${pixelY.toFixed(0)})`);
+      }
+      
       return { x: pixelX, y: pixelY };
     };
     
