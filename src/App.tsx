@@ -6819,11 +6819,27 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     // 🎯 グローバル距離からストライドを再計算（ChatGPT提案）
     // ただし、補間ステップは除外（補間ステップは実測値ではないため）
     console.log("🔧 Recalculating strides from globalDistance (excluding interpolated steps)...");
+    console.log("\n📋 === ChatGPT Requested Log: Detailed Step Analysis ===");
     
     for (let i = 0; i < finalSteps.length; i++) {
+      const currentDist = finalSteps[i].distanceAtContact || 0;
+      const nextDist = finalSteps[i + 1]?.distanceAtContact;
+      
+      // 🎯 ChatGPTが要求する詳細ログ
+      console.log(`\n[Step ${i}]`);
+      console.log(`  contact_globalDist: ${currentDist.toFixed(3)}m`);
+      if (nextDist != null) {
+        console.log(`  next_contact_globalDist: ${nextDist.toFixed(3)}m`);
+        console.log(`  TrueStride (next - current): ${(nextDist - currentDist).toFixed(3)}m`);
+      }
+      console.log(`  isInterpolated: ${finalSteps[i].isInterpolated === true}`);
+      console.log(`  segmentId: ${finalSteps[i].segmentId ?? 'N/A'}`);
+      console.log(`  contactFrame: ${finalSteps[i].contactFrame}`);
+      console.log(`  current stride value: ${finalSteps[i].stride?.toFixed(3) ?? 'N/A'}m`);
+      
       if (i === 0) {
         // 最初のステップはそのまま
-        console.log(`  Step ${i}: Initial step at ${finalSteps[i].distanceAtContact?.toFixed(2)}m, stride=${finalSteps[i].stride?.toFixed(2)}m (kept as-is)`);
+        console.log(`  → Action: Initial step, kept as-is`);
         continue;
       }
       
@@ -6832,30 +6848,34 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
       const isPrevInterpolated = finalSteps[i - 1].isInterpolated === true;
       
       if (isCurrentInterpolated) {
-        console.log(`  Step ${i}: Interpolated step at ${finalSteps[i].distanceAtContact?.toFixed(2)}m, stride=${finalSteps[i].stride?.toFixed(2)}m (kept as-is, not recalculated)`);
+        console.log(`  → Action: Interpolated step, kept as-is`);
         continue;
       }
       
       if (isPrevInterpolated) {
-        console.log(`  Step ${i}: After interpolated step at ${finalSteps[i].distanceAtContact?.toFixed(2)}m, stride=${finalSteps[i].stride?.toFixed(2)}m (kept as Homography-corrected value)`);
+        console.log(`  → Action: After interpolated, kept as Homography value`);
         continue;
       }
       
       // 実測ステップ間のストライドのみ再計算
-      const currentDist = finalSteps[i].distanceAtContact || 0;
       const prevDist = finalSteps[i - 1].distanceAtContact || 0;
       const recalculatedStride = currentDist - prevDist;
       
+      console.log(`  prev_contact_globalDist: ${prevDist.toFixed(3)}m`);
+      console.log(`  Recalculated stride (current - prev): ${recalculatedStride.toFixed(3)}m`);
+      
       // 異常値チェック（0.5m未満、3.0m超は警告）
       if (recalculatedStride < 0.5 || recalculatedStride > 3.0) {
-        console.warn(`  ⚠️ Step ${i}: Unusual stride ${recalculatedStride.toFixed(2)}m (dist: ${prevDist.toFixed(2)}→${currentDist.toFixed(2)}m)`);
-      } else {
-        console.log(`  Step ${i}: Stride recalculated from globalDistance: ${recalculatedStride.toFixed(2)}m (was ${finalSteps[i].stride?.toFixed(2) ?? 'N/A'}m)`);
+        console.warn(`  ⚠️ WARNING: Unusual stride ${recalculatedStride.toFixed(3)}m`);
       }
+      
+      console.log(`  → Action: UPDATE stride from ${finalSteps[i].stride?.toFixed(3) ?? 'N/A'}m to ${recalculatedStride.toFixed(3)}m`);
       
       finalSteps[i].stride = recalculatedStride;
       finalSteps[i].fullStride = recalculatedStride;
     }
+    
+    console.log("\n=== End of Detailed Step Analysis ===\n");
     
     // グローバルインデックスを再割り当て
     finalSteps.forEach((step, idx) => {
