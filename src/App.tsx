@@ -6868,15 +6868,14 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     
     console.log("\n✅ TrueStride recalculation complete (ChatGPT method)\n");
     
-    // 補間ステップはそのまま保持（表示用）
-    const interpolatedSteps = finalSteps.filter(s => s.isInterpolated === true);
-    
-    // 最終的なステップリストを再構築（realStepsForStride + interpolatedSteps）
-    finalSteps.length = 0;
-    finalSteps.push(...realStepsForStride, ...interpolatedSteps);
+    // 🔍 重要: realStepsForStrideは更新されているので、finalStepsも自動的に更新されている
+    // （フィルタで作成したrealStepsForStrideは元のfinalStepsの要素への参照を保持）
+    // 補間ステップは既にfinalStepsに含まれているので、再構築は不要
     
     // globalDistで再ソート（時系列順に戻す）
     finalSteps.sort((a, b) => (a.distanceAtContact || 0) - (b.distanceAtContact || 0));
+    
+    console.log(`\n📊 Final steps after TrueStride recalculation: ${finalSteps.length} (real: ${realStepsForStride.length}, interpolated: ${finalSteps.filter(s => s.isInterpolated).length})`);
     
     // グローバルインデックスを再割り当て
     finalSteps.forEach((step, idx) => {
