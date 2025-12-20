@@ -102,6 +102,7 @@ type StepMetric = {
   // 🆕 追加フィールド
   leg?: "left" | "right";      // どちらの足のステップか（現時点では未使用でOK）
   quality?: "good" | "warning" | "bad"; // 解析の信頼度（色分けに使用）
+  isInterpolated?: boolean;    // 補間ステップかどうか（ストライド再計算から除外）
   // 🎯 ステップごとの姿勢データ（加速局面の段階的評価用）
   trunkAngleAtContact?: number | null;  // 接地時の体幹角度
   kneeFlexAtContact?: number | null;    // 接地時の膝角度（支持脚）
@@ -6773,6 +6774,7 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
                 fullStride: medianStride, // UIで表示されるfullStrideも設定
                 // 補間データであることを示すフラグ
                 quality: 'warning', // 警告として表示
+                isInterpolated: true, // 補間ステップフラグ（ストライド再計算から除外）
               };
               
               console.log(`   ➕ Interpolating step at ${interpolatedDistance.toFixed(2)}m`);
@@ -6792,8 +6794,8 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     }
     
     // 🎯 グローバル距離からストライドを再計算（ChatGPT提案）
-    // Homography変換後のglobalDistanceが最も正確なので、これを基準にストライドを再計算
-    console.log("🔧 Recalculating strides from globalDistance (Homography-corrected world coordinates)...");
+    // ただし、補間ステップは除外（補間ステップは実測値ではないため）
+    console.log("🔧 Recalculating strides from globalDistance (excluding interpolated steps)...");
     
     for (let i = 0; i < finalSteps.length; i++) {
       if (i === 0) {
@@ -6802,6 +6804,21 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
         continue;
       }
       
+      // 🚫 補間ステップと、補間ステップの直後のステップはスキップ
+      const isCurrentInterpolated = finalSteps[i].isInterpolated === true;
+      const isPrevInterpolated = finalSteps[i - 1].isInterpolated === true;
+      
+      if (isCurrentInterpolated) {
+        console.log(`  Step ${i}: Interpolated step at ${finalSteps[i].distanceAtContact?.toFixed(2)}m, stride=${finalSteps[i].stride?.toFixed(2)}m (kept as-is, not recalculated)`);
+        continue;
+      }
+      
+      if (isPrevInterpolated) {
+        console.log(`  Step ${i}: After interpolated step at ${finalSteps[i].distanceAtContact?.toFixed(2)}m, stride=${finalSteps[i].stride?.toFixed(2)}m (kept as Homography-corrected value)`);
+        continue;
+      }
+      
+      // 実測ステップ間のストライドのみ再計算
       const currentDist = finalSteps[i].distanceAtContact || 0;
       const prevDist = finalSteps[i - 1].distanceAtContact || 0;
       const recalculatedStride = currentDist - prevDist;
