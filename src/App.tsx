@@ -6799,21 +6799,27 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
         console.log(`  next_contact_globalDist: ${nextDist.toFixed(3)}m`);
         console.log(`  TrueStride (difference): ${trueStride.toFixed(3)}m`);
         
+        // 🔧 CRITICAL FIX: stepTimeから速度を再計算
+        const stepTime = realStepsForStride[i].stepTime;
+        const speedMps = (stepTime != null && stepTime > 0) ? trueStride / stepTime : null;
+        
         // 異常値フラグ（0.6m未満、2.2m超）
         if (trueStride < 0.6 || trueStride > 2.2) {
           console.warn(`  ⚠️ strideAnomaly: true (unusual stride)`);
           realStepsForStride[i].quality = 'warning'; // UIで赤く表示
         }
         
-        // ストライドを更新
+        // ストライドと速度を更新
         realStepsForStride[i].stride = trueStride;
         realStepsForStride[i].fullStride = trueStride;
+        realStepsForStride[i].speedMps = speedMps;
         
-        console.log(`  → UPDATED stride to ${trueStride.toFixed(3)}m`);
+        console.log(`  → UPDATED stride to ${trueStride.toFixed(3)}m, speed to ${speedMps?.toFixed(2) ?? 'N/A'}m/s`);
       } else {
         console.log(`  → Last step, no next contact`);
         realStepsForStride[i].stride = null;
         realStepsForStride[i].fullStride = undefined;
+        realStepsForStride[i].speedMps = null;
       }
     }
     
