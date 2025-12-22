@@ -6766,13 +6766,13 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     const finalSteps: StepMetric[] = [];
     let prevSegmentEndDistance = 0;
     
+    // 🔧 FIX: mergedStepsは既にセグメント順にソートされているので、
+    // セグメントIDでグループ化して処理（距離でフィルタしない）
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i];
-      const segmentSteps = mergedSteps.filter(s => {
-        // このセグメントに属するステップを抽出
-        const dist = s.distanceAtContact || 0;
-        return dist >= segment.startDistanceM && dist < segment.endDistanceM;
-      });
+      const segmentSteps = mergedSteps.filter(s => s.segmentId === segment.id);
+      
+      console.log(`\n🔍 Processing segment ${i + 1} (ID: ${segment.id}): ${segmentSteps.length} steps`);
       
       if (i === 0) {
         // 最初のセグメントはそのまま追加
