@@ -6913,10 +6913,31 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     // （フィルタで作成したrealStepsForStrideは元のfinalStepsの要素への参照を保持）
     // 補間ステップは既にfinalStepsに含まれているので、再構築は不要
     
+    // 🔧 CRITICAL FIX: 同じ距離のステップを削除（セグメント境界の重複）
+    console.log(`\n🔧 === Removing exact distance duplicates ===`);
+    const uniqueSteps: StepMetric[] = [];
+    const seenDistances = new Set<number>();
+    
+    finalSteps.forEach((step, idx) => {
+      const dist = step.distanceAtContact || 0;
+      const roundedDist = Math.round(dist * 100) / 100; // 0.01m精度で丸める
+      
+      if (!seenDistances.has(roundedDist)) {
+        seenDistances.add(roundedDist);
+        uniqueSteps.push(step);
+        console.log(`  ✅ Keep step at ${dist.toFixed(2)}m (segment: ${step.segmentId?.slice(-10) ?? 'N/A'})`);
+      } else {
+        console.log(`  ⚠️ Skip duplicate at ${dist.toFixed(2)}m (segment: ${step.segmentId?.slice(-10) ?? 'N/A'})`);
+      }
+    });
+    
+    finalSteps.length = 0;
+    finalSteps.push(...uniqueSteps);
+    
     // globalDistで再ソート（時系列順に戻す）
     finalSteps.sort((a, b) => (a.distanceAtContact || 0) - (b.distanceAtContact || 0));
     
-    console.log(`\n📊 Final steps after TrueStride recalculation: ${finalSteps.length} (real: ${realStepsForStride.length}, interpolated: ${finalSteps.filter(s => s.isInterpolated).length})`);
+    console.log(`\n📊 Final steps after duplicate removal: ${finalSteps.length} (real: ${finalSteps.filter(s => !s.isInterpolated).length}, interpolated: ${finalSteps.filter(s => s.isInterpolated).length})`);
     
     // グローバルインデックスを再割り当て
     finalSteps.forEach((step, idx) => {
