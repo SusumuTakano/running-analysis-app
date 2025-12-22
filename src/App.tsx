@@ -6694,15 +6694,11 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
         finalSteps.push(...segmentSteps);
         prevSegmentEndDistance = segment.endDistanceM;
       } else {
-        // 🔧 TEMPORARY FIX: 重複検出を無効化してデバッグ
-        // 全てのステップを追加
-        console.log(`  ⚠️ [DEBUG] Adding all ${segmentSteps.length} steps without duplicate filtering`);
-        finalSteps.push(...segmentSteps);
-        
-        /*
-        // 2つ目以降のセグメント：重複区間をチェック
+        // 2つ目以降のセグメント：重複区間をチェックしてギャップを補間
         const overlapThreshold = 0.5; // 0.5m以内なら重複とみなす
-        const crossSegmentThreshold = 2.0; // セグメント境界を跨ぐステップの閾値
+        const crossSegmentThreshold = 2.0; // セグメント境界を跨ぐステップの閾値（2m以上のギャップ）
+        
+        console.log(`  🔍 Checking for duplicates and gaps (median stride: ${medianStride.toFixed(2)}m)...`);
         
         segmentSteps.forEach(step => {
           const stepDist = step.distanceAtContact || 0;
@@ -6724,18 +6720,18 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
           
           if (gap < overlapThreshold) {
             // 重複している可能性が高い → スキップ（前のセグメントのデータを優先）
-            console.log(`⚠️ Skipping duplicate step at ${stepDist.toFixed(2)}m (gap: ${gap.toFixed(2)}m)`);
+            console.log(`  ⚠️ Skipping duplicate step at ${stepDist.toFixed(2)}m (gap: ${gap.toFixed(2)}m)`);
           } else if (isLikelyDuplicate && isStepAcrossBoundary) {
             // 🆕 セグメント境界を跨ぐ重複ステップ（同じ接地を両セグメントでマーク）
-            console.log(`⚠️ Skipping cross-segment duplicate at ${stepDist.toFixed(2)}m (boundary at ${prevSegmentEnd.toFixed(2)}m, gap: ${gap.toFixed(2)}m)`);
+            console.log(`  ⚠️ Skipping cross-segment duplicate at ${stepDist.toFixed(2)}m (boundary at ${prevSegmentEnd.toFixed(2)}m, gap: ${gap.toFixed(2)}m)`);
           } else if (gap > crossSegmentThreshold) {
             // 🔴 CRITICAL: ギャップが大きすぎる（2m以上）→ 境界を跨ぐステップが欠落
-            // Homography補正後の代表ストライド（中央値）を使用して補間
+            // 代表ストライド（中央値）を使用して補間
             const estimatedMissingSteps = Math.floor(gap / medianStride) - 1;
             
-            console.log(`🔶 Large gap detected: ${gap.toFixed(2)}m between segments`);
-            console.log(`   Last step: ${lastStepDist.toFixed(2)}m, Current step: ${stepDist.toFixed(2)}m`);
-            console.log(`   Estimated missing steps: ${estimatedMissingSteps} (using Homography-corrected median stride: ${medianStride.toFixed(2)}m)`);
+            console.log(`  🔶 Large gap detected: ${gap.toFixed(2)}m between steps`);
+            console.log(`     Last step: ${lastStepDist.toFixed(2)}m, Current step: ${stepDist.toFixed(2)}m`);
+            console.log(`     Estimated missing steps: ${estimatedMissingSteps} (median stride: ${medianStride.toFixed(2)}m)`);
             
             // 欠落ステップを補間
             for (let j = 1; j <= estimatedMissingSteps; j++) {
@@ -6746,25 +6742,26 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
                 ...lastStep,
                 index: finalSteps.length,
                 distanceAtContact: interpolatedDistance,
-                stride: medianStride, // Homography補正後の代表ストライドを使用
-                fullStride: medianStride, // UIで表示されるfullStrideも設定
+                stride: medianStride,
+                fullStride: medianStride,
                 // 補間データであることを示すフラグ
                 quality: 'warning', // 警告として表示
                 isInterpolated: true, // 補間ステップフラグ（ストライド再計算から除外）
               };
               
-              console.log(`   ➕ Interpolating step at ${interpolatedDistance.toFixed(2)}m`);
+              console.log(`     ➕ Interpolating step at ${interpolatedDistance.toFixed(2)}m`);
               finalSteps.push(interpolatedStep);
             }
             
             // 現在のステップを追加
+            console.log(`     ✅ Adding current step at ${stepDist.toFixed(2)}m`);
             finalSteps.push(step);
           } else {
             // 通常のステップとして追加
+            console.log(`     ✅ Adding step at ${stepDist.toFixed(2)}m (gap: ${gap.toFixed(2)}m)`);
             finalSteps.push(step);
           }
         });
-        */
         
         prevSegmentEndDistance = segment.endDistanceM;
       }
