@@ -947,6 +947,9 @@ const [notesInput, setNotesInput] = useState<string>("");
   
   // 👤 人物選択モード（姿勢推定が遅い場合の手動選択）
   const [isPersonSelectMode, setIsPersonSelectMode] = useState<boolean>(false);
+  
+  // 🎯 マルチカメラモード：グローバル距離オフセット（セグメント開始位置）
+  const [globalDistanceOffset, setGlobalDistanceOffset] = useState<number>(0);
   const [manualRoi, setManualRoi] = useState<CanvasRoi | null>(null);
   const [isSelectingPerson, setIsSelectingPerson] = useState<boolean>(false);
   
@@ -2139,17 +2142,20 @@ const clearMarksByButton = () => {
     const isLeftToRight = finishLineX > startLineX; // 走行方向
     
     // 各フレームでのスタートラインからの距離[m]を計算
+    // 🔧 CRITICAL FIX: マルチカメラモードではglobalDistanceOffsetを加算してグローバル座標を返す
     const distanceAtFrame = (frame: number): number | null => {
       const torsoX = getTorsoX(frame);
       if (torsoX == null) return null;
       const rawDistance = isLeftToRight 
         ? (torsoX - startLineX) * distancePerNormalized
         : (startLineX - torsoX) * distancePerNormalized;
-      return rawDistance;
+      // マルチカメラモードの場合、セグメント開始位置（0m, 5m, 10m...）を加算
+      return rawDistance + globalDistanceOffset;
     };
     
     console.log(`📏 ストライド計算（新仕様）:`);
     console.log(`   入力距離: ${sectionLengthM}m`);
+    console.log(`   🌐 グローバル距離オフセット: ${globalDistanceOffset}m (マルチカメラモード: ${analysisMode === 'multi'})`);
     console.log(`   スタートラインX: ${startLineX?.toFixed(4)}, フィニッシュラインX: ${finishLineX?.toFixed(4)}`);
     console.log(`   走行方向: ${isLeftToRight ? '左→右' : '右→左'}`);
     console.log(`   距離変換係数: ${distancePerNormalized.toFixed(4)} m/正規化単位`);
@@ -6148,6 +6154,10 @@ if (videoRef.current) {
     setLabelInput(`${targetSegment.startDistanceM}m〜${targetSegment.endDistanceM}m セグメント`);
     setStatus(`セグメント${index + 1}/${data.segments.length} の処理を開始します...`);
     
+    // 🔧 CRITICAL FIX: グローバル距離オフセットを設定（セグメント開始位置）
+    setGlobalDistanceOffset(targetSegment.startDistanceM);
+    console.log(`🌐 Setting globalDistanceOffset to ${targetSegment.startDistanceM}m for segment ${index + 1}`);
+    
     // 自動的にフレーム抽出と姿勢推定を実行
     console.log(`📹 セグメント ${index + 1}: フレーム抽出を開始します...`);
     setWizardStep(3);
@@ -6638,12 +6648,10 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
       console.log(`✅ Segment ${segIdx + 1}: Using single-camera distances/strides AS-IS (NO Homography)`);
       
       segmentSteps.forEach((step, localIdx) => {
-        // 🚨 CRITICAL FIX: step.distanceAtContactはセグメント内の値（0m～）として既に保存されている
-        // → セグメント開始距離を加算してグローバル座標へ変換
-        const localDistance = step.distanceAtContact || 0;
-        const globalDistance = segment.startDistanceM + localDistance;
+        // ✅ FIXED: step.distanceAtContactは既にグローバル座標（globalDistanceOffset適用済み）
+        const globalDistance = step.distanceAtContact || 0;
         
-        console.log(`  Step ${localIdx}: localDist=${localDistance.toFixed(2)}m + segmentStart=${segment.startDistanceM}m → globalDist=${globalDistance.toFixed(2)}m, stride=${(step.stride || 0).toFixed(2)}m`);
+        console.log(`  Step ${localIdx}: globalDist=${globalDistance.toFixed(2)}m, stride=${(step.stride || 0).toFixed(2)}m`);
         
         // 🔥 ストライドは元の値を保持（シングルカメラ解析済み）
         mergedSteps.push({

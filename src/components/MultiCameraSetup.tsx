@@ -430,11 +430,15 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
                 <label className="block text-sm font-medium text-gray-700 mb-3">
                   マーカー間隔（コーン間隔）
                 </label>
-                <div className="grid grid-cols-2 gap-3">
-                  {[5, 10].map(length => (
+                <div className="grid grid-cols-3 gap-3">
+                  {[5, 7.5, 10].map(length => (
                     <button
                       key={length}
-                      onClick={() => setConfig(prev => ({ ...prev, segmentLengthM: length, totalDistanceM: length === 5 ? 15 : 30 }))}
+                      onClick={() => setConfig(prev => ({ 
+                        ...prev, 
+                        segmentLengthM: length, 
+                        totalDistanceM: length === 5 ? 15 : length === 7.5 ? 22.5 : 30 
+                      }))}
                       className={`p-4 border-2 rounded-lg transition ${
                         config.segmentLengthM === length
                           ? 'border-blue-500 bg-blue-50'
@@ -443,7 +447,7 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
                     >
                       <div className="text-xl font-bold">{length}m</div>
                       <div className="text-sm text-gray-500">
-                        {length === 5 ? '推奨（精度重視）' : '簡易（設置が楽）'}
+                        {length === 5 ? '推奨（精度重視）' : length === 7.5 ? '中間' : '簡易（設置が楽）'}
                       </div>
                     </button>
                   ))}
@@ -458,6 +462,8 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
                 <div className="grid grid-cols-3 gap-3">
                   {(config.segmentLengthM === 10
                     ? [20, 30, 40, 60, 80, 100]
+                    : config.segmentLengthM === 7.5
+                    ? [15, 22.5, 30, 45, 60, 75]
                     : [10, 15, 20, 30, 40, 50]
                   ).map(distance => (
                     <button
