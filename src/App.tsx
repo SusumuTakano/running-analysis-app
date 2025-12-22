@@ -950,6 +950,8 @@ const [notesInput, setNotesInput] = useState<string>("");
   
   // 🎯 マルチカメラモード：グローバル距離オフセット（セグメント開始位置）
   const [globalDistanceOffset, setGlobalDistanceOffset] = useState<number>(0);
+  // 🎯 マルチカメラモード：現在のセグメントのキャリブレーションデータ
+  const [currentSegmentCalibration, setCurrentSegmentCalibration] = useState<any>(null);
   const [manualRoi, setManualRoi] = useState<CanvasRoi | null>(null);
   const [isSelectingPerson, setIsSelectingPerson] = useState<boolean>(false);
   
@@ -2144,6 +2146,21 @@ const clearMarksByButton = () => {
     // 各フレームでのスタートラインからの距離[m]を計算
     // 🔧 CRITICAL FIX: マルチカメラモードではglobalDistanceOffsetを加算してグローバル座標を返す
     const distanceAtFrame = (frame: number): number | null => {
+      // 🎯 マルチカメラモードでキャリブレーションデータがある場合、Homography変換を使用
+      if (analysisMode === 'multi' && currentSegmentCalibration?.H_img_to_world) {
+        const footPixel = getContactFootPixel(frame);
+        if (!footPixel) return null;
+        
+        const worldCoord = applyHomography(footPixel.x, footPixel.y, currentSegmentCalibration.H_img_to_world);
+        if (!worldCoord) return null;
+        
+        // worldCoord.x が実世界の走行方向距離（メートル）
+        // キャリブレーションは各セグメントのスタート地点（0m, 5m, 10m）を原点として設定されているため、
+        // globalDistanceOffsetを加算してグローバル座標に変換
+        return worldCoord.x + globalDistanceOffset;
+      }
+      
+      // シングルカメラモードまたはキャリブレーションなしの場合、従来の線形変換を使用
       const torsoX = getTorsoX(frame);
       if (torsoX == null) return null;
       const rawDistance = isLeftToRight 
@@ -2156,6 +2173,7 @@ const clearMarksByButton = () => {
     console.log(`📏 ストライド計算（新仕様）:`);
     console.log(`   入力距離: ${sectionLengthM}m`);
     console.log(`   🌐 グローバル距離オフセット: ${globalDistanceOffset}m (マルチカメラモード: ${analysisMode === 'multi'})`);
+    console.log(`   🎯 Homography使用: ${analysisMode === 'multi' && currentSegmentCalibration?.H_img_to_world ? 'YES ✅' : 'NO (線形変換)'}`);
     console.log(`   スタートラインX: ${startLineX?.toFixed(4)}, フィニッシュラインX: ${finishLineX?.toFixed(4)}`);
     console.log(`   走行方向: ${isLeftToRight ? '左→右' : '右→左'}`);
     console.log(`   距離変換係数: ${distancePerNormalized.toFixed(4)} m/正規化単位`);
@@ -2405,7 +2423,7 @@ const clearMarksByButton = () => {
     }
     
     return metricsWithRatios;
-  }, [analysisMode, mergedStepMetrics, contactFrames, manualContactFrames, usedTargetFps, poseResults, distanceValue, isPanMode, calibrationType, runType, savedStartHipX, savedEndHipX, sectionStartFrame, sectionEndFrame]);
+  }, [analysisMode, mergedStepMetrics, contactFrames, manualContactFrames, usedTargetFps, poseResults, distanceValue, isPanMode, calibrationType, runType, savedStartHipX, savedEndHipX, sectionStartFrame, sectionEndFrame, globalDistanceOffset, currentSegmentCalibration]);
 
   // 🎯 10mタイム・スピード計算（トルソーが0m→10mを通過する時間、線形補間でサブフレーム精度）
   const sectionTimeSpeed = useMemo(() => {
@@ -6157,6 +6175,15 @@ if (videoRef.current) {
     // 🔧 CRITICAL FIX: グローバル距離オフセットを設定（セグメント開始位置）
     setGlobalDistanceOffset(targetSegment.startDistanceM);
     console.log(`🌐 Setting globalDistanceOffset to ${targetSegment.startDistanceM}m for segment ${index + 1}`);
+    
+    // 🔧 CRITICAL FIX: 現在のセグメントのキャリブレーションデータを設定
+    if (targetSegment.calibration) {
+      setCurrentSegmentCalibration(targetSegment.calibration);
+      console.log(`🎯 Setting calibration data for segment ${index + 1}:`, targetSegment.calibration);
+    } else {
+      setCurrentSegmentCalibration(null);
+      console.warn(`⚠️ No calibration data for segment ${index + 1}`);
+    }
     
     // 自動的にフレーム抽出と姿勢推定を実行
     console.log(`📹 セグメント ${index + 1}: フレーム抽出を開始します...`);
