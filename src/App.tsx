@@ -2160,10 +2160,14 @@ const clearMarksByButton = () => {
           return null;
         }
         
-        const globalDistance = worldCoord.x + globalDistanceOffset;
-        console.log(`🎯 Frame ${frame}: Pixel (${footPixel.x.toFixed(1)}, ${footPixel.y.toFixed(1)}) → World (${worldCoord.x.toFixed(3)}m, ${worldCoord.y.toFixed(3)}m) → Global ${globalDistance.toFixed(3)}m`);
+        // 🔴 CRITICAL FIX: worldCoord.y が走行方向距離（X軸は横方向の1.22m幅）
+        // キャリブレーション定義: x0_near=[0, 0], x1_near=[5, 0] → 第2要素(Y)が走行距離
+        const localDistance = worldCoord.y; // Yが走行方向の距離
+        const globalDistance = localDistance + globalDistanceOffset;
+        console.log(`🎯 Frame ${frame}: Pixel (${footPixel.x.toFixed(1)}, ${footPixel.y.toFixed(1)}) → World (lane=${worldCoord.x.toFixed(3)}m, dist=${worldCoord.y.toFixed(3)}m) → Global ${globalDistance.toFixed(3)}m`);
         
-        // worldCoord.x が実世界の走行方向距離（メートル）
+        // worldCoord.y が実世界の走行方向距離（メートル）
+        // worldCoord.x はレーン横方向の位置（0〜1.22m）
         // キャリブレーションは各セグメントのスタート地点（0m, 5m, 10m）を原点として設定されているため、
         // globalDistanceOffsetを加算してグローバル座標に変換
         return globalDistance;
