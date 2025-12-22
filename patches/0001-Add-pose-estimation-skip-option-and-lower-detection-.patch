@@ -1,0 +1,179 @@
+From 64a2f2a9b0a876c4fb9a080a230f18a7247d6d5d Mon Sep 17 00:00:00 2001
+From: SusumuTakano <genspark_dev@genspark.ai>
+Date: Sun, 7 Dec 2025 06:05:21 +0000
+Subject: [PATCH 01/26] Add pose estimation skip option and lower detection
+ thresholds
+
+- Added option to skip pose estimation in Step 4
+- Lowered MediaPipe detection thresholds to 0.01 for maximum sensitivity
+- Added retry option with maximum sensitivity
+- Allow manual mode when pose estimation fails
+- Users can now proceed to Step 5 even without pose data
+- Manual start/finish point setting is available in Step 5
+---
+ src/App.tsx | 118 ++++++++++++++++++++++++++++++++++++----------------
+ 1 file changed, 82 insertions(+), 36 deletions(-)
+
+diff --git a/src/App.tsx b/src/App.tsx
+index 3411b49..867cd87 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -2547,28 +2547,28 @@ const [notesInput, setNotesInput] = useState<string>("");
+       
+       // 🔧 デバイスごとの最適化設定
+       let modelComplexity = 2; // 🔥 高精度モデルをデフォルトに（精度優先）
+-      let minDetectionConfidence = 0.1; // 🔥 認識率を大幅に向上
+-      let minTrackingConfidence = 0.1; // 🔥 認識率を大幅に向上
++      let minDetectionConfidence = 0.01; // 🔥 最低閾値で最大限の認識率
++      let minTrackingConfidence = 0.01; // 🔥 最低閾値で最大限の認識率
+       let staticImageMode = false;
+       let smoothLandmarks = true;
+       
+       if (isIPad) {
+         console.log('📱 iPad detected - applying optimized settings');
+         modelComplexity = 1; // 中精度モデル（iPadはメモリ制限あり）
+-        minDetectionConfidence = 0.05; // 認識率を最大化
+-        minTrackingConfidence = 0.05; // 認識率を最大化
++        minDetectionConfidence = 0.01; // 認識率を最大化
++        minTrackingConfidence = 0.01; // 認識率を最大化
+         staticImageMode = false; // ストリーミングモードで連続性を保つ
+         smoothLandmarks = true; // スムージングを有効化
+       } else if (isMobile) {
+         console.log('📱 Mobile device detected - optimized settings');
+         modelComplexity = 1; // 中精度モデル（モバイルはメモリ制限）
+-        minDetectionConfidence = 0.05; // 認識率を最大化
+-        minTrackingConfidence = 0.05; // 認識率を最大化
++        minDetectionConfidence = 0.01; // 認識率を最大化
++        minTrackingConfidence = 0.01; // 認識率を最大化
+       } else {
+         console.log('💻 Desktop detected - high accuracy settings');
+         modelComplexity = 2; // デスクトップは高精度
+-        minDetectionConfidence = 0.05; // 認識率を最大化
+-        minTrackingConfidence = 0.05; // 認識率を最大化
++        minDetectionConfidence = 0.01; // 認識率を最大化
++        minTrackingConfidence = 0.01; // 認識率を最大化
+       }
+       
+       console.log(`🔧 Setting options: modelComplexity=${modelComplexity}, detection=${minDetectionConfidence}, tracking=${minTrackingConfidence}`);
+@@ -6813,44 +6813,90 @@ const [notesInput, setNotesInput] = useState<string>("");
+               <div className="progress-status">{status}</div>
+             </div>
+             
+-            {/* 人物手動選択オプション */}
+-            {poseProgress < 10 && (
+-              <div style={{
+-                margin: '20px auto',
+-                maxWidth: '500px',
+-                padding: '16px',
+-                background: '#fef3c7',
+-                borderRadius: '8px',
+-                border: '2px solid #f59e0b',
+-                textAlign: 'center'
+-              }}>
+-                <p style={{ fontWeight: 'bold', color: '#92400e', marginBottom: '12px' }}>
+-                  🎯 姿勢推定がうまく検出できない場合
+-                </p>
++            {/* 姿勢推定の代替オプション（常に表示） */}
++            <div style={{
++              margin: '20px auto',
++              maxWidth: '600px',
++              padding: '20px',
++              background: '#fef3c7',
++              borderRadius: '8px',
++              border: '2px solid #f59e0b'
++            }}>
++              <p style={{ fontWeight: 'bold', color: '#92400e', marginBottom: '16px', fontSize: '1.1rem' }}>
++                ⚠️ 姿勢推定の代替オプション
++              </p>
++              
++              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                 <button
+-                  className="btn-secondary"
+                   onClick={() => {
+-                    setIsPersonSelectMode(true);
+-                    // 最初のフレームを表示
+-                    if (framesRef.current[0] && canvasRef.current) {
+-                      const ctx = canvasRef.current.getContext('2d');
+-                      if (ctx) {
+-                        ctx.putImageData(framesRef.current[0], 0, 0);
+-                      }
+-                    }
++                    // 姿勢推定をスキップして手動モードへ
++                    console.log('姿勢推定をスキップして手動モードへ');
++                    setIsPoseProcessing(false);
++                    setPoseProgress(100);
++                    setStatus('⚠️ 手動設定モード（姿勢推定をスキップ）');
++                    // 空のポーズデータを設定
++                    const emptyPoseResults = new Array(framesRef.current.length).fill(null);
++                    setPoseResults(emptyPoseResults);
++                    // Step 5へ進む
++                    setTimeout(() => {
++                      setWizardStep(5);
++                    }, 500);
+                   }}
+                   style={{
+-                    background: '#f59e0b',
++                    background: '#ef4444',
+                     color: 'white',
+-                    padding: '10px 20px',
++                    padding: '12px 24px',
+                     borderRadius: '6px',
+-                    fontWeight: 'bold'
++                    fontWeight: 'bold',
++                    cursor: 'pointer',
++                    fontSize: '1rem'
++                  }}
++                  disabled={isPoseProcessing}
++                >
++                  ⏭️ スキップして手動設定へ
++                </button>
++                
++                <button
++                  onClick={() => {
++                    // 検出感度を最低にして再試行
++                    console.log('最低閾値で再試行');
++                    setIsPoseProcessing(false);
++                    setPoseProgress(0);
++                    setStatus('🔧 検出感度を最大にして再試行中...');
++                    // 遅延後に再実行
++                    setTimeout(() => {
++                      runPoseEstimation();
++                    }, 500);
+                   }}
++                  style={{
++                    background: '#10b981',
++                    color: 'white',
++                    padding: '12px 24px',
++                    borderRadius: '6px',
++                    fontWeight: 'bold',
++                    cursor: 'pointer',
++                    fontSize: '1rem'
++                  }}
++                  disabled={isPoseProcessing}
+                 >
+-                  手動で人物領域を選択
++                  🔧 感度最大で再試行
+                 </button>
+               </div>
+-            )}
++              
++              <div style={{ 
++                fontSize: '0.85rem', 
++                color: '#92400e',
++                marginTop: '16px',
++                padding: '12px',
++                background: 'rgba(255,255,255,0.5)',
++                borderRadius: '6px'
++              }}>
++                <strong>💡 ヒント：</strong><br/>
++                • 姿勢推定がうまくいかない場合は「スキップ」を選択してください<br/>
++                • Step 5で手動でスタート・フィニッシュ地点を設定できます<br/>
++                • 接地・離地タイミングも手動で調整可能です
++              </div>
++            </div>
+             
+             {status.includes('❌') && (
+               <div className="wizard-actions">
+-- 
+2.39.5
+

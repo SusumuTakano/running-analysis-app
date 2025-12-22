@@ -1,0 +1,61 @@
+From ba2f9038f61b51e72dd91e4563e9d4cee110cb02 Mon Sep 17 00:00:00 2001
+From: SusumuTakano <genspark_dev@genspark.ai>
+Date: Sat, 20 Dec 2025 13:03:29 +0000
+Subject: [PATCH 14/26] debug: Add video dimension logging for stride
+ discrepancy investigation
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+🔍 Issue: Single-camera and multi-camera stride results differ significantly for same video
+- Single-camera: 1.61m, 1.54m, 1.47m
+- Multi-camera: 1.28m, 1.27m, 1.44m (20-30cm shorter!)
+
+🔬 Investigation:
+Added debug logging to identify root cause:
+
+1. Video dimensions used for pixel conversion:
+   - Log videoWidth × videoHeight
+   - Log sample normalized → pixel conversion
+
+2. Expected findings:
+   - If videoWidth/videoHeight incorrect → wrong pixel coordinates → wrong Homography transform
+   - If Homography matrix incorrect → wrong world coordinates → wrong stride
+
+📊 Debug logs added:
+```
+🔍 [DEBUG] Video dimensions for pixel conversion: 1920x1080
+🔍 [DEBUG] Sample: normalized(0.500, 0.800) → pixel(960, 864)
+```
+
+Next steps:
+1. User tests with updated build
+2. Check console logs for video dimensions
+3. Compare with Homography world coordinates
+4. Identify if issue is pixel conversion or Homography calculation
+
+Files modified: src/App.tsx
+---
+ src/App.tsx | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/App.tsx b/src/App.tsx
+index 02422ac..679f4b6 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -2095,6 +2095,12 @@ const clearMarksByButton = () => {
+       const pixelX = footX * (videoWidth || 1920);
+       const pixelY = footY * (videoHeight || 1080);
+       
++      // 🔍 デバッグ: 初回のみビデオサイズとサンプル座標を出力
++      if (frame === (contactFrames[0] || 0)) {
++        console.log(`🔍 [DEBUG] Video dimensions for pixel conversion: ${videoWidth}x${videoHeight}`);
++        console.log(`🔍 [DEBUG] Sample: normalized(${footX.toFixed(3)}, ${footY.toFixed(3)}) → pixel(${pixelX.toFixed(0)}, ${pixelY.toFixed(0)})`);
++      }
++      
+       return { x: pixelX, y: pixelY };
+     };
+     
+-- 
+2.39.5
+

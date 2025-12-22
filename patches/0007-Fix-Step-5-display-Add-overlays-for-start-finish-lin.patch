@@ -1,0 +1,804 @@
+From 4f01402497ed3369f6bcd99a490c249dbc72f2e4 Mon Sep 17 00:00:00 2001
+From: SusumuTakano <genspark_dev@genspark.ai>
+Date: Sun, 7 Dec 2025 06:58:46 +0000
+Subject: [PATCH 07/26] Fix Step 5 display - Add overlays for start/finish
+ lines and skeleton
+
+- Add drawStep5Canvas function with proper overlay rendering
+- Display start line (green), finish line (red), and mid point (yellow)
+- Show skeleton overlay when pose data exists
+- Fix coordinate alignment by drawing everything on same canvas
+- Temporarily disable manual mode (to be implemented later)
+---
+ src/App.tsx                           | 184 ++++++++++++----
+ src/components/ManualAnalysisMode.css | 223 +++++++++++++++++++
+ src/components/ManualAnalysisMode.tsx | 306 ++++++++++++++++++++++++++
+ 3 files changed, 673 insertions(+), 40 deletions(-)
+ create mode 100644 src/components/ManualAnalysisMode.css
+ create mode 100644 src/components/ManualAnalysisMode.tsx
+
+diff --git a/src/App.tsx b/src/App.tsx
+index 2668ac5..708c30d 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -18,6 +18,7 @@ import { CanvasRoi, getCanvasCoordinates, drawFrameWithOverlay, extractRoiForPos
+ import { Step5Simple } from './components/Step5Simple';
+ import { Step5Complete } from './components/Step5Complete';
+ import Step5IntervalSetting, { Roi as Step5Roi } from './components/Step5IntervalSetting';
++// import { ManualAnalysisMode } from './components/ManualAnalysisMode'; // TODO: 実装予定
+ import { 
+   Run, 
+   RunSegment, 
+@@ -6845,18 +6846,12 @@ const [notesInput, setNotesInput] = useState<string>("");
+               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                 <button
+                   onClick={() => {
+-                    // 姿勢推定をスキップして手動モードへ
+-                    console.log('姿勢推定をスキップして手動モードへ');
++                    // マニュアル分析モードへ切り替え
++                    console.log('マニュアル分析モードへ切り替え');
+                     setIsPoseProcessing(false);
+                     setPoseProgress(100);
+-                    setStatus('⚠️ 手動設定モード（姿勢推定をスキップ）');
+-                    // 空のポーズデータを設定
+-                    const emptyPoseResults = new Array(framesRef.current.length).fill(null);
+-                    setPoseResults(emptyPoseResults);
+-                    // Step 5へ進む
+-                    setTimeout(() => {
+-                      setWizardStep(5);
+-                    }, 500);
++                    setStatus('📹 マニュアル分析モード');
++                    // setWizardStep(10); // TODO: マニュアルモードは後で実装
+                   }}
+                   style={{
+                     background: '#ef4444',
+@@ -6925,6 +6920,108 @@ const [notesInput, setNotesInput] = useState<string>("");
+         );
+ 
+       case 5:
++        // Step5用のオーバーレイ付き描画関数
++        const drawStep5Canvas = (frameIndex: number) => {
++          if (!displayCanvasRef.current || !framesRef.current[frameIndex]) return;
++          
++          const canvas = displayCanvasRef.current;
++          const ctx = canvas.getContext('2d');
++          if (!ctx) return;
++          
++          const frame = framesRef.current[frameIndex];
++          canvas.width = frame.width;
++          canvas.height = frame.height;
++          
++          // フレームを描画
++          ctx.putImageData(frame, 0, 0);
++          
++          // スタートライン（緑）を描画
++          if (sectionStartFrame === frameIndex) {
++            ctx.strokeStyle = '#10b981';
++            ctx.lineWidth = 3;
++            ctx.beginPath();
++            const startX = canvas.width * 0.3; // 画面の30%の位置
++            ctx.moveTo(startX, 0);
++            ctx.lineTo(startX, canvas.height);
++            ctx.stroke();
++            
++            // ラベル
++            ctx.fillStyle = '#10b981';
++            ctx.font = 'bold 20px sans-serif';
++            ctx.fillText('START', startX + 10, 30);
++          }
++          
++          // フィニッシュライン（赤）を描画
++          if (sectionEndFrame === frameIndex) {
++            ctx.strokeStyle = '#dc2626';
++            ctx.lineWidth = 3;
++            ctx.beginPath();
++            const endX = canvas.width * 0.7; // 画面の70%の位置
++            ctx.moveTo(endX, 0);
++            ctx.lineTo(endX, canvas.height);
++            ctx.stroke();
++            
++            // ラベル
++            ctx.fillStyle = '#dc2626';
++            ctx.font = 'bold 20px sans-serif';
++            ctx.fillText('FINISH', endX + 10, 30);
++          }
++          
++          // 中間点（黄色）を描画
++          if (sectionMidFrame === frameIndex) {
++            ctx.strokeStyle = '#fbbf24';
++            ctx.lineWidth = 2;
++            ctx.beginPath();
++            const midX = canvas.width * 0.5; // 画面の50%の位置
++            ctx.moveTo(midX, 0);
++            ctx.lineTo(midX, canvas.height);
++            ctx.stroke();
++            
++            // ラベル
++            ctx.fillStyle = '#fbbf24';
++            ctx.font = 'bold 16px sans-serif';
++            ctx.fillText('MID', midX + 10, 30);
++          }
++          
++          // 姿勢スケルトンを描画
++          const pose = poseResults[frameIndex];
++          if (pose?.landmarks) {
++            ctx.strokeStyle = '#3b82f6';
++            ctx.lineWidth = 2;
++            ctx.fillStyle = '#3b82f6';
++            
++            // MediaPipeの接続定義
++            const connections = [
++              [11, 12], // 肩
++              [11, 13], [13, 15], // 左腕
++              [12, 14], [14, 16], // 右腕
++              [11, 23], [12, 24], [23, 24], // 胴体
++              [23, 25], [25, 27], [27, 29], [29, 31], // 左脚
++              [24, 26], [26, 28], [28, 30], [30, 32], // 右脚
++            ];
++            
++            // 骨格線を描画
++            connections.forEach(([start, end]) => {
++              const p1 = pose.landmarks[start];
++              const p2 = pose.landmarks[end];
++              if (p1 && p2 && p1.visibility > 0.001 && p2.visibility > 0.001) {
++                ctx.beginPath();
++                ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height);
++                ctx.lineTo(p2.x * canvas.width, p2.y * canvas.height);
++                ctx.stroke();
++              }
++            });
++            
++            // 関節点を描画
++            pose.landmarks.forEach((lm, idx) => {
++              if (lm && lm.visibility > 0.001) {
++                ctx.beginPath();
++                ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 4, 0, Math.PI * 2);
++                ctx.fill();
++              }
++            });
++          }
++        };
+ 
+         // マルチカメラモードの場合は区間設定をスキップ
+         if (analysisMode === "multi") {
+@@ -6982,16 +7079,7 @@ const [notesInput, setNotesInput] = useState<string>("");
+         
+         // 初回表示時にフレームを描画
+         setTimeout(() => {
+-          if (displayCanvasRef.current && framesRef.current[currentFrame]) {
+-            const canvas = displayCanvasRef.current;
+-            const ctx = canvas.getContext('2d');
+-            if (ctx) {
+-              const frame = framesRef.current[currentFrame];
+-              canvas.width = frame.width;
+-              canvas.height = frame.height;
+-              ctx.putImageData(frame, 0, 0);
+-            }
+-          }
++          drawStep5Canvas(currentFrame);
+         }, 100);
+         
+         // スライダーによる区間設定UI（トリミング機能時代のシンプル方式に戻す）
+@@ -7104,16 +7192,7 @@ const [notesInput, setNotesInput] = useState<string>("");
+                     setStartLineOffset(0);
+                     
+                     // フレームを表示
+-                    if (displayCanvasRef.current && framesRef.current[newFrame]) {
+-                      const canvas = displayCanvasRef.current;
+-                      const ctx = canvas.getContext('2d');
+-                      if (ctx) {
+-                        const frame = framesRef.current[newFrame];
+-                        canvas.width = frame.width;
+-                        canvas.height = frame.height;
+-                        ctx.putImageData(frame, 0, 0);
+-                      }
+-                    }
++                    drawStep5Canvas(newFrame);
+                   }}
+                   className="section-slider start-slider"
+                 />
+@@ -7250,16 +7329,7 @@ const [notesInput, setNotesInput] = useState<string>("");
+                     setEndLineOffset(0);
+                     
+                     // フレームを表示
+-                    if (displayCanvasRef.current && framesRef.current[newFrame]) {
+-                      const canvas = displayCanvasRef.current;
+-                      const ctx = canvas.getContext('2d');
+-                      if (ctx) {
+-                        const frame = framesRef.current[newFrame];
+-                        canvas.width = frame.width;
+-                        canvas.height = frame.height;
+-                        ctx.putImageData(frame, 0, 0);
+-                      }
+-                    }
++                    drawStep5Canvas(newFrame);
+                   }}
+                   className="section-slider end-slider"
+                 />
+@@ -9928,6 +9998,40 @@ const [notesInput, setNotesInput] = useState<string>("");
+           </div>
+         );
+ 
++      /* case 10: // マニュアル分析モード - TODO: 実装予定
++        return (
++          <ManualAnalysisMode
++            videoUrl={videoUrl || ''}
++            frames={framesRef.current}
++            fps={selectedFps}
++            onAnalysisComplete={(data) => {
++              console.log('Manual analysis complete:', data);
++              // 分析結果を保存
++              setManualContactFrames(data.contactFrames);
++              setSectionStartFrame(data.startFrame);
++              setSectionEndFrame(data.endFrame);
++              
++              // ステップを計算
++              const steps = data.strides.map((stride: any, index: number) => ({
++                stepNumber: index + 1,
++                footContact: data.contactFrames[index],
++                toeOff: data.contactFrames[index] + Math.floor(stride.frames / 2),
++                contactTime: stride.time / 2,
++                flightTime: stride.time / 2,
++                strideTime: stride.time,
++                sectionStride: stride.length,
++                speed: data.speed,
++                avgHipX: 0.5,
++                contactToeY: 0.8,
++                liftOffToeY: 0.8
++              }));
++              
++              setSteps(steps);
++              setWizardStep(8); // 結果表示へ
++            }}
++          />
++        ); */
++
+       default:
+         return null;
+     }
+diff --git a/src/components/ManualAnalysisMode.css b/src/components/ManualAnalysisMode.css
+new file mode 100644
+index 0000000..e359d49
+--- /dev/null
++++ b/src/components/ManualAnalysisMode.css
+@@ -0,0 +1,223 @@
++.manual-analysis-mode {
++  max-width: 1200px;
++  margin: 0 auto;
++  padding: 20px;
++}
++
++.header {
++  text-align: center;
++  margin-bottom: 20px;
++}
++
++.header h2 {
++  font-size: 24px;
++  font-weight: bold;
++  color: #333;
++  margin-bottom: 10px;
++}
++
++.header p {
++  color: #666;
++  font-size: 14px;
++}
++
++.canvas-container {
++  position: relative;
++  margin-bottom: 20px;
++  border: 2px solid #ddd;
++  border-radius: 8px;
++  overflow: hidden;
++  background: #f0f0f0;
++}
++
++.analysis-canvas {
++  width: 100%;
++  height: auto;
++  display: block;
++  cursor: crosshair;
++}
++
++.frame-info {
++  position: absolute;
++  top: 10px;
++  right: 10px;
++  background: rgba(0,0,0,0.7);
++  color: white;
++  padding: 5px 10px;
++  border-radius: 4px;
++  font-size: 12px;
++}
++
++.controls {
++  background: #f9f9f9;
++  padding: 20px;
++  border-radius: 8px;
++  margin-bottom: 20px;
++}
++
++.playback-controls {
++  display: flex;
++  justify-content: center;
++  gap: 10px;
++  margin-bottom: 15px;
++}
++
++.playback-controls button {
++  padding: 8px 15px;
++  background: #007bff;
++  color: white;
++  border: none;
++  border-radius: 4px;
++  cursor: pointer;
++  font-size: 14px;
++}
++
++.playback-controls button:hover {
++  background: #0056b3;
++}
++
++.speed-control {
++  text-align: center;
++  margin-bottom: 15px;
++}
++
++.speed-control label {
++  margin-right: 10px;
++  font-weight: bold;
++}
++
++.speed-control select {
++  padding: 5px 10px;
++  border-radius: 4px;
++  border: 1px solid #ddd;
++}
++
++.frame-slider {
++  margin-top: 15px;
++}
++
++.slider {
++  width: 100%;
++  height: 6px;
++}
++
++.marking-instructions {
++  background: #fff3cd;
++  padding: 20px;
++  border-radius: 8px;
++  border: 2px solid #ffc107;
++  margin-bottom: 20px;
++}
++
++.marking-instructions h3 {
++  margin-top: 0;
++  color: #856404;
++}
++
++.marking-instructions ol {
++  margin: 10px 0;
++  padding-left: 25px;
++}
++
++.marking-instructions li {
++  margin: 8px 0;
++  color: #856404;
++}
++
++.marking-instructions li.active {
++  font-weight: bold;
++  color: #d39e00;
++  font-size: 1.1em;
++}
++
++.marking-instructions li.done {
++  color: #28a745;
++  text-decoration: line-through;
++}
++
++.distance-input {
++  background: #e7f3ff;
++  padding: 15px;
++  border-radius: 8px;
++  margin-bottom: 20px;
++  text-align: center;
++}
++
++.distance-input label {
++  margin-right: 10px;
++  font-weight: bold;
++}
++
++.distance-input input {
++  width: 100px;
++  padding: 5px;
++  font-size: 16px;
++  text-align: center;
++  border: 1px solid #007bff;
++  border-radius: 4px;
++}
++
++.marker-list {
++  background: #f0f8ff;
++  padding: 15px;
++  border-radius: 8px;
++  margin-bottom: 20px;
++}
++
++.marker-list h3 {
++  margin-top: 0;
++  color: #0066cc;
++}
++
++.marker-summary {
++  display: flex;
++  gap: 20px;
++  flex-wrap: wrap;
++}
++
++.marker-summary > div {
++  padding: 8px 15px;
++  background: white;
++  border-radius: 6px;
++  border: 1px solid #ddd;
++}
++
++.action-buttons {
++  display: flex;
++  justify-content: center;
++  gap: 20px;
++  margin-top: 30px;
++}
++
++.btn-reset, .btn-analyze {
++  padding: 12px 30px;
++  font-size: 16px;
++  font-weight: bold;
++  border: none;
++  border-radius: 6px;
++  cursor: pointer;
++  transition: all 0.3s;
++}
++
++.btn-reset {
++  background: #6c757d;
++  color: white;
++}
++
++.btn-reset:hover {
++  background: #545b62;
++}
++
++.btn-analyze {
++  background: #28a745;
++  color: white;
++}
++
++.btn-analyze:hover {
++  background: #218838;
++}
++
++.btn-analyze:disabled {
++  background: #ccc;
++  cursor: not-allowed;
++}
+\ No newline at end of file
+diff --git a/src/components/ManualAnalysisMode.tsx b/src/components/ManualAnalysisMode.tsx
+new file mode 100644
+index 0000000..4c5bf81
+--- /dev/null
++++ b/src/components/ManualAnalysisMode.tsx
+@@ -0,0 +1,306 @@
++import React, { useState, useRef, useEffect } from 'react';
++import './ManualAnalysisMode.css';
++
++interface ManualAnalysisModeProps {
++  videoUrl: string;
++  frames: ImageData[];
++  fps: number;
++  onAnalysisComplete: (data: any) => void;
++}
++
++export const ManualAnalysisMode: React.FC<ManualAnalysisModeProps> = ({
++  videoUrl,
++  frames,
++  fps,
++  onAnalysisComplete
++}) => {
++  const canvasRef = useRef<HTMLCanvasElement>(null);
++  const [currentFrame, setCurrentFrame] = useState(0);
++  const [isPlaying, setIsPlaying] = useState(false);
++  const [playbackSpeed, setPlaybackSpeed] = useState(0.25); // 0.25倍速
++  const [markers, setMarkers] = useState<{frame: number, x: number, y: number, type: 'start' | 'end' | 'contact'}[]>([]);
++  const [startMarker, setStartMarker] = useState<number | null>(null);
++  const [endMarker, setEndMarker] = useState<number | null>(null);
++  const [contactMarkers, setContactMarkers] = useState<number[]>([]);
++  const [distance, setDistance] = useState<number>(10);
++  const animationRef = useRef<number>();
++
++  // フレーム描画
++  const drawFrame = (frameIndex: number) => {
++    const canvas = canvasRef.current;
++    if (!canvas || !frames[frameIndex]) return;
++
++    const ctx = canvas.getContext('2d');
++    if (!ctx) return;
++
++    canvas.width = frames[frameIndex].width;
++    canvas.height = frames[frameIndex].height;
++    ctx.putImageData(frames[frameIndex], 0, 0);
++
++    // マーカーを描画
++    markers.forEach(marker => {
++      if (marker.frame === frameIndex) {
++        ctx.strokeStyle = marker.type === 'start' ? '#00ff00' : 
++                         marker.type === 'end' ? '#ff0000' : '#ffff00';
++        ctx.lineWidth = 3;
++        ctx.beginPath();
++        ctx.arc(marker.x * canvas.width, marker.y * canvas.height, 10, 0, 2 * Math.PI);
++        ctx.stroke();
++        
++        // ラベル
++        ctx.fillStyle = ctx.strokeStyle;
++        ctx.font = 'bold 16px Arial';
++        ctx.fillText(
++          marker.type === 'start' ? 'START' : 
++          marker.type === 'end' ? 'END' : 
++          `接地${contactMarkers.indexOf(marker.frame) + 1}`,
++          marker.x * canvas.width + 15, 
++          marker.y * canvas.height - 5
++        );
++      }
++    });
++
++    // スタートライン
++    if (startMarker === frameIndex) {
++      ctx.strokeStyle = '#00ff00';
++      ctx.lineWidth = 3;
++      ctx.beginPath();
++      ctx.moveTo(0, canvas.height * 0.7);
++      ctx.lineTo(canvas.width, canvas.height * 0.7);
++      ctx.stroke();
++    }
++
++    // エンドライン
++    if (endMarker === frameIndex) {
++      ctx.strokeStyle = '#ff0000';
++      ctx.lineWidth = 3;
++      ctx.beginPath();
++      ctx.moveTo(0, canvas.height * 0.7);
++      ctx.lineTo(canvas.width, canvas.height * 0.7);
++      ctx.stroke();
++    }
++  };
++
++  // 再生処理
++  useEffect(() => {
++    if (isPlaying) {
++      const frameInterval = 1000 / (fps * playbackSpeed);
++      
++      const animate = () => {
++        setCurrentFrame(prev => {
++          const next = prev + 1;
++          if (next >= frames.length) {
++            setIsPlaying(false);
++            return prev;
++          }
++          return next;
++        });
++        animationRef.current = setTimeout(animate, frameInterval);
++      };
++      
++      animationRef.current = setTimeout(animate, frameInterval);
++    } else {
++      if (animationRef.current) {
++        clearTimeout(animationRef.current);
++      }
++    }
++
++    return () => {
++      if (animationRef.current) {
++        clearTimeout(animationRef.current);
++      }
++    };
++  }, [isPlaying, fps, playbackSpeed, frames.length]);
++
++  // フレーム変更時の描画
++  useEffect(() => {
++    drawFrame(currentFrame);
++  }, [currentFrame, markers]);
++
++  // キャンバスクリック処理
++  const handleCanvasClick = (e: React.MouseEvent) => {
++    const canvas = canvasRef.current;
++    if (!canvas) return;
++
++    const rect = canvas.getBoundingClientRect();
++    const x = (e.clientX - rect.left) / rect.width;
++    const y = (e.clientY - rect.top) / rect.height;
++
++    // 現在のモードに応じてマーカーを追加
++    const markerType = startMarker === null ? 'start' : 
++                      endMarker === null ? 'end' : 'contact';
++
++    const newMarker = { frame: currentFrame, x, y, type: markerType as any };
++    setMarkers([...markers, newMarker]);
++
++    if (markerType === 'start') {
++      setStartMarker(currentFrame);
++    } else if (markerType === 'end') {
++      setEndMarker(currentFrame);
++    } else {
++      setContactMarkers([...contactMarkers, currentFrame].sort((a, b) => a - b));
++    }
++  };
++
++  // 分析実行
++  const runAnalysis = () => {
++    if (startMarker === null || endMarker === null || contactMarkers.length < 2) {
++      alert('スタート地点、ゴール地点、最低2つの接地点を設定してください');
++      return;
++    }
++
++    // フレーム差から時間を計算
++    const totalFrames = endMarker - startMarker;
++    const totalTime = totalFrames / fps;
++
++    // ストライドを計算
++    const strides = [];
++    for (let i = 0; i < contactMarkers.length - 1; i++) {
++      const frameDistance = contactMarkers[i + 1] - contactMarkers[i];
++      const strideRatio = frameDistance / totalFrames;
++      const strideLength = distance * strideRatio;
++      strides.push({
++        step: i + 1,
++        length: strideLength,
++        frames: frameDistance,
++        time: frameDistance / fps
++      });
++    }
++
++    const avgStride = strides.reduce((sum, s) => sum + s.length, 0) / strides.length;
++    const speed = distance / totalTime;
++
++    const analysisData = {
++      distance,
++      totalTime,
++      speed,
++      avgStride,
++      strides,
++      contactFrames: contactMarkers,
++      startFrame: startMarker,
++      endFrame: endMarker
++    };
++
++    console.log('Analysis complete:', analysisData);
++    onAnalysisComplete(analysisData);
++  };
++
++  return (
++    <div className="manual-analysis-mode">
++      <div className="header">
++        <h2>📹 セミマニュアル分析モード</h2>
++        <p>AIが検出できない場合の代替分析方法</p>
++      </div>
++
++      <div className="canvas-container">
++        <canvas
++          ref={canvasRef}
++          onClick={handleCanvasClick}
++          className="analysis-canvas"
++        />
++        <div className="frame-info">
++          フレーム: {currentFrame} / {frames.length - 1} 
++          （{(currentFrame / fps).toFixed(2)}秒）
++        </div>
++      </div>
++
++      <div className="controls">
++        <div className="playback-controls">
++          <button onClick={() => setCurrentFrame(Math.max(0, currentFrame - 10))}>
++            ⏪ -10
++          </button>
++          <button onClick={() => setCurrentFrame(Math.max(0, currentFrame - 1))}>
++            ⏮ -1
++          </button>
++          <button onClick={() => setIsPlaying(!isPlaying)}>
++            {isPlaying ? '⏸ 一時停止' : '▶️ 再生'}
++          </button>
++          <button onClick={() => setCurrentFrame(Math.min(frames.length - 1, currentFrame + 1))}>
++            ⏭ +1
++          </button>
++          <button onClick={() => setCurrentFrame(Math.min(frames.length - 1, currentFrame + 10))}>
++            ⏩ +10
++          </button>
++        </div>
++
++        <div className="speed-control">
++          <label>再生速度:</label>
++          <select value={playbackSpeed} onChange={(e) => setPlaybackSpeed(Number(e.target.value))}>
++            <option value={0.1}>0.1x</option>
++            <option value={0.25}>0.25x</option>
++            <option value={0.5}>0.5x</option>
++            <option value={1}>1x</option>
++          </select>
++        </div>
++
++        <div className="frame-slider">
++          <input
++            type="range"
++            min={0}
++            max={frames.length - 1}
++            value={currentFrame}
++            onChange={(e) => setCurrentFrame(Number(e.target.value))}
++            className="slider"
++          />
++        </div>
++      </div>
++
++      <div className="marking-instructions">
++        <h3>📍 マーキング手順</h3>
++        <ol>
++          <li className={startMarker === null ? 'active' : 'done'}>
++            {startMarker === null ? '👉' : '✅'} スタート地点でクリック（緑）
++          </li>
++          <li className={endMarker === null ? (startMarker !== null ? 'active' : '') : 'done'}>
++            {endMarker === null ? '👉' : '✅'} ゴール地点でクリック（赤）
++          </li>
++          <li className={startMarker !== null && endMarker !== null ? 'active' : ''}>
++            👉 各接地タイミングでクリック（黄） - 現在: {contactMarkers.length}個
++          </li>
++        </ol>
++      </div>
++
++      <div className="distance-input">
++        <label>実測距離（メートル）:</label>
++        <input
++          type="number"
++          value={distance}
++          onChange={(e) => setDistance(Number(e.target.value))}
++          min={1}
++          max={100}
++        />
++      </div>
++
++      <div className="marker-list">
++        <h3>📌 設定されたマーカー</h3>
++        <div className="marker-summary">
++          <div>🟢 スタート: {startMarker !== null ? `フレーム ${startMarker}` : '未設定'}</div>
++          <div>🔴 ゴール: {endMarker !== null ? `フレーム ${endMarker}` : '未設定'}</div>
++          <div>🟡 接地点: {contactMarkers.length}個</div>
++        </div>
++      </div>
++
++      <div className="action-buttons">
++        <button 
++          onClick={() => {
++            setMarkers([]);
++            setStartMarker(null);
++            setEndMarker(null);
++            setContactMarkers([]);
++          }}
++          className="btn-reset"
++        >
++          🔄 リセット
++        </button>
++        
++        <button 
++          onClick={runAnalysis}
++          className="btn-analyze"
++          disabled={startMarker === null || endMarker === null || contactMarkers.length < 2}
++        >
++          📊 分析実行
++        </button>
++      </div>
++    </div>
++  );
++};
+\ No newline at end of file
+-- 
+2.39.5
+

@@ -1,0 +1,92 @@
+From b034d9e157f51f4039fa7b8fa80f1a038e81b4c8 Mon Sep 17 00:00:00 2001
+From: SusumuTakano <genspark_dev@genspark.ai>
+Date: Sat, 20 Dec 2025 12:49:36 +0000
+Subject: [PATCH 13/26] fix: Improve cross-segment duplicate detection
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+🐛 Bug: Steps 3 and 6 show abnormal stride (1.88m, 2.11m) at segment boundaries when user marks same foot contact in both segments
+
+🔍 Root Cause:
+Current duplicate detection only checks gap < 0.5m, but when user marks same contact twice:
+- Segment 1 end: Step at 5.23m
+- Segment 2 start: Same contact at 6.66m (due to different segment offset)
+- Gap: 1.43m (not detected as duplicate because > 0.5m)
+
+This causes interpolated step insertion and abnormal stride calculation.
+
+✅ Solution:
+Enhanced duplicate detection for cross-segment boundaries:
+
+1. Check if previous step is near segment boundary (±0.5m)
+2. Check if current step crosses segment boundary
+3. If gap < medianStride × 1.5 AND crosses boundary → likely duplicate
+4. Skip duplicate with specific log message
+
+Logic:
+```typescript
+const isNearBoundary = Math.abs(lastStepDist - prevSegmentEnd) < 0.5;
+const isStepAcrossBoundary = lastStepDist < prevSegmentEnd && stepDist > prevSegmentEnd;
+const isLikelyDuplicate = isNearBoundary && gap < (medianStride * 1.5);
+
+if (isLikelyDuplicate && isStepAcrossBoundary) {
+  console.log('Skipping cross-segment duplicate');
+}
+```
+
+📊 Expected Result:
+- Step 3: ~1.4-1.5m (not 1.88m)
+- Step 6: ~1.4-1.5m (not 2.11m)
+- Cross-segment duplicates properly detected and skipped
+
+📝 Recommended User Workflow:
+**Option A (Best)**: Don't mark same contact twice - skip boundary contact in first segment
+**Option B**: Mark same contact in both segments - code will auto-detect and skip duplicate
+
+Console logs:
+- 'Skipping cross-segment duplicate at Xm (boundary at Ym, gap: Zm)'
+
+Files modified: src/App.tsx
+---
+ src/App.tsx | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/src/App.tsx b/src/App.tsx
+index 281ba80..02422ac 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -6738,6 +6738,7 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+       } else {
+         // 2つ目以降のセグメント：重複区間をチェック
+         const overlapThreshold = 0.5; // 0.5m以内なら重複とみなす
++        const crossSegmentThreshold = 2.0; // セグメント境界を跨ぐステップの閾値
+         
+         segmentSteps.forEach(step => {
+           const stepDist = step.distanceAtContact || 0;
+@@ -6749,10 +6750,21 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+           // 重複判定とギャップ補間
+           const gap = stepDist - lastStepDist;
+           
++          // 🎯 改善された重複検出：セグメント境界付近（前セグメント終端±0.5m）のステップをチェック
++          const prevSegmentEnd = segments[i - 1]?.endDistanceM || 0;
++          const isNearBoundary = Math.abs(lastStepDist - prevSegmentEnd) < 0.5;
++          const isStepAcrossBoundary = lastStepDist < prevSegmentEnd && stepDist > prevSegmentEnd;
++          
++          // セグメント境界を跨ぐステップで、ギャップが通常ストライドの1.5倍以内なら重複の可能性
++          const isLikelyDuplicate = isNearBoundary && gap < (medianStride * 1.5);
++          
+           if (gap < overlapThreshold) {
+             // 重複している可能性が高い → スキップ（前のセグメントのデータを優先）
+             console.log(`⚠️ Skipping duplicate step at ${stepDist.toFixed(2)}m (gap: ${gap.toFixed(2)}m)`);
+-          } else if (gap > 2.0) {
++          } else if (isLikelyDuplicate && isStepAcrossBoundary) {
++            // 🆕 セグメント境界を跨ぐ重複ステップ（同じ接地を両セグメントでマーク）
++            console.log(`⚠️ Skipping cross-segment duplicate at ${stepDist.toFixed(2)}m (boundary at ${prevSegmentEnd.toFixed(2)}m, gap: ${gap.toFixed(2)}m)`);
++          } else if (gap > crossSegmentThreshold) {
+             // 🔴 CRITICAL: ギャップが大きすぎる（2m以上）→ 境界を跨ぐステップが欠落
+             // Homography補正後の代表ストライド（中央値）を使用して補間
+             const estimatedMissingSteps = Math.floor(gap / medianStride) - 1;
+-- 
+2.39.5
+

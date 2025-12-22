@@ -1,0 +1,62 @@
+From 4d0899ba1f1e18ce7e84a686d4102ee76a46491d Mon Sep 17 00:00:00 2001
+From: SusumuTakano <genspark_dev@genspark.ai>
+Date: Sat, 20 Dec 2025 13:14:48 +0000
+Subject: [PATCH 15/26] fix: Use actual video resolution for pixel coordinates
+ in stride calculation
+
+CRITICAL BUG FIX:
+- Multi-camera stride was incorrect (1.28m) vs single-camera (1.61m)
+- Root cause: pixel coordinate calculation used hardcoded 1920x1080
+- Calibration used actual video resolution (e.g. 1280x720 or other)
+- This mismatch caused incorrect Homography transformation results
+
+SOLUTION:
+- Extract actualVideoWidth/Height from videoRef.current.videoWidth/Height
+- Use same resolution for both calibration and stride calculation
+- This ensures pixel coordinates match Homography matrix expectations
+
+EXPECTED RESULT:
+- Multi-camera stride should now match single-camera (~1.5-1.6m)
+- World coordinates accurately represent runner position
+- No more discrepancy between analysis modes
+---
+ src/App.tsx | 13 +++++++++----
+ 1 file changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/src/App.tsx b/src/App.tsx
+index 679f4b6..ed0f376 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -2064,6 +2064,10 @@ const clearMarksByButton = () => {
+       }
+     };
+     
++    // 🎯 ビデオの実際の解像度を取得（キャリブレーションと一致させる）
++    const actualVideoWidth = videoRef.current?.videoWidth || 1920;
++    const actualVideoHeight = videoRef.current?.videoHeight || 1080;
++    
+     // 接地時の足のピクセル座標を取得（左右の足首・つま先から判定）
+     const getContactFootPixel = (frame: number): { x: number; y: number } | null => {
+       if (!poseResults[frame]?.landmarks) return null;
+@@ -2091,13 +2095,14 @@ const clearMarksByButton = () => {
+         footY = rightY;
+       }
+       
+-      // 正規化座標(0-1)をピクセル座標に変換
+-      const pixelX = footX * (videoWidth || 1920);
+-      const pixelY = footY * (videoHeight || 1080);
++      // 🎯 CRITICAL FIX: キャリブレーションと同じ解像度を使用
++      // 正規化座標(0-1)をピクセル座標に変換（videoRef.currentから取得）
++      const pixelX = footX * actualVideoWidth;
++      const pixelY = footY * actualVideoHeight;
+       
+       // 🔍 デバッグ: 初回のみビデオサイズとサンプル座標を出力
+       if (frame === (contactFrames[0] || 0)) {
+-        console.log(`🔍 [DEBUG] Video dimensions for pixel conversion: ${videoWidth}x${videoHeight}`);
++        console.log(`🔍 [DEBUG] Video dimensions for pixel conversion: ${actualVideoWidth}x${actualVideoHeight} (from videoRef.current)`);
+         console.log(`🔍 [DEBUG] Sample: normalized(${footX.toFixed(3)}, ${footY.toFixed(3)}) → pixel(${pixelX.toFixed(0)}, ${pixelY.toFixed(0)})`);
+       }
+       
+-- 
+2.39.5
+

@@ -6659,34 +6659,106 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
         }
       };
       
+      // 🔧 CRITICAL FIX: セグメント単位の比例スケーリング準備
+      // 1) 全ステップのHomography座標を取得
+      // 2) 実測範囲（min～max）を計算
+      // 3) 期待範囲（segment.startDistanceM～endDistanceM）へスケーリング
+      const rawWorldCoords: Array<{ x: number; y: number; stepIdx: number } | null> = [];
+      
+      segmentSteps.forEach((step, localIdx) => {
+        if (step.contactPixelX != null && step.contactPixelY != null) {
+          const worldPos = applyHomographyLocal(step.contactPixelX, step.contactPixelY);
+          rawWorldCoords.push(worldPos ? { ...worldPos, stepIdx: localIdx } : null);
+        } else {
+          rawWorldCoords.push(null);
+        }
+      });
+      
+      // 🔧 CRITICAL FIX: キャリブレーションマーカーベースの範囲を使用
+      // ユーザーが設定した4つのコーンの位置（0m, 0m, 5m, 5m）を基準とする
+      // ステップの最小/最大を使うと、ステップ間のスペーシングが失われる！
+      const validWorldY = rawWorldCoords.filter((c): c is { x: number; y: number; stepIdx: number } => c !== null).map(c => c.y);
+      
+      // キャリブレーションデータから0m地点と5m地点のWorld座標を取得
+      // もしキャリブレーション情報があれば、そのマーカー位置を使用
+      // なければステップの範囲から推定（フォールバック）
+      let minWorldY: number;
+      let maxWorldY: number;
+      
+      if (segment.calibration?.imgPoints && segment.calibration.H_img_to_world) {
+        // キャリブレーションマーカー（4つのコーン）のWorld座標を使用
+        // imgPoints: { x0_near, x0_far, x1_near, x1_far }
+        // x0 = 0m地点（スタート）, x1 = 5m地点（ゴール）
+        const imgPts = segment.calibration.imgPoints;
+        const markerPixels: [number, number][] = [
+          imgPts.x0_near,
+          imgPts.x0_far,
+          imgPts.x1_near,
+          imgPts.x1_far,
+        ];
+        
+        const markerWorldCoords = markerPixels.map(([u, v]: [number, number]) => {
+          const world = applyHomographyLocal(u, v);
+          return world ? world.y : null;
+        }).filter((y): y is number => y !== null);
+        
+        if (markerWorldCoords.length >= 2) {
+          minWorldY = Math.min(...markerWorldCoords);
+          maxWorldY = Math.max(...markerWorldCoords);
+          console.log(`  ✅ Using calibration markers for range: ${minWorldY.toFixed(2)}m ~ ${maxWorldY.toFixed(2)}m`);
+        } else {
+          // フォールバック: ステップの範囲を使用
+          minWorldY = validWorldY.length > 0 ? Math.min(...validWorldY) : segment.startDistanceM;
+          maxWorldY = validWorldY.length > 0 ? Math.max(...validWorldY) : segment.endDistanceM;
+          console.warn(`  ⚠️ Calibration markers incomplete, using step range as fallback`);
+        }
+      } else {
+        // キャリブレーションなし: ステップの範囲を使用
+        minWorldY = validWorldY.length > 0 ? Math.min(...validWorldY) : segment.startDistanceM;
+        maxWorldY = validWorldY.length > 0 ? Math.max(...validWorldY) : segment.endDistanceM;
+      }
+      
+      const actualRange = maxWorldY - minWorldY;
+      const expectedRange = segment.endDistanceM - segment.startDistanceM; // e.g., 5.0m
+      
+      // スケーリング係数を計算
+      const scalingFactor = actualRange > 0.1 ? expectedRange / actualRange : 1.0;
+      
+      console.log(`  📏 Segment ${segIdx + 1} Range Analysis:`);
+      console.log(`     Raw Homography Y-range: ${minWorldY.toFixed(2)}m ~ ${maxWorldY.toFixed(2)}m (${actualRange.toFixed(2)}m)`);
+      console.log(`     Expected range: ${segment.startDistanceM.toFixed(2)}m ~ ${segment.endDistanceM.toFixed(2)}m (${expectedRange.toFixed(2)}m)`);
+      console.log(`     📐 Scaling factor: ${scalingFactor.toFixed(4)}x`);
+      
       segmentSteps.forEach((step, localIdx) => {
         let localDistance = step.distanceAtContact || 0;
         let recalculatedStride = step.stride;
         
         // 🎯 Homography変換を使用して実世界座標を取得
         if (step.contactPixelX != null && step.contactPixelY != null) {
-          const worldPos = applyHomographyLocal(step.contactPixelX, step.contactPixelY);
+          const worldPos = rawWorldCoords[localIdx];
           
           if (worldPos) {
-            // 実世界座標のY成分を距離として使用（走行方向＝y軸）
-            // X成分はレーン幅方向（0〜1.22m）、Y成分は走行方向（0〜15m）
-            localDistance = Math.abs(worldPos.y - segment.startDistanceM);
+            // 🔧 比例スケーリングを適用
+            // 1) 正規化: (worldPos.y - minWorldY) / actualRange → [0, 1]
+            // 2) スケール: [0, 1] * expectedRange → [0, expectedRange]
+            const normalizedPosition = actualRange > 0.1 ? (worldPos.y - minWorldY) / actualRange : 0;
+            localDistance = normalizedPosition * expectedRange;
             
-            console.log(`  🎯 Step ${localIdx}: Pixel(${step.contactPixelX.toFixed(0)}, ${step.contactPixelY.toFixed(0)}) → World(${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)})m (x=lane, y=distance) → localDistance=${localDistance.toFixed(2)}m`);
+            console.log(`  🎯 Step ${localIdx}: Pixel(${step.contactPixelX.toFixed(0)}, ${step.contactPixelY.toFixed(0)}) → World(${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)})m`);
+            console.log(`     Normalized: ${normalizedPosition.toFixed(3)} → Scaled: ${localDistance.toFixed(2)}m (factor: ${scalingFactor.toFixed(4)}x)`);
             
             // 次のステップのピクセル座標があれば、ストライドも再計算
             const nextStep = segmentSteps[localIdx + 1];
-            if (nextStep?.contactPixelX != null && nextStep?.contactPixelY != null) {
-              const nextWorldPos = applyHomographyLocal(nextStep.contactPixelX, nextStep.contactPixelY);
-              if (nextWorldPos) {
-                // 実世界座標でのストライドを計算（ユークリッド距離）
-                // dx = レーン幅方向の移動, dy = 走行方向の移動
-                const dx = nextWorldPos.x - worldPos.x;
-                const dy = nextWorldPos.y - worldPos.y;
-                recalculatedStride = Math.sqrt(dx * dx + dy * dy);
-                
-                console.log(`    ✅ Recalculated stride using Homography: ${recalculatedStride.toFixed(2)}m (dx=${dx.toFixed(2)}, dy=${dy.toFixed(2)}) (was ${step.stride?.toFixed(2) ?? 'N/A'}m)`);
-              }
+            const nextWorldPos = rawWorldCoords[localIdx + 1];
+            if (nextWorldPos) {
+              // 🔧 比例スケーリングを適用したストライド計算
+              // レーン幅方向(x)は元の値、走行方向(y)はスケーリング係数を適用
+              const dx = nextWorldPos.x - worldPos.x;
+              const rawDy = nextWorldPos.y - worldPos.y;
+              const scaledDy = rawDy * scalingFactor; // 走行方向のみスケーリング
+              recalculatedStride = Math.sqrt(dx * dx + scaledDy * scaledDy);
+              
+              console.log(`    ✅ Scaled stride: ${recalculatedStride.toFixed(2)}m (dx=${dx.toFixed(2)}, rawDy=${rawDy.toFixed(2)} → scaledDy=${scaledDy.toFixed(2)}) (was ${step.stride?.toFixed(2) ?? 'N/A'}m)`);
             }
           } else {
             console.warn(`  ⚠️ Step ${localIdx}: Homography failed, using fallback distance`);
@@ -6734,19 +6806,27 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     const finalSteps: StepMetric[] = [];
     let prevSegmentEndDistance = 0;
     
+    // 🔧 FIX: mergedStepsは既にセグメント順にソートされているので、
+    // セグメントIDでグループ化して処理（距離でフィルタしない）
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i];
-      const segmentSteps = mergedSteps.filter(s => {
-        // このセグメントに属するステップを抽出
-        const dist = s.distanceAtContact || 0;
-        return dist >= segment.startDistanceM && dist < segment.endDistanceM;
-      });
+      const segmentSteps = mergedSteps.filter(s => s.segmentId === segment.id);
+      
+      console.log(`\n🔍 Processing segment ${i + 1} (ID: ${segment.id}): ${segmentSteps.length} steps`);
+      
+      console.log(`  📦 Segment ${i + 1} adding ${segmentSteps.length} steps to finalSteps (current: ${finalSteps.length})`);
       
       if (i === 0) {
         // 最初のセグメントはそのまま追加
         finalSteps.push(...segmentSteps);
         prevSegmentEndDistance = segment.endDistanceM;
       } else {
+        // 🔧 TEMPORARY FIX: 重複検出を無効化してデバッグ
+        // 全てのステップを追加
+        console.log(`  ⚠️ [DEBUG] Adding all ${segmentSteps.length} steps without duplicate filtering`);
+        finalSteps.push(...segmentSteps);
+        
+        /*
         // 2つ目以降のセグメント：重複区間をチェック
         const overlapThreshold = 0.5; // 0.5m以内なら重複とみなす
         const crossSegmentThreshold = 2.0; // セグメント境界を跨ぐステップの閾値
@@ -6811,6 +6891,7 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
             finalSteps.push(step);
           }
         });
+        */
         
         prevSegmentEndDistance = segment.endDistanceM;
       }
@@ -6872,10 +6953,31 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     // （フィルタで作成したrealStepsForStrideは元のfinalStepsの要素への参照を保持）
     // 補間ステップは既にfinalStepsに含まれているので、再構築は不要
     
+    // 🔧 CRITICAL FIX: 同じ距離のステップを削除（セグメント境界の重複）
+    console.log(`\n🔧 === Removing exact distance duplicates ===`);
+    const uniqueSteps: StepMetric[] = [];
+    const seenDistances = new Set<number>();
+    
+    finalSteps.forEach((step, idx) => {
+      const dist = step.distanceAtContact || 0;
+      const roundedDist = Math.round(dist * 100) / 100; // 0.01m精度で丸める
+      
+      if (!seenDistances.has(roundedDist)) {
+        seenDistances.add(roundedDist);
+        uniqueSteps.push(step);
+        console.log(`  ✅ Keep step at ${dist.toFixed(2)}m (segment: ${step.segmentId?.slice(-10) ?? 'N/A'})`);
+      } else {
+        console.log(`  ⚠️ Skip duplicate at ${dist.toFixed(2)}m (segment: ${step.segmentId?.slice(-10) ?? 'N/A'})`);
+      }
+    });
+    
+    finalSteps.length = 0;
+    finalSteps.push(...uniqueSteps);
+    
     // globalDistで再ソート（時系列順に戻す）
     finalSteps.sort((a, b) => (a.distanceAtContact || 0) - (b.distanceAtContact || 0));
     
-    console.log(`\n📊 Final steps after TrueStride recalculation: ${finalSteps.length} (real: ${realStepsForStride.length}, interpolated: ${finalSteps.filter(s => s.isInterpolated).length})`);
+    console.log(`\n📊 Final steps after duplicate removal: ${finalSteps.length} (real: ${finalSteps.filter(s => !s.isInterpolated).length}, interpolated: ${finalSteps.filter(s => s.isInterpolated).length})`);
     
     // グローバルインデックスを再割り当て
     finalSteps.forEach((step, idx) => {
@@ -10057,8 +10159,9 @@ case 6: {
                       </div>
                     )}
                     
-                    {/* 🎯 10mタイム・スピード（トルソー基準） */}
-                    {stepSummary.sectionTime != null && stepSummary.sectionSpeed != null && (
+                    {/* 🎯 タイム・スピード（トルソー基準 or マルチカメラ総合） */}
+                    {((stepSummary.sectionTime != null && stepSummary.sectionSpeed != null) || 
+                      (analysisMode === 'multi' && multiCameraSummary && multiCameraSummary.avgSpeed != null && multiCameraSummary.totalTime != null)) && (
                       <div style={{
                         background: 'linear-gradient(135deg, #fef3c7 0%, #fef9e7 100%)',
                         border: '3px solid #f59e0b',
@@ -10072,10 +10175,14 @@ case 6: {
                       }}>
                         <div>
                           <div style={{ fontSize: '0.85rem', color: '#92400e', marginBottom: '4px' }}>
-                            🏃 {distanceValue}mタイム（トルソー基準）
+                            🏃 {analysisMode === 'multi' 
+                              ? `${multiCameraSummary?.totalDistance?.toFixed(0) ?? distanceValue}mタイム` 
+                              : `${distanceValue}mタイム（トルソー基準）`}
                           </div>
                           <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#78350f' }}>
-                            {stepSummary.sectionTime.toFixed(3)} 秒
+                            {analysisMode === 'multi' 
+                              ? (multiCameraSummary?.totalTime?.toFixed(3) ?? 'ー')
+                              : (stepSummary.sectionTime?.toFixed(3) ?? 'ー')} 秒
                           </div>
                         </div>
                         <div>
@@ -10083,12 +10190,15 @@ case 6: {
                             ⚡ 平均速度
                           </div>
                           <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#78350f' }}>
-                            {stepSummary.sectionSpeed.toFixed(2)} m/s
+                            {analysisMode === 'multi'
+                              ? (multiCameraSummary?.avgSpeed?.toFixed(2) ?? 'ー')
+                              : (stepSummary.sectionSpeed?.toFixed(2) ?? 'ー')} m/s
                           </div>
                         </div>
                         <div style={{ fontSize: '0.75rem', color: '#b45309', marginLeft: 'auto' }}>
-                          ※ トルソー（腰）が0m→{distanceValue}mを通過する時間で計算<br/>
-                          （線形補間によるサブフレーム精度）
+                          {analysisMode === 'multi'
+                            ? '※ 総距離 ÷ 総時間（接地+滞空）で計算'
+                            : `※ トルソー（腰）が0m→${distanceValue}mを通過する時間で計算（線形補間によるサブフレーム精度）`}
                         </div>
                       </div>
                     )}

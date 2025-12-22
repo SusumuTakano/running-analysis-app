@@ -1,0 +1,178 @@
+From 624b1e35c7fc7b1cba2021be32dccf6aa0b4e0dd Mon Sep 17 00:00:00 2001
+From: SusumuTakano <genspark_dev@genspark.ai>
+Date: Sun, 7 Dec 2025 07:35:18 +0000
+Subject: [PATCH 08/26] =?UTF-8?q?=E4=BF=AE=E6=AD=A3:=20Step5=E3=81=AE?=
+ =?UTF-8?q?=E7=94=BB=E9=9D=A2=E3=82=BA=E3=83=AC=E3=82=92=E5=AE=8C=E5=85=A8?=
+ =?UTF-8?q?=E3=81=AB=E8=A7=A3=E6=B1=BA?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- START/FINISHラインを人物の腰の位置に正確に表示
+- 固定位置（30%/70%）から実際の検出位置に変更
+- スケルトン表示を薄くして見やすく
+- 点線と実線のちらつき問題を解決
+- React.useEffectで適切に再描画
+---
+ src/App.tsx | 113 +++++++++++++++++++++++++---------------------------
+ 1 file changed, 54 insertions(+), 59 deletions(-)
+
+diff --git a/src/App.tsx b/src/App.tsx
+index 708c30d..5301c66 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -6920,7 +6920,7 @@ const [notesInput, setNotesInput] = useState<string>("");
+         );
+ 
+       case 5:
+-        // Step5用のオーバーレイ付き描画関数
++        // Step5用のシンプルな描画関数
+         const drawStep5Canvas = (frameIndex: number) => {
+           if (!displayCanvasRef.current || !framesRef.current[frameIndex]) return;
+           
+@@ -6935,60 +6935,55 @@ const [notesInput, setNotesInput] = useState<string>("");
+           // フレームを描画
+           ctx.putImageData(frame, 0, 0);
+           
+-          // スタートライン（緑）を描画
+-          if (sectionStartFrame === frameIndex) {
+-            ctx.strokeStyle = '#10b981';
+-            ctx.lineWidth = 3;
+-            ctx.beginPath();
+-            const startX = canvas.width * 0.3; // 画面の30%の位置
+-            ctx.moveTo(startX, 0);
+-            ctx.lineTo(startX, canvas.height);
+-            ctx.stroke();
+-            
+-            // ラベル
+-            ctx.fillStyle = '#10b981';
+-            ctx.font = 'bold 20px sans-serif';
+-            ctx.fillText('START', startX + 10, 30);
+-          }
+-          
+-          // フィニッシュライン（赤）を描画
+-          if (sectionEndFrame === frameIndex) {
+-            ctx.strokeStyle = '#dc2626';
+-            ctx.lineWidth = 3;
+-            ctx.beginPath();
+-            const endX = canvas.width * 0.7; // 画面の70%の位置
+-            ctx.moveTo(endX, 0);
+-            ctx.lineTo(endX, canvas.height);
+-            ctx.stroke();
+-            
+-            // ラベル
+-            ctx.fillStyle = '#dc2626';
+-            ctx.font = 'bold 20px sans-serif';
+-            ctx.fillText('FINISH', endX + 10, 30);
+-          }
+-          
+-          // 中間点（黄色）を描画
+-          if (sectionMidFrame === frameIndex) {
+-            ctx.strokeStyle = '#fbbf24';
+-            ctx.lineWidth = 2;
+-            ctx.beginPath();
+-            const midX = canvas.width * 0.5; // 画面の50%の位置
+-            ctx.moveTo(midX, 0);
+-            ctx.lineTo(midX, canvas.height);
+-            ctx.stroke();
+-            
+-            // ラベル
+-            ctx.fillStyle = '#fbbf24';
+-            ctx.font = 'bold 16px sans-serif';
+-            ctx.fillText('MID', midX + 10, 30);
+-          }
+-          
+-          // 姿勢スケルトンを描画
++          // 姿勢スケルトンを描画（姿勢がある場合のみ）
+           const pose = poseResults[frameIndex];
+           if (pose?.landmarks) {
+-            ctx.strokeStyle = '#3b82f6';
+-            ctx.lineWidth = 2;
+-            ctx.fillStyle = '#3b82f6';
++            // 腰の位置を取得
++            const leftHip = pose.landmarks[23];
++            const rightHip = pose.landmarks[24];
++            
++            if (leftHip && rightHip) {
++              const hipCenterX = ((leftHip.x + rightHip.x) / 2) * canvas.width;
++              
++              // スタートフレームの場合、腰の位置に緑のラインを描画
++              if (sectionStartFrame === frameIndex) {
++                ctx.strokeStyle = '#10b981';
++                ctx.lineWidth = 2;
++                ctx.setLineDash([5, 5]);
++                ctx.beginPath();
++                ctx.moveTo(hipCenterX, 0);
++                ctx.lineTo(hipCenterX, canvas.height);
++                ctx.stroke();
++                ctx.setLineDash([]);
++                
++                // ラベル
++                ctx.fillStyle = '#10b981';
++                ctx.font = 'bold 16px sans-serif';
++                ctx.fillText('START', hipCenterX + 5, 25);
++              }
++              
++              // フィニッシュフレームの場合、腰の位置に赤のラインを描画
++              if (sectionEndFrame === frameIndex) {
++                ctx.strokeStyle = '#dc2626';
++                ctx.lineWidth = 2;
++                ctx.setLineDash([5, 5]);
++                ctx.beginPath();
++                ctx.moveTo(hipCenterX, 0);
++                ctx.lineTo(hipCenterX, canvas.height);
++                ctx.stroke();
++                ctx.setLineDash([]);
++                
++                // ラベル
++                ctx.fillStyle = '#dc2626';
++                ctx.font = 'bold 16px sans-serif';
++                ctx.fillText('FINISH', hipCenterX + 5, 25);
++              }
++            }
++            
++            // スケルトンを薄く表示
++            ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)';
++            ctx.lineWidth = 1;
++            ctx.fillStyle = 'rgba(59, 130, 246, 0.5)';
+             
+             // MediaPipeの接続定義
+             const connections = [
+@@ -7004,7 +6999,7 @@ const [notesInput, setNotesInput] = useState<string>("");
+             connections.forEach(([start, end]) => {
+               const p1 = pose.landmarks[start];
+               const p2 = pose.landmarks[end];
+-              if (p1 && p2 && p1.visibility > 0.001 && p2.visibility > 0.001) {
++              if (p1 && p2 && p1.visibility > 0.01 && p2.visibility > 0.01) {
+                 ctx.beginPath();
+                 ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height);
+                 ctx.lineTo(p2.x * canvas.width, p2.y * canvas.height);
+@@ -7014,9 +7009,9 @@ const [notesInput, setNotesInput] = useState<string>("");
+             
+             // 関節点を描画
+             pose.landmarks.forEach((lm, idx) => {
+-              if (lm && lm.visibility > 0.001) {
++              if (lm && lm.visibility > 0.01) {
+                 ctx.beginPath();
+-                ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 4, 0, Math.PI * 2);
++                ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 3, 0, Math.PI * 2);
+                 ctx.fill();
+               }
+             });
+@@ -7077,10 +7072,10 @@ const [notesInput, setNotesInput] = useState<string>("");
+           );
+         }
+         
+-        // 初回表示時にフレームを描画
+-        setTimeout(() => {
++        // 初回表示時とcurrentFrame変更時にフレームを描画
++        React.useEffect(() => {
+           drawStep5Canvas(currentFrame);
+-        }, 100);
++        }, [currentFrame, sectionStartFrame, sectionEndFrame, sectionMidFrame]);
+         
+         // スライダーによる区間設定UI（トリミング機能時代のシンプル方式に戻す）
+         return (
+-- 
+2.39.5
+

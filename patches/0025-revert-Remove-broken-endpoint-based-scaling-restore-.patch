@@ -1,0 +1,130 @@
+From a51303104db7e7d252be415fea15abd1744e5fb5 Mon Sep 17 00:00:00 2001
+From: SusumuTakano <genspark_dev@genspark.ai>
+Date: Sat, 20 Dec 2025 22:43:07 +0000
+Subject: [PATCH 25/26] revert: Remove broken endpoint-based scaling, restore
+ original Homography
+
+The endpoint-based scaling approach (98615bb) completely failed:
+- Lost most steps (only 1 step remained out of 4 in segment 1)
+- Created abnormal stride values (2.39m, 5.00m)
+- Caused per-segment validation failures
+
+Root Issue with Scaling Approach:
+- Scaling factor calculation used first/last steps only
+- This doesn't account for all intermediate steps
+- When applied, many steps disappeared during processing
+- Example: Segment 1 had 4 steps (frames 17,54,92,128) but only 3 survived merging
+
+Decision: Revert to Original Homography
+- Accept the 10cm stride discrepancy as Homography limitation
+- Original approach at least preserves all steps correctly
+- User can improve accuracy by better cone placement during calibration
+
+The fundamental issue is that perfect calibration is nearly impossible:
+- Physical cone placement has inherent ~0.2-0.5m variance
+- Software scaling introduces other artifacts and step loss
+- Best approach: Improve calibration UI instructions (already done)
+---
+ src/App.tsx | 62 +++++++++++++----------------------------------------
+ 1 file changed, 15 insertions(+), 47 deletions(-)
+
+diff --git a/src/App.tsx b/src/App.tsx
+index d8e8e1c..bffcc82 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -6659,32 +6659,6 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+         }
+       };
+       
+-      // 🔧 STEP 1: まずHomography変換で全ステップの rawWorldY を取得
+-      const rawWorldYValues: Array<{ stepIdx: number; worldY: number }> = [];
+-      segmentSteps.forEach((step, localIdx) => {
+-        if (step.contactPixelX != null && step.contactPixelY != null) {
+-          const worldPos = applyHomographyLocal(step.contactPixelX, step.contactPixelY);
+-          if (worldPos) {
+-            rawWorldYValues.push({ stepIdx: localIdx, worldY: worldPos.y });
+-          }
+-        }
+-      });
+-      
+-      // 🔧 STEP 2: 端点ベース比例スケーリング係数を計算（シングルカメラと同じアプローチ）
+-      let scalingFactor = 1.0;
+-      if (rawWorldYValues.length >= 2) {
+-        const firstWorldY = rawWorldYValues[0].worldY;
+-        const lastWorldY = rawWorldYValues[rawWorldYValues.length - 1].worldY;
+-        const actualRange = Math.abs(lastWorldY - firstWorldY); // Homography実測範囲
+-        const expectedRange = segment.endDistanceM - segment.startDistanceM; // 期待される範囲（5m）
+-        
+-        if (actualRange > 0.1) {
+-          scalingFactor = expectedRange / actualRange;
+-          console.log(`  📏 Endpoint-based scaling: actualRange=${actualRange.toFixed(2)}m (${firstWorldY.toFixed(2)}-${lastWorldY.toFixed(2)}m), expected=${expectedRange.toFixed(2)}m, factor=${scalingFactor.toFixed(4)}`);
+-        }
+-      }
+-      
+-      // 🔧 STEP 3: スケーリングを適用してステップを処理
+       segmentSteps.forEach((step, localIdx) => {
+         let localDistance = step.distanceAtContact || 0;
+         let recalculatedStride = step.stride;
+@@ -6693,35 +6667,29 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+         if (step.contactPixelX != null && step.contactPixelY != null) {
+           const worldPos = applyHomographyLocal(step.contactPixelX, step.contactPixelY);
+           
+-          if (worldPos && rawWorldYValues.length >= 2) {
+-            const firstWorldY = rawWorldYValues[0].worldY;
+-            
+-            // ✅ 端点ベーススケーリング適用（シングルカメラと同じ考え方）
+-            // 最初のステップを0mとして、そこからの相対距離をスケーリング
+-            const relativeDistance = Math.abs(worldPos.y - firstWorldY);
+-            localDistance = relativeDistance * scalingFactor;
++          if (worldPos) {
++            // 実世界座標のY成分を距離として使用（走行方向＝y軸）
++            // X成分はレーン幅方向（0〜1.22m）、Y成分は走行方向（0〜15m）
++            localDistance = Math.abs(worldPos.y - segment.startDistanceM);
+             
+-            console.log(`  🎯 Step ${localIdx}: Pixel(${step.contactPixelX.toFixed(0)}, ${step.contactPixelY.toFixed(0)}) → World(y=${worldPos.y.toFixed(2)}m) → Scaled: ${localDistance.toFixed(2)}m (factor=${scalingFactor.toFixed(3)})`);
++            console.log(`  🎯 Step ${localIdx}: Pixel(${step.contactPixelX.toFixed(0)}, ${step.contactPixelY.toFixed(0)}) → World(${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)})m (x=lane, y=distance) → localDistance=${localDistance.toFixed(2)}m`);
+             
+-            // 次のステップのピクセル座標があれば、ストライドも再計算（スケーリング適用後）
++            // 次のステップのピクセル座標があれば、ストライドも再計算
+             const nextStep = segmentSteps[localIdx + 1];
+             if (nextStep?.contactPixelX != null && nextStep?.contactPixelY != null) {
+               const nextWorldPos = applyHomographyLocal(nextStep.contactPixelX, nextStep.contactPixelY);
+               if (nextWorldPos) {
+-                // スケーリング適用後の距離
+-                const nextRelativeDistance = Math.abs(nextWorldPos.y - firstWorldY);
+-                const nextLocalDistance = nextRelativeDistance * scalingFactor;
+-                
+-                // スケーリング済みストライド計算
+-                const scaledDy = nextLocalDistance - localDistance;
+-                const dx = nextWorldPos.x - worldPos.x; // レーン幅方向はスケーリング不要
+-                recalculatedStride = Math.sqrt(dx * dx + scaledDy * scaledDy);
++                // 実世界座標でのストライドを計算（ユークリッド距離）
++                // dx = レーン幅方向の移動, dy = 走行方向の移動
++                const dx = nextWorldPos.x - worldPos.x;
++                const dy = nextWorldPos.y - worldPos.y;
++                recalculatedStride = Math.sqrt(dx * dx + dy * dy);
+                 
+-                console.log(`    ✅ Scaled stride: ${recalculatedStride.toFixed(2)}m (dy_scaled=${scaledDy.toFixed(2)}, dx=${dx.toFixed(2)})`);
++                console.log(`    ✅ Recalculated stride using Homography: ${recalculatedStride.toFixed(2)}m (dx=${dx.toFixed(2)}, dy=${dy.toFixed(2)}) (was ${step.stride?.toFixed(2) ?? 'N/A'}m)`);
+               }
+             }
+           } else {
+-            console.warn(`  ⚠️ Step ${localIdx}: Homography failed or insufficient data for scaling`);
++            console.warn(`  ⚠️ Step ${localIdx}: Homography failed, using fallback distance`);
+           }
+         } else {
+           console.warn(`  ⚠️ Step ${localIdx}: No pixel coordinates, using fallback distance`);
+@@ -6733,8 +6701,8 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+         
+         mergedSteps.push({
+           ...step,
+-          stride: recalculatedStride, // TrueStride: スケーリング適用後
+-          fullStride: recalculatedStride ?? undefined,
++          stride: recalculatedStride, // TrueStride: Homographyで再計算されたストライド
++          fullStride: recalculatedStride ?? undefined, // UIで表示されるfullStrideも更新
+           distanceAtContact: globalDistance,
+           index: globalStepIndex++,
+           segmentId: segment.id,
+-- 
+2.39.5
+

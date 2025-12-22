@@ -1,0 +1,97 @@
+From a828b6df3ee38243a79a5ca8f667913b4a5448f1 Mon Sep 17 00:00:00 2001
+From: SusumuTakano <genspark_dev@genspark.ai>
+Date: Sat, 20 Dec 2025 12:39:06 +0000
+Subject: [PATCH 12/26] fix: Exclude interpolated steps from stride
+ recalculation
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+🐛 Bug: Segment boundary strides were abnormal (2.21m, 1.83m) due to globalDistance recalculation including interpolated steps
+
+🔍 Root Cause:
+Stride recalculation logic applied to ALL steps, including interpolated ones:
+- Step 4: 2.21m (interpolated step included in calculation)
+- Step 7: 1.83m (interpolated step included in calculation)
+
+Interpolated steps are NOT real foot contacts, so calculating stride from their globalDistance creates artificial distances.
+
+✅ Solution:
+1. Add 'isInterpolated' flag to StepMetric type
+2. Mark interpolated steps with isInterpolated=true
+3. Skip stride recalculation for:
+   - Interpolated steps themselves
+   - Steps immediately after interpolated steps
+
+This preserves Homography-corrected stride values for real steps while avoiding artificial values at segment boundaries.
+
+📊 Expected Result:
+- Step 4: ~1.4-1.5m (not 2.21m)
+- Step 7: ~1.4-1.5m (not 1.83m)
+- All boundary strides consistent with Homography-corrected values
+
+Console logs:
+- 'Interpolated step ... (kept as-is, not recalculated)'
+- 'After interpolated step ... (kept as Homography-corrected value)'
+
+Files modified: src/App.tsx
+---
+ src/App.tsx | 21 +++++++++++++++++++--
+ 1 file changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/src/App.tsx b/src/App.tsx
+index f159e8f..281ba80 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -102,6 +102,7 @@ type StepMetric = {
+   // 🆕 追加フィールド
+   leg?: "left" | "right";      // どちらの足のステップか（現時点では未使用でOK）
+   quality?: "good" | "warning" | "bad"; // 解析の信頼度（色分けに使用）
++  isInterpolated?: boolean;    // 補間ステップかどうか（ストライド再計算から除外）
+   // 🎯 ステップごとの姿勢データ（加速局面の段階的評価用）
+   trunkAngleAtContact?: number | null;  // 接地時の体幹角度
+   kneeFlexAtContact?: number | null;    // 接地時の膝角度（支持脚）
+@@ -6773,6 +6774,7 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+                 fullStride: medianStride, // UIで表示されるfullStrideも設定
+                 // 補間データであることを示すフラグ
+                 quality: 'warning', // 警告として表示
++                isInterpolated: true, // 補間ステップフラグ（ストライド再計算から除外）
+               };
+               
+               console.log(`   ➕ Interpolating step at ${interpolatedDistance.toFixed(2)}m`);
+@@ -6792,8 +6794,8 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+     }
+     
+     // 🎯 グローバル距離からストライドを再計算（ChatGPT提案）
+-    // Homography変換後のglobalDistanceが最も正確なので、これを基準にストライドを再計算
+-    console.log("🔧 Recalculating strides from globalDistance (Homography-corrected world coordinates)...");
++    // ただし、補間ステップは除外（補間ステップは実測値ではないため）
++    console.log("🔧 Recalculating strides from globalDistance (excluding interpolated steps)...");
+     
+     for (let i = 0; i < finalSteps.length; i++) {
+       if (i === 0) {
+@@ -6802,6 +6804,21 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+         continue;
+       }
+       
++      // 🚫 補間ステップと、補間ステップの直後のステップはスキップ
++      const isCurrentInterpolated = finalSteps[i].isInterpolated === true;
++      const isPrevInterpolated = finalSteps[i - 1].isInterpolated === true;
++      
++      if (isCurrentInterpolated) {
++        console.log(`  Step ${i}: Interpolated step at ${finalSteps[i].distanceAtContact?.toFixed(2)}m, stride=${finalSteps[i].stride?.toFixed(2)}m (kept as-is, not recalculated)`);
++        continue;
++      }
++      
++      if (isPrevInterpolated) {
++        console.log(`  Step ${i}: After interpolated step at ${finalSteps[i].distanceAtContact?.toFixed(2)}m, stride=${finalSteps[i].stride?.toFixed(2)}m (kept as Homography-corrected value)`);
++        continue;
++      }
++      
++      // 実測ステップ間のストライドのみ再計算
+       const currentDist = finalSteps[i].distanceAtContact || 0;
+       const prevDist = finalSteps[i - 1].distanceAtContact || 0;
+       const recalculatedStride = currentDist - prevDist;
+-- 
+2.39.5
+

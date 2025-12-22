@@ -1,0 +1,202 @@
+From 88ddaefdeffe4f8043294da726f633efc32573f3 Mon Sep 17 00:00:00 2001
+From: SusumuTakano <genspark_dev@genspark.ai>
+Date: Sun, 7 Dec 2025 08:05:21 +0000
+Subject: [PATCH 09/26] =?UTF-8?q?=E6=9C=80=E7=B5=82=E4=BF=AE=E6=AD=A3:=20S?=
+ =?UTF-8?q?tep5=E3=82=92=E5=AE=8C=E5=85=A8=E3=81=AB=E3=82=B7=E3=83=B3?=
+ =?UTF-8?q?=E3=83=97=E3=83=AB=E5=8C=96?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- 複雑なdrawStep5Canvas関数を削除
+- エラーの原因となるReact.useEffectを削除
+- フレーム表示のみの最もシンプルな実装に
+- CORSエラー等を回避
+---
+ src/App.tsx | 149 ++++++++++++++++------------------------------------
+ 1 file changed, 46 insertions(+), 103 deletions(-)
+
+diff --git a/src/App.tsx b/src/App.tsx
+index 5301c66..841f514 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -6920,103 +6920,8 @@ const [notesInput, setNotesInput] = useState<string>("");
+         );
+ 
+       case 5:
+-        // Step5用のシンプルな描画関数
+-        const drawStep5Canvas = (frameIndex: number) => {
+-          if (!displayCanvasRef.current || !framesRef.current[frameIndex]) return;
+-          
+-          const canvas = displayCanvasRef.current;
+-          const ctx = canvas.getContext('2d');
+-          if (!ctx) return;
+-          
+-          const frame = framesRef.current[frameIndex];
+-          canvas.width = frame.width;
+-          canvas.height = frame.height;
+-          
+-          // フレームを描画
+-          ctx.putImageData(frame, 0, 0);
+-          
+-          // 姿勢スケルトンを描画（姿勢がある場合のみ）
+-          const pose = poseResults[frameIndex];
+-          if (pose?.landmarks) {
+-            // 腰の位置を取得
+-            const leftHip = pose.landmarks[23];
+-            const rightHip = pose.landmarks[24];
+-            
+-            if (leftHip && rightHip) {
+-              const hipCenterX = ((leftHip.x + rightHip.x) / 2) * canvas.width;
+-              
+-              // スタートフレームの場合、腰の位置に緑のラインを描画
+-              if (sectionStartFrame === frameIndex) {
+-                ctx.strokeStyle = '#10b981';
+-                ctx.lineWidth = 2;
+-                ctx.setLineDash([5, 5]);
+-                ctx.beginPath();
+-                ctx.moveTo(hipCenterX, 0);
+-                ctx.lineTo(hipCenterX, canvas.height);
+-                ctx.stroke();
+-                ctx.setLineDash([]);
+-                
+-                // ラベル
+-                ctx.fillStyle = '#10b981';
+-                ctx.font = 'bold 16px sans-serif';
+-                ctx.fillText('START', hipCenterX + 5, 25);
+-              }
+-              
+-              // フィニッシュフレームの場合、腰の位置に赤のラインを描画
+-              if (sectionEndFrame === frameIndex) {
+-                ctx.strokeStyle = '#dc2626';
+-                ctx.lineWidth = 2;
+-                ctx.setLineDash([5, 5]);
+-                ctx.beginPath();
+-                ctx.moveTo(hipCenterX, 0);
+-                ctx.lineTo(hipCenterX, canvas.height);
+-                ctx.stroke();
+-                ctx.setLineDash([]);
+-                
+-                // ラベル
+-                ctx.fillStyle = '#dc2626';
+-                ctx.font = 'bold 16px sans-serif';
+-                ctx.fillText('FINISH', hipCenterX + 5, 25);
+-              }
+-            }
+-            
+-            // スケルトンを薄く表示
+-            ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)';
+-            ctx.lineWidth = 1;
+-            ctx.fillStyle = 'rgba(59, 130, 246, 0.5)';
+-            
+-            // MediaPipeの接続定義
+-            const connections = [
+-              [11, 12], // 肩
+-              [11, 13], [13, 15], // 左腕
+-              [12, 14], [14, 16], // 右腕
+-              [11, 23], [12, 24], [23, 24], // 胴体
+-              [23, 25], [25, 27], [27, 29], [29, 31], // 左脚
+-              [24, 26], [26, 28], [28, 30], [30, 32], // 右脚
+-            ];
+-            
+-            // 骨格線を描画
+-            connections.forEach(([start, end]) => {
+-              const p1 = pose.landmarks[start];
+-              const p2 = pose.landmarks[end];
+-              if (p1 && p2 && p1.visibility > 0.01 && p2.visibility > 0.01) {
+-                ctx.beginPath();
+-                ctx.moveTo(p1.x * canvas.width, p1.y * canvas.height);
+-                ctx.lineTo(p2.x * canvas.width, p2.y * canvas.height);
+-                ctx.stroke();
+-              }
+-            });
+-            
+-            // 関節点を描画
+-            pose.landmarks.forEach((lm, idx) => {
+-              if (lm && lm.visibility > 0.01) {
+-                ctx.beginPath();
+-                ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 3, 0, Math.PI * 2);
+-                ctx.fill();
+-              }
+-            });
+-          }
+-        };
++
++
+ 
+         // マルチカメラモードの場合は区間設定をスキップ
+         if (analysisMode === "multi") {
+@@ -7072,10 +6977,26 @@ const [notesInput, setNotesInput] = useState<string>("");
+           );
+         }
+         
+-        // 初回表示時とcurrentFrame変更時にフレームを描画
+-        React.useEffect(() => {
+-          drawStep5Canvas(currentFrame);
+-        }, [currentFrame, sectionStartFrame, sectionEndFrame, sectionMidFrame]);
++        // フレーム描画用の更新関数
++        const updateCanvas = () => {
++          if (!displayCanvasRef.current || !framesRef.current[currentFrame]) return;
++          
++          const canvas = displayCanvasRef.current;
++          const ctx = canvas.getContext('2d');
++          if (!ctx) return;
++          
++          const frame = framesRef.current[currentFrame];
++          canvas.width = frame.width;
++          canvas.height = frame.height;
++          
++          // フレームを描画
++          ctx.putImageData(frame, 0, 0);
++        };
++        
++        // 初回表示時にフレームを描画
++        setTimeout(() => {
++          updateCanvas();
++        }, 100);
+         
+         // スライダーによる区間設定UI（トリミング機能時代のシンプル方式に戻す）
+         return (
+@@ -7187,7 +7108,18 @@ const [notesInput, setNotesInput] = useState<string>("");
+                     setStartLineOffset(0);
+                     
+                     // フレームを表示
+-                    drawStep5Canvas(newFrame);
++                    setTimeout(() => {
++                      if (displayCanvasRef.current && framesRef.current[newFrame]) {
++                        const canvas = displayCanvasRef.current;
++                        const ctx = canvas.getContext('2d');
++                        if (ctx) {
++                          const frame = framesRef.current[newFrame];
++                          canvas.width = frame.width;
++                          canvas.height = frame.height;
++                          ctx.putImageData(frame, 0, 0);
++                        }
++                      }
++                    }, 10);
+                   }}
+                   className="section-slider start-slider"
+                 />
+@@ -7324,7 +7256,18 @@ const [notesInput, setNotesInput] = useState<string>("");
+                     setEndLineOffset(0);
+                     
+                     // フレームを表示
+-                    drawStep5Canvas(newFrame);
++                    setTimeout(() => {
++                      if (displayCanvasRef.current && framesRef.current[newFrame]) {
++                        const canvas = displayCanvasRef.current;
++                        const ctx = canvas.getContext('2d');
++                        if (ctx) {
++                          const frame = framesRef.current[newFrame];
++                          canvas.width = frame.width;
++                          canvas.height = frame.height;
++                          ctx.putImageData(frame, 0, 0);
++                        }
++                      }
++                    }, 10);
+                   }}
+                   className="section-slider end-slider"
+                 />
+-- 
+2.39.5
+

@@ -1,0 +1,109 @@
+From 4d6cc74aaf019401c75f4f3d4571f3cd12fcf28e Mon Sep 17 00:00:00 2001
+From: SusumuTakano <genspark_dev@genspark.ai>
+Date: Sat, 20 Dec 2025 14:21:18 +0000
+Subject: [PATCH 23/26] feat: Improve multi-camera calibration UI with critical
+ instructions
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Problem:
+- Stride discrepancy between multi-camera (1.39m) and single-camera (1.57m)
+- Root cause: User clicking cones that don't cover full 5m segment
+- Example: Segment 1 only covered 0.37m-4.22m (3.85m) instead of 0-5m
+
+Solution (Calibration Re-do Approach):
+- Add prominent warning banner with critical calibration instructions
+- Emphasize: 'Click cones CLOSEST to segment start/end positions'
+- Explain consequences: 'If cones are at 0.5m/4.5m instead of 0m/5m, stride will be inaccurate'
+- Highlight per-segment instructions in CalibrationPanel
+
+UI Improvements:
+- Yellow gradient warning banner with ⚠️ icon
+- Bullet-pointed instructions for clarity
+- Per-segment hint: '{startDistanceM}m地点と{endDistanceM}m地点に最も近いコーンを選択'
+- Example provided: 'For 0-5m segment, select cones near 0m and 5m positions'
+
+Expected Result:
+- User will recalibrate with cones closer to actual 0m, 5m, 10m, 15m markers
+- This should make multi-camera stride match single-camera (1.57m, 1.61m)
+- Homography accuracy + proper cone placement = correct stride values
+---
+ src/components/MultiCameraSetup.tsx | 49 ++++++++++++++++++++++++-----
+ 1 file changed, 41 insertions(+), 8 deletions(-)
+
+diff --git a/src/components/MultiCameraSetup.tsx b/src/components/MultiCameraSetup.tsx
+index 98ef129..206d742 100644
+--- a/src/components/MultiCameraSetup.tsx
++++ b/src/components/MultiCameraSetup.tsx
+@@ -184,16 +184,26 @@ const CalibrationPanel: React.FC<{
+     <div className="border rounded-lg p-4 bg-gray-50">
+       <div className="flex items-start justify-between gap-4">
+         <div>
+-          <div className="font-medium">
++          <div className="font-medium" style={{ fontSize: '1.1rem' }}>
+             キャリブレーション: {segment.startDistanceM}m と {segment.endDistanceM}m（手前/奥）
+           </div>
+-          <div className="text-sm text-gray-600 mt-1">
+-            クリック順: <span className="font-medium">{nextLabel}</span>
+-            {points.length < 4 && <span> をクリックしてください（{points.length}/4）</span>}
+-            {points.length === 4 && <span>（4点揃いました。保存できます）</span>}
++          <div className="text-sm mt-2" style={{ 
++            background: '#eff6ff', 
++            padding: '8px 12px', 
++            borderRadius: '6px',
++            border: '1px solid #bfdbfe'
++          }}>
++            <div style={{ fontWeight: 600, color: '#1e40af', marginBottom: '4px' }}>
++              クリック順: <span style={{ color: '#dc2626' }}>{nextLabel}</span>
++              {points.length < 4 && <span> をクリック（{points.length}/4）</span>}
++              {points.length === 4 && <span style={{ color: '#16a34a' }}>（✓ 4点揃いました）</span>}
++            </div>
++            <div style={{ fontSize: '0.85rem', color: '#475569' }}>
++              ⚠️ <strong>{segment.startDistanceM}m地点と{segment.endDistanceM}m地点に最も近いコーン</strong>を選択してください
++            </div>
+           </div>
+-          <div className="text-xs text-gray-500 mt-1">
+-            ※ 必ず「コーンの中心」をクリック。4点すべて同じフレームで実施してください。
++          <div className="text-xs text-gray-500 mt-2">
++            ※ コーンの中心を正確にクリック。4点すべて同じフレームで実施。
+           </div>
+         </div>
+ 
+@@ -664,9 +674,32 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
+         {step === 'calibrate' && (
+           <div className="p-6">
+             <h2 className="text-2xl font-bold mb-2">キャリブレーション（コーン4点クリック）</h2>
+-            <div className="text-sm text-gray-600 mb-6">
++            <div className="text-sm text-gray-600 mb-4">
+               各動画で、{config.segmentLengthM}m間隔の2本のコーン（手前/奥）をクリックして、平面変換を作成します。
+             </div>
++            
++            {/* 重要な注意事項 */}
++            <div style={{
++              background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
++              border: '2px solid #f59e0b',
++              borderRadius: '12px',
++              padding: '16px',
++              marginBottom: '24px'
++            }}>
++              <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#92400e', fontSize: '1.1rem' }}>
++                ⚠️ 重要：正確なキャリブレーションのために
++              </div>
++              <ul style={{ margin: 0, paddingLeft: '20px', color: '#78350f', lineHeight: '1.8' }}>
++                <li><strong>区間の開始位置と終了位置に最も近いコーン</strong>をクリックしてください</li>
++                <li>例：0-5m区間なら、<strong>0m付近と5m付近のコーン</strong>を選択</li>
++                <li>コーンの位置が0.5mや4.5mなど、境界から離れすぎると<strong>ストライドが不正確</strong>になります</li>
++                <li>各コーンの<strong>中心</strong>を正確にクリックしてください</li>
++                <li><strong>4点すべて同じフレーム</strong>で実施してください</li>
++              </ul>
++              <div style={{ marginTop: '12px', padding: '8px 12px', background: '#fffbeb', borderRadius: '6px', color: '#92400e' }}>
++                💡 <strong>ヒント</strong>: カメラの視野内で、0m地点と5m地点に最も近いコーンが見えるフレームを選択してください。
++              </div>
++            </div>
+ 
+             <div className="space-y-4">
+               {segments.map((segment, idx) => {
+-- 
+2.39.5
+

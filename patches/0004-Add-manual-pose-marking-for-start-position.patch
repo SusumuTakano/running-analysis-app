@@ -1,0 +1,88 @@
+From 6bcfd804447cefd5ba40c84a02340e1aae358924 Mon Sep 17 00:00:00 2001
+From: SusumuTakano <genspark_dev@genspark.ai>
+Date: Sun, 7 Dec 2025 06:24:58 +0000
+Subject: [PATCH 04/26] Add manual pose marking for start position
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Added '手動で人物位置を指定' button when pose is not detected
+- Users can click on the canvas to manually mark hip position
+- Creates artificial pose data with the clicked position
+- Allows setting start point even when pose detection fails
+- Displays crosshair cursor during manual selection
+- Saves manual pose data to enable distance calculation
+---
+ src/App.tsx | 56 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 56 insertions(+)
+
+diff --git a/src/App.tsx b/src/App.tsx
+index e4a5ec5..a65becd 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -7123,6 +7123,62 @@ const [notesInput, setNotesInput] = useState<string>("");
+                     <span style={{ fontSize: '0.8rem', fontWeight: 'normal', color: '#991b1b' }}>
+                       距離計算が不正確になります。姿勢が認識されているフレームを選んでください。
+                     </span>
++                    <button
++                      onClick={() => {
++                        // 手動で腰の位置を指定
++                        const canvas = displayCanvasRef.current;
++                        if (!canvas) return;
++                        
++                        const handleCanvasClick = (e: MouseEvent) => {
++                          const rect = canvas.getBoundingClientRect();
++                          const x = (e.clientX - rect.left) / canvas.width;
++                          const y = (e.clientY - rect.top) / canvas.height;
++                          
++                          console.log(`🎯 手動でスタート位置を設定: x=${x.toFixed(3)}, y=${y.toFixed(3)}`);
++                          setSavedStartHipX(x);
++                          
++                          // 手動で作成したポーズデータを保存
++                          if (!poseResults[sectionStartFrame]) {
++                            const manualLandmarks = Array(33).fill(null).map(() => ({
++                              x: x,
++                              y: y,
++                              z: 0,
++                              visibility: 0.5
++                            }));
++                            // 腰の位置を設定
++                            manualLandmarks[23] = { x: x - 0.02, y: y, z: 0, visibility: 1 };
++                            manualLandmarks[24] = { x: x + 0.02, y: y, z: 0, visibility: 1 };
++                            
++                            const newPoseResults = [...poseResults];
++                            newPoseResults[sectionStartFrame] = { landmarks: manualLandmarks };
++                            setPoseResults(newPoseResults);
++                            console.log(`✅ 手動ポーズデータを作成しました`);
++                          }
++                          
++                          // クリックイベントを削除
++                          canvas.removeEventListener('click', handleCanvasClick);
++                          canvas.style.cursor = 'default';
++                          setStatus('✅ スタート位置を手動で設定しました');
++                        };
++                        
++                        canvas.addEventListener('click', handleCanvasClick);
++                        canvas.style.cursor = 'crosshair';
++                        setStatus('👆 画像上で人物の腰の位置をクリックしてください');
++                      }}
++                      style={{
++                        display: 'block',
++                        margin: '10px auto 0',
++                        padding: '8px 16px',
++                        background: '#f59e0b',
++                        color: 'white',
++                        border: 'none',
++                        borderRadius: '6px',
++                        cursor: 'pointer',
++                        fontWeight: 'bold'
++                      }}
++                    >
++                      🎯 手動で人物位置を指定
++                    </button>
+                   </div>
+                 )}
+               </div>
+-- 
+2.39.5
+

@@ -1,0 +1,79 @@
+From 635a21be3786207266024fdcf3b01784e4d83e8d Mon Sep 17 00:00:00 2001
+From: SusumuTakano <genspark_dev@genspark.ai>
+Date: Sun, 7 Dec 2025 06:14:58 +0000
+Subject: [PATCH 03/26] Improve pose detection at start position
+
+- Lowered all confidence thresholds to 0.001 (minimum)
+- CONFIDENCE_THRESHOLD: 0.001 for skeleton drawing
+- POINT_CONFIDENCE_THRESHOLD: 0.001 for landmark detection
+- Added debug logging for start frame pose detection
+- Shows visibility values for key landmarks (shoulders, hips)
+- This should detect poses even at the start position
+---
+ src/App.tsx | 23 ++++++++++++++++++++---
+ 1 file changed, 20 insertions(+), 3 deletions(-)
+
+diff --git a/src/App.tsx b/src/App.tsx
+index ae446ef..e4a5ec5 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -165,7 +165,7 @@ const calculateAngles = (
+   const getPoint = (idx: number) => landmarks[idx];
+   
+   // 主要なランドマークの信頼度をチェック
+-  const CONFIDENCE_THRESHOLD = 0.05; // さらに認識率を向上（0.1 → 0.05）
++  const CONFIDENCE_THRESHOLD = 0.001; // 極限まで下げてスタート地点でも検出
+ 
+   const leftHip = getPoint(23);
+   const rightHip = getPoint(24);
+@@ -2867,7 +2867,8 @@ const [notesInput, setNotesInput] = useState<string>("");
+   ) => {
+     // デバイス判定
+     const isIPad = /iPad/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+-    const CONFIDENCE_THRESHOLD = isIPad ? 0.01 : 0.05;
++    // 閾値を最低にして、スタート地点でも検出できるように
++    const CONFIDENCE_THRESHOLD = 0.001; // 極限まで下げる
+     
+     // 主要な関節の妥当性をチェック
+     const isValidPose = () => {
+@@ -4285,7 +4286,7 @@ const [notesInput, setNotesInput] = useState<string>("");
+         });
+ 
+         ctx.fillStyle = "#f97316";
+-        const POINT_CONFIDENCE_THRESHOLD = 0.15; // 🔥 姿勢認識率向上のため低めに設定
++        const POINT_CONFIDENCE_THRESHOLD = 0.001; // 🔥 極限まで下げてスタート地点でも検出
+         landmarks.forEach((lm: FramePoseData["landmarks"][number]) => {
+           if (lm.visibility > POINT_CONFIDENCE_THRESHOLD) {
+             const trans = transformPoint(lm);
+@@ -7057,12 +7058,28 @@ const [notesInput, setNotesInput] = useState<string>("");
+                     setSectionStartFrame(newFrame);
+                     setCurrentFrame(newFrame);
+                     const pose = poseResults[newFrame];
++                    
++                    // デバッグ情報
+                     if (pose?.landmarks) {
++                      console.log(`📍 Frame ${newFrame} - 姿勢検出あり`);
+                       const leftHip = pose.landmarks[23];
+                       const rightHip = pose.landmarks[24];
++                      const leftShoulder = pose.landmarks[11];
++                      const rightShoulder = pose.landmarks[12];
++                      
++                      console.log(`  左肩: visibility=${leftShoulder?.visibility?.toFixed(3)}`);
++                      console.log(`  右肩: visibility=${rightShoulder?.visibility?.toFixed(3)}`);
++                      console.log(`  左腰: visibility=${leftHip?.visibility?.toFixed(3)}`);
++                      console.log(`  右腰: visibility=${rightHip?.visibility?.toFixed(3)}`);
++                      
+                       if (leftHip && rightHip) {
+                         setSavedStartHipX((leftHip.x + rightHip.x) / 2);
++                        console.log(`  ✅ 腰の中心点を保存`);
++                      } else {
++                        console.log(`  ⚠️ 腰が検出できない`);
+                       }
++                    } else {
++                      console.log(`❌ Frame ${newFrame} - 姿勢検出なし`);
+                     }
+                     setStartLineOffset(0);
+                     
+-- 
+2.39.5
+
