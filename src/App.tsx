@@ -6774,11 +6774,19 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
       
       console.log(`\n🔍 Processing segment ${i + 1} (ID: ${segment.id}): ${segmentSteps.length} steps`);
       
+      console.log(`  📦 Segment ${i + 1} adding ${segmentSteps.length} steps to finalSteps (current: ${finalSteps.length})`);
+      
       if (i === 0) {
         // 最初のセグメントはそのまま追加
         finalSteps.push(...segmentSteps);
         prevSegmentEndDistance = segment.endDistanceM;
       } else {
+        // 🔧 TEMPORARY FIX: 重複検出を無効化してデバッグ
+        // 全てのステップを追加
+        console.log(`  ⚠️ [DEBUG] Adding all ${segmentSteps.length} steps without duplicate filtering`);
+        finalSteps.push(...segmentSteps);
+        
+        /*
         // 2つ目以降のセグメント：重複区間をチェック
         const overlapThreshold = 0.5; // 0.5m以内なら重複とみなす
         const crossSegmentThreshold = 2.0; // セグメント境界を跨ぐステップの閾値
@@ -6843,6 +6851,7 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
             finalSteps.push(step);
           }
         });
+        */
         
         prevSegmentEndDistance = segment.endDistanceM;
       }
