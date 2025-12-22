@@ -6638,12 +6638,14 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
       console.log(`✅ Segment ${segIdx + 1}: Using single-camera distances/strides AS-IS (NO Homography)`);
       
       segmentSteps.forEach((step, localIdx) => {
-        // シングルカメラの距離をそのまま使用（セグメントオフセット追加）
+        // 🚨 CRITICAL FIX: step.distanceAtContactはセグメント内の値（0m～）として既に保存されている
+        // → セグメント開始距離を加算してグローバル座標へ変換
         const localDistance = step.distanceAtContact || 0;
         const globalDistance = segment.startDistanceM + localDistance;
         
-        console.log(`  Step ${localIdx}: distance=${localDistance.toFixed(2)}m + offset=${segment.startDistanceM}m = ${globalDistance.toFixed(2)}m, stride=${(step.stride || 0).toFixed(2)}m`);
+        console.log(`  Step ${localIdx}: localDist=${localDistance.toFixed(2)}m + segmentStart=${segment.startDistanceM}m → globalDist=${globalDistance.toFixed(2)}m, stride=${(step.stride || 0).toFixed(2)}m`);
         
+        // 🔥 ストライドは元の値を保持（シングルカメラ解析済み）
         mergedSteps.push({
           ...step,
           distanceAtContact: globalDistance,
