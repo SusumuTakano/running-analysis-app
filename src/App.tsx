@@ -6703,8 +6703,63 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     // ==========================================
     console.log("🔍 Detecting and merging overlapping steps between segments...");
     
+    // 🎯 CRITICAL FIX: セグメント境界接地の自動リンク
+    // ユーザーが境界（5m, 10m等）の接地を前後両セグメントでマークした場合、
+    // 距離が近い（±0.3m以内）接地を同一とみなして重複除去
+    console.log("🔗 Step 1: Detecting boundary contact duplicates...");
+    
+    // セグメント境界位置のリスト（5m, 10m, ...）
+    const boundaryPositions = segments.slice(1).map(seg => seg.startDistanceM);
+    console.log(`   Boundary positions: ${boundaryPositions.map(p => p.toFixed(1) + 'm').join(', ')}`);
+    
+    // 各境界付近（±0.3m）の接地をグループ化
+    const boundaryTolerance = 0.3; // 境界±0.3m以内を同一接地とみなす
+    const boundaryGroups = new Map<number, StepMetric[]>();
+    
+    boundaryPositions.forEach(boundaryPos => {
+      const nearBoundarySteps = mergedSteps.filter(step => {
+        const dist = step.distanceAtContact || 0;
+        return Math.abs(dist - boundaryPos) < boundaryTolerance;
+      });
+      
+      if (nearBoundarySteps.length > 1) {
+        console.log(`   🔍 Found ${nearBoundarySteps.length} steps near ${boundaryPos.toFixed(1)}m boundary:`);
+        nearBoundarySteps.forEach(step => {
+          console.log(`      - ${(step.distanceAtContact || 0).toFixed(3)}m (Segment ID: ${step.segmentId})`);
+        });
+        boundaryGroups.set(boundaryPos, nearBoundarySteps);
+      }
+    });
+    
+    // 重複する境界接地を除去（最初のものを残す）
+    const duplicateStepIds = new Set<number>();
+    boundaryGroups.forEach((steps, boundaryPos) => {
+      if (steps.length > 1) {
+        // 距離が境界に最も近いものを残し、残りは重複としてマーク
+        const sortedByProximity = [...steps].sort((a, b) => {
+          const distA = Math.abs((a.distanceAtContact || 0) - boundaryPos);
+          const distB = Math.abs((b.distanceAtContact || 0) - boundaryPos);
+          return distA - distB;
+        });
+        
+        const keepStep = sortedByProximity[0];
+        const duplicates = sortedByProximity.slice(1);
+        
+        console.log(`   ✅ Keeping step at ${(keepStep.distanceAtContact || 0).toFixed(3)}m (closest to ${boundaryPos.toFixed(1)}m)`);
+        duplicates.forEach(dup => {
+          console.log(`   ⚠️ Marking as duplicate: ${(dup.distanceAtContact || 0).toFixed(3)}m`);
+          duplicateStepIds.add(dup.index);
+        });
+      }
+    });
+    
+    // 重複を除去したステップリスト
+    const deduplicatedSteps = mergedSteps.filter(step => !duplicateStepIds.has(step.index));
+    console.log(`\n✅ Removed ${duplicateStepIds.size} duplicate boundary contacts`);
+    console.log(`   Steps: ${mergedSteps.length} → ${deduplicatedSteps.length}`);
+    
     // 🎯 Homography補正後の代表ストライドを計算（欠損補間用）
-    const validStrides = mergedSteps
+    const validStrides = deduplicatedSteps
       .map(s => s.stride)
       .filter((s): s is number => typeof s === 'number' && s > 0.5 && s < 3.0);
     
@@ -6714,17 +6769,18 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
       ? sortedStrides[Math.floor(sortedStrides.length / 2)]
       : 1.5; // デフォルトは1.5m（補正後の期待値）
     
-    console.log(`📏 Representative stride for gap interpolation: ${medianStride.toFixed(2)}m (median of ${validStrides.length} Homography-corrected strides)`);
+    console.log(`\n📏 Representative stride for gap interpolation: ${medianStride.toFixed(2)}m (median of ${validStrides.length} Homography-corrected strides)`);
     console.log(`   Valid strides: ${validStrides.map(s => s.toFixed(2)).join(', ')}`);
     
     const finalSteps: StepMetric[] = [];
     let prevSegmentEndDistance = 0;
     
-    // 🔧 FIX: mergedStepsは既にセグメント順にソートされているので、
+    // 🔧 FIX: deduplicatedStepsは既にセグメント順にソートされているので、
     // セグメントIDでグループ化して処理（距離でフィルタしない）
+    console.log("\n🔗 Step 2: Merging segments and detecting gaps...");
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i];
-      const segmentSteps = mergedSteps.filter(s => s.segmentId === segment.id);
+      const segmentSteps = deduplicatedSteps.filter(s => s.segmentId === segment.id);
       
       console.log(`\n🔍 Processing segment ${i + 1} (ID: ${segment.id}): ${segmentSteps.length} steps`);
       
@@ -6735,37 +6791,22 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
         finalSteps.push(...segmentSteps);
         prevSegmentEndDistance = segment.endDistanceM;
       } else {
-        // 2つ目以降のセグメント：重複区間をチェックしてギャップを補間
-        const overlapThreshold = 0.5; // 0.5m以内なら重複とみなす
-        const crossSegmentThreshold = 2.0; // セグメント境界を跨ぐステップの閾値（2m以上のギャップ）
+        // 2つ目以降のセグメント：ギャップをチェックして補間（境界重複は既に除去済み）
+        const crossSegmentThreshold = 2.0; // 2m以上のギャップは補間が必要
         
-        console.log(`  🔍 Checking for duplicates and gaps (median stride: ${medianStride.toFixed(2)}m)...`);
+        console.log(`  🔍 Checking for gaps (median stride: ${medianStride.toFixed(2)}m)...`);
         
         segmentSteps.forEach(step => {
           const stepDist = step.distanceAtContact || 0;
           
-          // 前のセグメントの最後のステップとの距離を確認
+          // 前のステップとの距離を確認
           const lastStep = finalSteps[finalSteps.length - 1];
           const lastStepDist = lastStep?.distanceAtContact || 0;
           
-          // 重複判定とギャップ補間
+          // ギャップチェック
           const gap = stepDist - lastStepDist;
           
-          // 🎯 改善された重複検出：セグメント境界付近（前セグメント終端±0.5m）のステップをチェック
-          const prevSegmentEnd = segments[i - 1]?.endDistanceM || 0;
-          const isNearBoundary = Math.abs(lastStepDist - prevSegmentEnd) < 0.5;
-          const isStepAcrossBoundary = lastStepDist < prevSegmentEnd && stepDist > prevSegmentEnd;
-          
-          // セグメント境界を跨ぐステップで、ギャップが通常ストライドの1.5倍以内なら重複の可能性
-          const isLikelyDuplicate = isNearBoundary && gap < (medianStride * 1.5);
-          
-          if (gap < overlapThreshold) {
-            // 重複している可能性が高い → スキップ（前のセグメントのデータを優先）
-            console.log(`  ⚠️ Skipping duplicate step at ${stepDist.toFixed(2)}m (gap: ${gap.toFixed(2)}m)`);
-          } else if (isLikelyDuplicate && isStepAcrossBoundary) {
-            // 🆕 セグメント境界を跨ぐ重複ステップ（同じ接地を両セグメントでマーク）
-            console.log(`  ⚠️ Skipping cross-segment duplicate at ${stepDist.toFixed(2)}m (boundary at ${prevSegmentEnd.toFixed(2)}m, gap: ${gap.toFixed(2)}m)`);
-          } else if (gap > crossSegmentThreshold) {
+          if (gap > crossSegmentThreshold) {
             // 🔴 CRITICAL: ギャップが大きすぎる（2m以上）→ 境界を跨ぐステップが欠落
             // 代表ストライド（中央値）を使用して補間
             const estimatedMissingSteps = Math.floor(gap / medianStride) - 1;
