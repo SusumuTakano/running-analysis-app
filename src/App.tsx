@@ -6743,9 +6743,13 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
           console.warn(`  ⚠️ Step ${localIdx}: No pixel coordinates, using fallback distance`);
         }
         
-        const globalDistance = segment.startDistanceM + localDistance;
+        // 🔧 CRITICAL FIX: シングルカメラの距離を優先使用
+        // step.distanceAtContactは既にトルソーX座標ベースで正確に計算されている
+        // Homographyは歪みがあるため、距離計算には使用しない
+        const singleCameraDistance = step.distanceAtContact;
+        const globalDistance = segment.startDistanceM + (singleCameraDistance || localDistance);
         
-        console.log(`  Step ${localIdx}: localDistance=${localDistance.toFixed(2)}m + offset=${segment.startDistanceM}m = globalDistance=${globalDistance.toFixed(2)}m`);
+        console.log(`  Step ${localIdx}: singleCamera=${(singleCameraDistance || 0).toFixed(2)}m, homography=${localDistance.toFixed(2)}m → global=${globalDistance.toFixed(2)}m (offset=${segment.startDistanceM}m)`);
         
         mergedSteps.push({
           ...step,
