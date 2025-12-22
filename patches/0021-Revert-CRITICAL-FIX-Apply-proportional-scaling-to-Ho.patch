@@ -1,0 +1,174 @@
+From 71d01c15717d8fa2e7690573960ac41a8a64d21d Mon Sep 17 00:00:00 2001
+From: SusumuTakano <genspark_dev@genspark.ai>
+Date: Sat, 20 Dec 2025 14:10:39 +0000
+Subject: [PATCH 21/26] =?UTF-8?q?Revert=20"=F0=9F=94=A7=20CRITICAL=20FIX:?=
+ =?UTF-8?q?=20Apply=20proportional=20scaling=20to=20Homography=20(match=20?=
+ =?UTF-8?q?single-camera)"?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This reverts commit b5554b36cfbc82255877b22dcb571593c3520486.
+---
+ src/App.tsx | 87 +++++++++++++++++------------------------------------
+ 1 file changed, 27 insertions(+), 60 deletions(-)
+
+diff --git a/src/App.tsx b/src/App.tsx
+index 7f75c9b..36f789d 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -6659,30 +6659,6 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+         }
+       };
+       
+-      // 🎯 CRITICAL FIX: 比例スケーリング（シングルカメラの手法を適用）
+-      // ホモグラフィの実測範囲を、期待される5m区間に比例スケーリングする
+-      const worldPositions: Array<{ worldY: number; localIdx: number }> = [];
+-      
+-      segmentSteps.forEach((step, localIdx) => {
+-        if (step.contactPixelX != null && step.contactPixelY != null) {
+-          const worldPos = applyHomographyLocal(step.contactPixelX, step.contactPixelY);
+-          if (worldPos) {
+-            worldPositions.push({ worldY: worldPos.y, localIdx });
+-          }
+-        }
+-      });
+-      
+-      // 実測範囲の最小・最大を取得
+-      const worldYValues = worldPositions.map(p => p.worldY);
+-      const minWorldY = Math.min(...worldYValues);
+-      const maxWorldY = Math.max(...worldYValues);
+-      const actualCoverage = maxWorldY - minWorldY; // 実際にカバーした距離（例: 3.85m）
+-      const expectedCoverage = segment.endDistanceM - segment.startDistanceM; // 期待される距離（例: 5.0m）
+-      
+-      const scalingFactor = actualCoverage > 0.1 ? expectedCoverage / actualCoverage : 1.0;
+-      
+-      console.log(`  📏 Segment ${segIdx + 1} Scaling: actualRange=${minWorldY.toFixed(2)}-${maxWorldY.toFixed(2)}m (${actualCoverage.toFixed(2)}m), expected=${expectedCoverage.toFixed(2)}m, scaleFactor=${scalingFactor.toFixed(4)}`);
+-      
+       segmentSteps.forEach((step, localIdx) => {
+         let localDistance = step.distanceAtContact || 0;
+         let recalculatedStride = step.stride;
+@@ -6692,28 +6668,24 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+           const worldPos = applyHomographyLocal(step.contactPixelX, step.contactPixelY);
+           
+           if (worldPos) {
+-            // ✅ 比例スケーリングを適用（シングルカメラと同じ考え方）
+-            // 実測範囲（minWorldY〜maxWorldY）を期待範囲（0〜5m）にマッピング
+-            const normalizedPosition = (worldPos.y - minWorldY) / actualCoverage; // 0.0〜1.0
+-            localDistance = normalizedPosition * expectedCoverage; // 0m〜5m
++            // 実世界座標のY成分を距離として使用（走行方向＝y軸）
++            // X成分はレーン幅方向（0〜1.22m）、Y成分は走行方向（0〜15m）
++            localDistance = Math.abs(worldPos.y - segment.startDistanceM);
+             
+-            console.log(`  🎯 Step ${localIdx}: Pixel(${step.contactPixelX.toFixed(0)}, ${step.contactPixelY.toFixed(0)}) → World(${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)})m → Scaled: ${localDistance.toFixed(2)}m (factor=${scalingFactor.toFixed(3)})`);
++            console.log(`  🎯 Step ${localIdx}: Pixel(${step.contactPixelX.toFixed(0)}, ${step.contactPixelY.toFixed(0)}) → World(${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)})m (x=lane, y=distance) → localDistance=${localDistance.toFixed(2)}m`);
+             
+-            // 次のステップのピクセル座標があれば、ストライドも再計算（スケーリング適用後）
++            // 次のステップのピクセル座標があれば、ストライドも再計算
+             const nextStep = segmentSteps[localIdx + 1];
+             if (nextStep?.contactPixelX != null && nextStep?.contactPixelY != null) {
+               const nextWorldPos = applyHomographyLocal(nextStep.contactPixelX, nextStep.contactPixelY);
+               if (nextWorldPos) {
+-                // スケーリング適用後の次の位置
+-                const nextNormalizedPosition = (nextWorldPos.y - minWorldY) / actualCoverage;
+-                const nextLocalDistance = nextNormalizedPosition * expectedCoverage;
+-                
+-                // スケーリング済みストライド計算
+-                const scaledDy = nextLocalDistance - localDistance;
+-                const dx = nextWorldPos.x - worldPos.x; // レーン幅方向はスケーリング不要
+-                recalculatedStride = Math.sqrt(dx * dx + scaledDy * scaledDy);
++                // 実世界座標でのストライドを計算（ユークリッド距離）
++                // dx = レーン幅方向の移動, dy = 走行方向の移動
++                const dx = nextWorldPos.x - worldPos.x;
++                const dy = nextWorldPos.y - worldPos.y;
++                recalculatedStride = Math.sqrt(dx * dx + dy * dy);
+                 
+-                console.log(`    ✅ Scaled stride: ${recalculatedStride.toFixed(2)}m (dy_scaled=${scaledDy.toFixed(2)}, dx=${dx.toFixed(2)}) (was ${step.stride?.toFixed(2) ?? 'N/A'}m)`);
++                console.log(`    ✅ Recalculated stride using Homography: ${recalculatedStride.toFixed(2)}m (dx=${dx.toFixed(2)}, dy=${dy.toFixed(2)}) (was ${step.stride?.toFixed(2) ?? 'N/A'}m)`);
+               }
+             }
+           } else {
+@@ -6729,8 +6701,8 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+         
+         mergedSteps.push({
+           ...step,
+-          stride: recalculatedStride, // TrueStride: スケーリング適用後
+-          fullStride: recalculatedStride ?? undefined,
++          stride: recalculatedStride, // TrueStride: Homographyで再計算されたストライド
++          fullStride: recalculatedStride ?? undefined, // UIで表示されるfullStrideも更新
+           distanceAtContact: globalDistance,
+           index: globalStepIndex++,
+           segmentId: segment.id,
+@@ -6852,25 +6824,23 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+     // ============================================================
+     console.log("\n🔧 === Recalculating TrueStride from globalDistance (ChatGPT method) ===");
+     
+-    // 🆕 重要な変更: 補間ステップも含めて計算（マーク数が少ない場合の対応）
+-    // 補間ステップは推定値だが、ギャップを埋めてストライド計算を正確にする
+-    const allStepsForStride = finalSteps.filter(s => Number.isFinite(s.distanceAtContact));
++    // 実測ステップのみをフィルタ（補間は除外）
++    const realStepsForStride = finalSteps.filter(s => !s.isInterpolated && Number.isFinite(s.distanceAtContact));
+     
+     // globalDistでソート（時系列順）
+-    allStepsForStride.sort((a, b) => (a.distanceAtContact || 0) - (b.distanceAtContact || 0));
++    realStepsForStride.sort((a, b) => (a.distanceAtContact || 0) - (b.distanceAtContact || 0));
+     
+-    console.log(`\n📊 All steps (including interpolated): ${allStepsForStride.length}`);
++    console.log(`\n📊 Real steps (excluding interpolated): ${realStepsForStride.length}`);
+     console.log(`📋 Calculating TrueStride[i] = globalDist[i+1] - globalDist[i]\n`);
+     
+     // TrueStrideを計算（各ステップで次の接地までの距離）
+-    for (let i = 0; i < allStepsForStride.length; i++) {
+-      const currentDist = allStepsForStride[i].distanceAtContact || 0;
+-      const nextStep = allStepsForStride[i + 1];
++    for (let i = 0; i < realStepsForStride.length; i++) {
++      const currentDist = realStepsForStride[i].distanceAtContact || 0;
++      const nextStep = realStepsForStride[i + 1];
+       const nextDist = nextStep?.distanceAtContact;
+-      const isInterpolated = allStepsForStride[i].isInterpolated === true;
+       
+       // 🎯 ChatGPT詳細ログ
+-      console.log(`[Step ${i}] ${isInterpolated ? '(interpolated)' : 'contactFrame=' + allStepsForStride[i].contactFrame}, segmentId=${allStepsForStride[i].segmentId ?? 'N/A'}`);
++      console.log(`[Step ${i}] contactFrame=${realStepsForStride[i].contactFrame}, segmentId=${realStepsForStride[i].segmentId ?? 'N/A'}`);
+       console.log(`  contact_globalDist: ${currentDist.toFixed(3)}m`);
+       
+       if (nextDist != null) {
+@@ -6881,18 +6851,18 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+         // 異常値フラグ（0.6m未満、2.2m超）
+         if (trueStride < 0.6 || trueStride > 2.2) {
+           console.warn(`  ⚠️ strideAnomaly: true (unusual stride)`);
+-          allStepsForStride[i].quality = 'warning'; // UIで赤く表示
++          realStepsForStride[i].quality = 'warning'; // UIで赤く表示
+         }
+         
+         // ストライドを更新
+-        allStepsForStride[i].stride = trueStride;
+-        allStepsForStride[i].fullStride = trueStride;
++        realStepsForStride[i].stride = trueStride;
++        realStepsForStride[i].fullStride = trueStride;
+         
+         console.log(`  → UPDATED stride to ${trueStride.toFixed(3)}m`);
+       } else {
+         console.log(`  → Last step, no next contact`);
+-        allStepsForStride[i].stride = null;
+-        allStepsForStride[i].fullStride = undefined;
++        realStepsForStride[i].stride = null;
++        realStepsForStride[i].fullStride = undefined;
+       }
+     }
+     
+@@ -6905,10 +6875,7 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+     // globalDistで再ソート（時系列順に戻す）
+     finalSteps.sort((a, b) => (a.distanceAtContact || 0) - (b.distanceAtContact || 0));
+     
+-    const realCount = finalSteps.filter(s => !s.isInterpolated).length;
+-    const interpolatedCount = finalSteps.filter(s => s.isInterpolated).length;
+-    
+-    console.log(`\n📊 Final steps after TrueStride recalculation: ${finalSteps.length} (real: ${realCount}, interpolated: ${interpolatedCount})`);
++    console.log(`\n📊 Final steps after TrueStride recalculation: ${finalSteps.length} (real: ${realStepsForStride.length}, interpolated: ${finalSteps.filter(s => s.isInterpolated).length})`);
+     
+     // グローバルインデックスを再割り当て
+     finalSteps.forEach((step, idx) => {
+-- 
+2.39.5
+

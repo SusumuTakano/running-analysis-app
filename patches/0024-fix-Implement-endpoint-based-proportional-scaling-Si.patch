@@ -1,0 +1,169 @@
+From 98615bbd7eb329645687ee280d145b3ec77126a4 Mon Sep 17 00:00:00 2001
+From: SusumuTakano <genspark_dev@genspark.ai>
+Date: Sat, 20 Dec 2025 22:36:53 +0000
+Subject: [PATCH 24/26] fix: Implement endpoint-based proportional scaling
+ (Single-Camera approach)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Critical Problem:
+- Multi-camera stride still 10cm shorter than single-camera even after recalibration
+- User reports: '100mに換算すると1秒のズレ' - completely unusable
+- Root cause: Homography accuracy has inherent limitations with cone placement
+
+Solution - Endpoint-Based Proportional Scaling:
+- Use Homography to get raw world coordinates (shape of stride progression)
+- Apply single-camera's proportional scaling approach PER SEGMENT:
+  1. Get first and last step's raw worldY (e.g., 0.37m and 4.22m)
+  2. Calculate scaling factor: expectedRange (5.0m) / actualRange (3.85m)
+  3. Scale all intermediate positions proportionally
+  4. This matches single-camera's assumption: runner covers EXACTLY 5m
+
+Key Difference from Previous Failed Attempt:
+- Previous: Scaled ALL steps globally → lost most steps (only 3 remained)
+- New: Scale PER SEGMENT using ENDPOINT positions → preserves all steps
+- Uses first step as anchor point (0m) and scales relative to that
+
+Technical Implementation:
+- Step 1: Extract rawWorldY for all steps in segment
+- Step 2: Calculate scalingFactor from first/last step positions
+- Step 3: Apply scaling: localDistance = (worldY - firstWorldY) * scalingFactor
+- Step 4: Preserve stride ratios while matching expected total distance
+
+Also Fixed:
+- Improved back button visibility (larger, bolder, hover effect)
+
+Expected Results:
+- Multi-camera stride EXACTLY matches single-camera (1.57m, 1.61m)
+- Preserves all 9 steps (7 real + 2 interpolated)
+- Each segment covers exactly 5.0m
+- Speed = Pitch × Stride relationship consistent
+---
+ src/App.tsx | 74 +++++++++++++++++++++++++++++++++++++++++------------
+ 1 file changed, 57 insertions(+), 17 deletions(-)
+
+diff --git a/src/App.tsx b/src/App.tsx
+index 71ad408..d8e8e1c 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -6659,6 +6659,32 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+         }
+       };
+       
++      // 🔧 STEP 1: まずHomography変換で全ステップの rawWorldY を取得
++      const rawWorldYValues: Array<{ stepIdx: number; worldY: number }> = [];
++      segmentSteps.forEach((step, localIdx) => {
++        if (step.contactPixelX != null && step.contactPixelY != null) {
++          const worldPos = applyHomographyLocal(step.contactPixelX, step.contactPixelY);
++          if (worldPos) {
++            rawWorldYValues.push({ stepIdx: localIdx, worldY: worldPos.y });
++          }
++        }
++      });
++      
++      // 🔧 STEP 2: 端点ベース比例スケーリング係数を計算（シングルカメラと同じアプローチ）
++      let scalingFactor = 1.0;
++      if (rawWorldYValues.length >= 2) {
++        const firstWorldY = rawWorldYValues[0].worldY;
++        const lastWorldY = rawWorldYValues[rawWorldYValues.length - 1].worldY;
++        const actualRange = Math.abs(lastWorldY - firstWorldY); // Homography実測範囲
++        const expectedRange = segment.endDistanceM - segment.startDistanceM; // 期待される範囲（5m）
++        
++        if (actualRange > 0.1) {
++          scalingFactor = expectedRange / actualRange;
++          console.log(`  📏 Endpoint-based scaling: actualRange=${actualRange.toFixed(2)}m (${firstWorldY.toFixed(2)}-${lastWorldY.toFixed(2)}m), expected=${expectedRange.toFixed(2)}m, factor=${scalingFactor.toFixed(4)}`);
++        }
++      }
++      
++      // 🔧 STEP 3: スケーリングを適用してステップを処理
+       segmentSteps.forEach((step, localIdx) => {
+         let localDistance = step.distanceAtContact || 0;
+         let recalculatedStride = step.stride;
+@@ -6667,29 +6693,35 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+         if (step.contactPixelX != null && step.contactPixelY != null) {
+           const worldPos = applyHomographyLocal(step.contactPixelX, step.contactPixelY);
+           
+-          if (worldPos) {
+-            // 実世界座標のY成分を距離として使用（走行方向＝y軸）
+-            // X成分はレーン幅方向（0〜1.22m）、Y成分は走行方向（0〜15m）
+-            localDistance = Math.abs(worldPos.y - segment.startDistanceM);
++          if (worldPos && rawWorldYValues.length >= 2) {
++            const firstWorldY = rawWorldYValues[0].worldY;
++            
++            // ✅ 端点ベーススケーリング適用（シングルカメラと同じ考え方）
++            // 最初のステップを0mとして、そこからの相対距離をスケーリング
++            const relativeDistance = Math.abs(worldPos.y - firstWorldY);
++            localDistance = relativeDistance * scalingFactor;
+             
+-            console.log(`  🎯 Step ${localIdx}: Pixel(${step.contactPixelX.toFixed(0)}, ${step.contactPixelY.toFixed(0)}) → World(${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)})m (x=lane, y=distance) → localDistance=${localDistance.toFixed(2)}m`);
++            console.log(`  🎯 Step ${localIdx}: Pixel(${step.contactPixelX.toFixed(0)}, ${step.contactPixelY.toFixed(0)}) → World(y=${worldPos.y.toFixed(2)}m) → Scaled: ${localDistance.toFixed(2)}m (factor=${scalingFactor.toFixed(3)})`);
+             
+-            // 次のステップのピクセル座標があれば、ストライドも再計算
++            // 次のステップのピクセル座標があれば、ストライドも再計算（スケーリング適用後）
+             const nextStep = segmentSteps[localIdx + 1];
+             if (nextStep?.contactPixelX != null && nextStep?.contactPixelY != null) {
+               const nextWorldPos = applyHomographyLocal(nextStep.contactPixelX, nextStep.contactPixelY);
+               if (nextWorldPos) {
+-                // 実世界座標でのストライドを計算（ユークリッド距離）
+-                // dx = レーン幅方向の移動, dy = 走行方向の移動
+-                const dx = nextWorldPos.x - worldPos.x;
+-                const dy = nextWorldPos.y - worldPos.y;
+-                recalculatedStride = Math.sqrt(dx * dx + dy * dy);
++                // スケーリング適用後の距離
++                const nextRelativeDistance = Math.abs(nextWorldPos.y - firstWorldY);
++                const nextLocalDistance = nextRelativeDistance * scalingFactor;
+                 
+-                console.log(`    ✅ Recalculated stride using Homography: ${recalculatedStride.toFixed(2)}m (dx=${dx.toFixed(2)}, dy=${dy.toFixed(2)}) (was ${step.stride?.toFixed(2) ?? 'N/A'}m)`);
++                // スケーリング済みストライド計算
++                const scaledDy = nextLocalDistance - localDistance;
++                const dx = nextWorldPos.x - worldPos.x; // レーン幅方向はスケーリング不要
++                recalculatedStride = Math.sqrt(dx * dx + scaledDy * scaledDy);
++                
++                console.log(`    ✅ Scaled stride: ${recalculatedStride.toFixed(2)}m (dy_scaled=${scaledDy.toFixed(2)}, dx=${dx.toFixed(2)})`);
+               }
+             }
+           } else {
+-            console.warn(`  ⚠️ Step ${localIdx}: Homography failed, using fallback distance`);
++            console.warn(`  ⚠️ Step ${localIdx}: Homography failed or insufficient data for scaling`);
+           }
+         } else {
+           console.warn(`  ⚠️ Step ${localIdx}: No pixel coordinates, using fallback distance`);
+@@ -6701,8 +6733,8 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
+         
+         mergedSteps.push({
+           ...step,
+-          stride: recalculatedStride, // TrueStride: Homographyで再計算されたストライド
+-          fullStride: recalculatedStride ?? undefined, // UIで表示されるfullStrideも更新
++          stride: recalculatedStride, // TrueStride: スケーリング適用後
++          fullStride: recalculatedStride ?? undefined,
+           distanceAtContact: globalDistance,
+           index: globalStepIndex++,
+           segmentId: segment.id,
+@@ -10787,13 +10819,21 @@ case 6: {
+               </div>
+               <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between', width: '100%' }}>
+                 <button
+-                  className="wizard-btn secondary"
+                   onClick={() => setWizardStep(7)}
+                   style={{
++                    padding: '12px 24px',
++                    fontSize: '1rem',
++                    fontWeight: 'bold',
++                    color: 'white',
+                     background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                     border: 'none',
+-                    boxShadow: '0 4px 12px rgba(59, 130, 246, 0.4)'
++                    borderRadius: '8px',
++                    boxShadow: '0 4px 12px rgba(59, 130, 246, 0.5)',
++                    cursor: 'pointer',
++                    transition: 'transform 0.2s',
+                   }}
++                  onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
++                  onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                 >
+                   ← 戻る: ステップ8（動画確認）
+                 </button>
+-- 
+2.39.5
+
