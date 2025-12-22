@@ -2149,15 +2149,24 @@ const clearMarksByButton = () => {
       // 🎯 マルチカメラモードでキャリブレーションデータがある場合、Homography変換を使用
       if (analysisMode === 'multi' && currentSegmentCalibration?.H_img_to_world) {
         const footPixel = getContactFootPixel(frame);
-        if (!footPixel) return null;
+        if (!footPixel) {
+          console.warn(`⚠️ Frame ${frame}: footPixel is null`);
+          return null;
+        }
         
         const worldCoord = applyHomography(footPixel.x, footPixel.y, currentSegmentCalibration.H_img_to_world);
-        if (!worldCoord) return null;
+        if (!worldCoord) {
+          console.warn(`⚠️ Frame ${frame}: Homography returned null for pixel (${footPixel.x}, ${footPixel.y})`);
+          return null;
+        }
+        
+        const globalDistance = worldCoord.x + globalDistanceOffset;
+        console.log(`🎯 Frame ${frame}: Pixel (${footPixel.x.toFixed(1)}, ${footPixel.y.toFixed(1)}) → World (${worldCoord.x.toFixed(3)}m, ${worldCoord.y.toFixed(3)}m) → Global ${globalDistance.toFixed(3)}m`);
         
         // worldCoord.x が実世界の走行方向距離（メートル）
         // キャリブレーションは各セグメントのスタート地点（0m, 5m, 10m）を原点として設定されているため、
         // globalDistanceOffsetを加算してグローバル座標に変換
-        return worldCoord.x + globalDistanceOffset;
+        return globalDistance;
       }
       
       // シングルカメラモードまたはキャリブレーションなしの場合、従来の線形変換を使用
@@ -6667,20 +6676,17 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
         return;
       }
       
-      // 🔧 ULTIMATE FIX: Homography完全放棄、シングルカメラロジックのみ使用
-      // 理由: 
-      // 1. Homographyの歪みが大きすぎて補正不可能
-      // 2. シングルカメラの距離・ストライドは既に正確（トルソーX座標ベース）
-      // 3. マルチカメラの唯一の利点: カメラを止めずに連続撮影できる
-      console.log(`✅ Segment ${segIdx + 1}: Using single-camera distances/strides AS-IS (NO Homography)`);
+      // ✅ キャリブレーションデータあり: stepMetricsで既にHomography変換済み
+      // step.distanceAtContactは既にグローバル座標（globalDistanceOffset + Homography適用済み）
+      console.log(`✅ Segment ${segIdx + 1}: Using Homography-corrected distances from stepMetrics ✅`);
       
       segmentSteps.forEach((step, localIdx) => {
-        // ✅ FIXED: step.distanceAtContactは既にグローバル座標（globalDistanceOffset適用済み）
+        // stepMetricsで既にHomography変換とglobalDistanceOffset適用済み
         const globalDistance = step.distanceAtContact || 0;
         
-        console.log(`  Step ${localIdx}: globalDist=${globalDistance.toFixed(2)}m, stride=${(step.stride || 0).toFixed(2)}m`);
+        console.log(`  Step ${localIdx}: Homography-corrected globalDist=${globalDistance.toFixed(3)}m, stride=${(step.stride || 0).toFixed(3)}m`);
         
-        // 🔥 ストライドは元の値を保持（シングルカメラ解析済み）
+        // Homography変換済みの値をそのまま使用
         mergedSteps.push({
           ...step,
           distanceAtContact: globalDistance,
