@@ -6674,10 +6674,50 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
         }
       });
       
-      // 有効な座標から実測範囲を計算
+      // 🔧 CRITICAL FIX: キャリブレーションマーカーベースの範囲を使用
+      // ユーザーが設定した4つのコーンの位置（0m, 0m, 5m, 5m）を基準とする
+      // ステップの最小/最大を使うと、ステップ間のスペーシングが失われる！
       const validWorldY = rawWorldCoords.filter((c): c is { x: number; y: number; stepIdx: number } => c !== null).map(c => c.y);
-      const minWorldY = validWorldY.length > 0 ? Math.min(...validWorldY) : segment.startDistanceM;
-      const maxWorldY = validWorldY.length > 0 ? Math.max(...validWorldY) : segment.endDistanceM;
+      
+      // キャリブレーションデータから0m地点と5m地点のWorld座標を取得
+      // もしキャリブレーション情報があれば、そのマーカー位置を使用
+      // なければステップの範囲から推定（フォールバック）
+      let minWorldY: number;
+      let maxWorldY: number;
+      
+      if (segment.calibration?.imgPoints && segment.calibration.H_img_to_world) {
+        // キャリブレーションマーカー（4つのコーン）のWorld座標を使用
+        // imgPoints: { x0_near, x0_far, x1_near, x1_far }
+        // x0 = 0m地点（スタート）, x1 = 5m地点（ゴール）
+        const imgPts = segment.calibration.imgPoints;
+        const markerPixels: [number, number][] = [
+          imgPts.x0_near,
+          imgPts.x0_far,
+          imgPts.x1_near,
+          imgPts.x1_far,
+        ];
+        
+        const markerWorldCoords = markerPixels.map(([u, v]: [number, number]) => {
+          const world = applyHomographyLocal(u, v);
+          return world ? world.y : null;
+        }).filter((y): y is number => y !== null);
+        
+        if (markerWorldCoords.length >= 2) {
+          minWorldY = Math.min(...markerWorldCoords);
+          maxWorldY = Math.max(...markerWorldCoords);
+          console.log(`  ✅ Using calibration markers for range: ${minWorldY.toFixed(2)}m ~ ${maxWorldY.toFixed(2)}m`);
+        } else {
+          // フォールバック: ステップの範囲を使用
+          minWorldY = validWorldY.length > 0 ? Math.min(...validWorldY) : segment.startDistanceM;
+          maxWorldY = validWorldY.length > 0 ? Math.max(...validWorldY) : segment.endDistanceM;
+          console.warn(`  ⚠️ Calibration markers incomplete, using step range as fallback`);
+        }
+      } else {
+        // キャリブレーションなし: ステップの範囲を使用
+        minWorldY = validWorldY.length > 0 ? Math.min(...validWorldY) : segment.startDistanceM;
+        maxWorldY = validWorldY.length > 0 ? Math.max(...validWorldY) : segment.endDistanceM;
+      }
+      
       const actualRange = maxWorldY - minWorldY;
       const expectedRange = segment.endDistanceM - segment.startDistanceM; // e.g., 5.0m
       
