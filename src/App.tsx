@@ -2161,15 +2161,18 @@ const clearMarksByButton = () => {
         }
         
         // 🔴 CRITICAL FIX: worldCoord.y が走行方向距離（X軸は横方向の1.22m幅）
-        // キャリブレーション定義: x0_near=[0, 0], x1_near=[5, 0] → 第2要素(Y)が走行距離
-        const localDistance = worldCoord.y; // Yが走行方向の距離
-        const globalDistance = localDistance + globalDistanceOffset;
-        console.log(`🎯 Frame ${frame}: Pixel (${footPixel.x.toFixed(1)}, ${footPixel.y.toFixed(1)}) → World (lane=${worldCoord.x.toFixed(3)}m, dist=${worldCoord.y.toFixed(3)}m) → Global ${globalDistance.toFixed(3)}m`);
+        // キャリブレーション定義: 
+        //   Segment 1: y-axis = 0~5m (segment.startDistanceM=0, segment.endDistanceM=5)
+        //   Segment 2: y-axis = 5~10m (segment.startDistanceM=5, segment.endDistanceM=10)
+        //   Segment 3: y-axis = 10~15m (segment.startDistanceM=10, segment.endDistanceM=15)
+        // つまり、worldCoord.yは既にグローバル座標！globalDistanceOffsetは不要
+        const globalDistance = worldCoord.y; // Homography出力は既にグローバル座標
+        console.log(`🎯 Frame ${frame}: Pixel (${footPixel.x.toFixed(1)}, ${footPixel.y.toFixed(1)}) → World (lane=${worldCoord.x.toFixed(3)}m, dist=${worldCoord.y.toFixed(3)}m) = Global ${globalDistance.toFixed(3)}m ✅`);
         
-        // worldCoord.y が実世界の走行方向距離（メートル）
-        // worldCoord.x はレーン横方向の位置（0〜1.22m）
-        // キャリブレーションは各セグメントのスタート地点（0m, 5m, 10m）を原点として設定されているため、
-        // globalDistanceOffsetを加算してグローバル座標に変換
+        // worldCoord.y: 実世界の走行方向グローバル距離（メートル）
+        // worldCoord.x: レーン横方向の位置（0〜1.22m）
+        // キャリブレーションの世界座標は startDistanceM ~ endDistanceM で定義されているため、
+        // Homography変換の出力は既にグローバル座標系（globalDistanceOffsetの加算は不要）
         return globalDistance;
       }
       
