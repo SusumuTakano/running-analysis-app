@@ -6655,8 +6655,11 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     let globalStepIndex = 0;
     let totalTime = 0;
     
+    // 🔴 FIX: multiCameraData.segmentMetricsを直接使用（updatedMetricsは古いデータの可能性）
+    const currentSegmentMetrics = multiCameraData.segmentMetrics || {};
+    
     segments.forEach((segment, segIdx) => {
-      const segmentSteps = updatedMetrics[segment.id] || [];
+      const segmentSteps = currentSegmentMetrics[segment.id] || [];
       const calibration = segment.calibration;
       
       console.log(`📊 Segment ${segIdx + 1} (${segment.startDistanceM}-${segment.endDistanceM}m): ${segmentSteps.length} steps, segment.id=${segment.id}`);
