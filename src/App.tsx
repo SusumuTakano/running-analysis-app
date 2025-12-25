@@ -24,6 +24,7 @@ import type {
 } from "./types/multiCameraTypes";
 // Old imports kept for compatibility during transition
 import { combineSegmentSteps, calculateMultiCameraStats } from './utils/multiCameraUtils';
+import { applyHomography } from './utils/multiCameraAnalysis';
 import MobileSimplifier from './components/MobileSimplifier';
 import MobileHeader from './components/MobileHeader';
 import MultiCameraAnalyzer from "./components/MultiCameraAnalyzer";
@@ -2044,30 +2045,7 @@ const clearMarksByButton = () => {
       return null;
     };
     
-    // 🎯 Homography変換: ピクセル座標 → 実世界座標（メートル）
-    const applyHomography = (pixelX: number, pixelY: number, H: number[][]): { x: number; y: number } | null => {
-      if (!H || H.length !== 3 || H[0].length !== 3) {
-        console.warn('⚠️ Invalid Homography matrix');
-        return null;
-      }
-      
-      try {
-        // 同次座標系での変換: [x', y', w'] = H * [x, y, 1]
-        const w = H[2][0] * pixelX + H[2][1] * pixelY + H[2][2];
-        if (Math.abs(w) < 1e-10) {
-          console.warn('⚠️ Homography division by zero');
-          return null;
-        }
-        
-        const worldX = (H[0][0] * pixelX + H[0][1] * pixelY + H[0][2]) / w;
-        const worldY = (H[1][0] * pixelX + H[1][1] * pixelY + H[1][2]) / w;
-        
-        return { x: worldX, y: worldY };
-      } catch (e) {
-        console.error('❌ Homography transformation error:', e);
-        return null;
-      }
-    };
+    // 🎯 Homography変換: multiCameraAnalysis.tsからインポートされた関数を使用
     
     // 🎯 ビデオの実際の解像度を取得（キャリブレーションと一致させる）
     const actualVideoWidth = videoRef.current?.videoWidth || 1920;
@@ -2154,23 +2132,23 @@ const clearMarksByButton = () => {
           return null;
         }
         
-        const worldCoord = applyHomography(footPixel.x, footPixel.y, currentSegmentCalibration.H_img_to_world);
-        if (!worldCoord) {
-          console.warn(`⚠️ Frame ${frame}: Homography returned null for pixel (${footPixel.x}, ${footPixel.y})`);
+        const worldCoord = applyHomography(currentSegmentCalibration.H_img_to_world, footPixel.x, footPixel.y);
+        if (!worldCoord || isNaN(worldCoord[0]) || isNaN(worldCoord[1])) {
+          console.warn(`⚠️ Frame ${frame}: Homography returned invalid result for pixel (${footPixel.x}, ${footPixel.y})`);
           return null;
         }
         
-        // 🔴 CRITICAL FIX: worldCoord.y が走行方向距離（X軸は横方向の1.22m幅）
+        // 🔴 CRITICAL FIX: worldCoord[1] が走行方向距離（worldCoord[0]は横方向の1.22m幅）
         // キャリブレーション定義: 
         //   Segment 1: y-axis = 0~5m (segment.startDistanceM=0, segment.endDistanceM=5)
         //   Segment 2: y-axis = 5~10m (segment.startDistanceM=5, segment.endDistanceM=10)
         //   Segment 3: y-axis = 10~15m (segment.startDistanceM=10, segment.endDistanceM=15)
-        // つまり、worldCoord.yは既にグローバル座標！globalDistanceOffsetは不要
-        const globalDistance = worldCoord.y; // Homography出力は既にグローバル座標
-        console.log(`🎯 Frame ${frame}: Pixel (${footPixel.x.toFixed(1)}, ${footPixel.y.toFixed(1)}) → World (lane=${worldCoord.x.toFixed(3)}m, dist=${worldCoord.y.toFixed(3)}m) = Global ${globalDistance.toFixed(3)}m ✅`);
+        // つまり、worldCoord[1]は既にグローバル座標！globalDistanceOffsetは不要
+        const globalDistance = worldCoord[1]; // Homography出力は既にグローバル座標
+        console.log(`🎯 Frame ${frame}: Pixel (${footPixel.x.toFixed(1)}, ${footPixel.y.toFixed(1)}) → World (lane=${worldCoord[0].toFixed(3)}m, dist=${worldCoord[1].toFixed(3)}m) = Global ${globalDistance.toFixed(3)}m ✅`);
         
-        // worldCoord.y: 実世界の走行方向グローバル距離（メートル）
-        // worldCoord.x: レーン横方向の位置（0〜1.22m）
+        // worldCoord[1]: 実世界の走行方向グローバル距離（メートル）
+        // worldCoord[0]: レーン横方向の位置（0〜1.22m）
         // キャリブレーションの世界座標は startDistanceM ~ endDistanceM で定義されているため、
         // Homography変換の出力は既にグローバル座標系（globalDistanceOffsetの加算は不要）
         return globalDistance;
