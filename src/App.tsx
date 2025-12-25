@@ -6405,6 +6405,39 @@ if (videoRef.current) {
       console.log(`  H[1]: [${H[1][0].toFixed(6)}, ${H[1][1].toFixed(6)}, ${H[1][2].toFixed(6)}]`);
       console.log(`  H[2]: [${H[2][0].toFixed(6)}, ${H[2][1].toFixed(6)}, ${H[2][2].toFixed(6)}]`);
       
+      // 🔍 Homography検証: 4つのコーン位置を逆変換して精度確認
+      console.log(`\n🔍 Homography Validation (reverse mapping check):`);
+      const { applyHomography } = await import('./utils/multiCameraAnalysis');
+      
+      const coneValidation = [
+        { name: 'Start-Near', pixel: imgPoints.x0_near, expected: worldPoints.x0_near },
+        { name: 'Start-Far', pixel: imgPoints.x0_far, expected: worldPoints.x0_far },
+        { name: 'End-Near', pixel: imgPoints.x1_near, expected: worldPoints.x1_near },
+        { name: 'End-Far', pixel: imgPoints.x1_far, expected: worldPoints.x1_far },
+      ];
+      
+      let maxError = 0;
+      coneValidation.forEach(({ name, pixel, expected }) => {
+        const worldCoord = applyHomography(H, pixel[0], pixel[1]);
+        const errorX = Math.abs(worldCoord[0] - expected[0]);
+        const errorY = Math.abs(worldCoord[1] - expected[1]);
+        const totalError = Math.sqrt(errorX * errorX + errorY * errorY);
+        maxError = Math.max(maxError, totalError);
+        
+        const status = totalError < 0.05 ? '✅' : totalError < 0.2 ? '⚠️' : '❌';
+        console.log(`  ${status} ${name}: pixel(${pixel[0].toFixed(0)}, ${pixel[1].toFixed(0)}) → world(${worldCoord[0].toFixed(3)}, ${worldCoord[1].toFixed(3)}) | Expected(${expected[0].toFixed(2)}, ${expected[1].toFixed(2)}) | Error: ${totalError.toFixed(3)}m`);
+      });
+      
+      console.log(`  📏 Maximum calibration error: ${maxError.toFixed(3)}m`);
+      
+      if (maxError > 0.2) {
+        console.warn(`⚠️ WARNING: Calibration error is high (${maxError.toFixed(3)}m). Consider recalibrating.`);
+      } else if (maxError > 0.05) {
+        console.warn(`⚠️ Calibration error is acceptable but not perfect (${maxError.toFixed(3)}m).`);
+      } else {
+        console.log(`✅ Calibration is excellent (error < 0.05m)!`);
+      }
+      
       // セグメントのキャリブレーションデータを更新
       const updatedSegments = [...segments];
       updatedSegments[segmentIndex] = {
@@ -6984,8 +7017,11 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
       console.log(`      Avg stride in segment: ${(coveredDistance / segSteps.length).toFixed(2)}m`);
       
       // 整合性警告
-      if (Math.abs(coveredDistance - segmentLength) > 0.5) {
-        console.warn(`      ⚠️ Distance mismatch: ${Math.abs(coveredDistance - segmentLength).toFixed(2)}m difference`);
+      const distanceDiff = Math.abs(coveredDistance - segmentLength);
+      if (distanceDiff > 0.5) {
+        console.warn(`      ⚠️ Distance mismatch: ${distanceDiff.toFixed(2)}m difference`);
+        console.warn(`      ⚠️ This indicates incorrect Homography calibration for this segment!`);
+        console.warn(`      ⚠️ Recommendation: Recalibrate segment ${idx + 1} by clicking cones more accurately.`);
       }
     });
     
