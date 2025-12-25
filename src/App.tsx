@@ -6655,8 +6655,9 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     let globalStepIndex = 0;
     let totalTime = 0;
     
-    // 🔴 CRITICAL FIX: updatedMetricsを使用（最新のSegment 3データを含む）
-    const currentSegmentMetrics = updatedMetrics;
+    // 🔴 ULTIMATE FIX: updatedStateから最新のsegmentMetricsを取得
+    // updatedMetrics変数はReactの再レンダリングで古い参照を保持する可能性がある
+    const currentSegmentMetrics = updatedState.segmentMetrics || {};
     
     segments.forEach((segment, segIdx) => {
       const segmentSteps = currentSegmentMetrics[segment.id] || [];
