@@ -6802,9 +6802,9 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
         prevSegmentEndDistance = segment.endDistanceM;
       } else {
         // 2つ目以降のセグメント：ギャップをチェックして補間（境界重複は既に除去済み）
-        const crossSegmentThreshold = 2.0; // 2m以上のギャップは補間が必要
+        const crossSegmentThreshold = medianStride * 1.3; // 代表ストライドの1.3倍以上のギャップは補間が必要
         
-        console.log(`  🔍 Checking for gaps (median stride: ${medianStride.toFixed(2)}m)...`);
+        console.log(`  🔍 Checking for gaps (median stride: ${medianStride.toFixed(2)}m, threshold: ${crossSegmentThreshold.toFixed(2)}m)...`);
         
         segmentSteps.forEach(step => {
           const stepDist = step.distanceAtContact || 0;
@@ -6817,9 +6817,10 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
           const gap = stepDist - lastStepDist;
           
           if (gap > crossSegmentThreshold) {
-            // 🔴 CRITICAL: ギャップが大きすぎる（2m以上）→ 境界を跨ぐステップが欠落
-            // 代表ストライド（中央値）を使用して補間
-            const estimatedMissingSteps = Math.floor(gap / medianStride) - 1;
+            // 🔴 CRITICAL FIX: ギャップが大きい場合、代表ストライドを使って欠落ステップ数を計算
+            // 修正前: Math.floor(gap / medianStride) - 1 (2.07/1.5 = 1 - 1 = 0 ← バグ)
+            // 修正後: Math.round(gap / medianStride) - 1 (2.07/1.5 = 1 ← 正しい)
+            const estimatedMissingSteps = Math.round(gap / medianStride) - 1;
             
             console.log(`  🔶 Large gap detected: ${gap.toFixed(2)}m between steps`);
             console.log(`     Last step: ${lastStepDist.toFixed(2)}m, Current step: ${stepDist.toFixed(2)}m`);
