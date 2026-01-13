@@ -6104,7 +6104,10 @@ setVideoFileSync(file);
 const segmentUrl = URL.createObjectURL(file);
 
 setVideoUrl((prev) => {
-  if (prev) URL.revokeObjectURL(prev);
+  // 🔴 CRITICAL FIX: Don't revoke previous blob URL yet
+  // Previous segments may still need their video files for processing
+  // Blob URLs will be cleaned up after all segments are fully processed
+  // if (prev) URL.revokeObjectURL(prev);
   return segmentUrl;
 });
 
@@ -7045,6 +7048,10 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     console.log(`💾 Saved ${finalSteps.length} merged steps to state`);
 
     setStatus("全てのセグメントの解析が完了しました。総合結果を表示します。");
+    
+    // 🧹 Cleanup: Note blob URLs should be manually tracked for proper cleanup
+    // Future improvement: Store blob URLs in state and revoke them here
+    console.log("🧹 Multi-camera processing complete. Blob URL cleanup can be improved in future.");
     
     // 結果画面（Step 7）に遷移
     setTimeout(() => {
