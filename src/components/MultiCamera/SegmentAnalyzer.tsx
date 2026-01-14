@@ -3,7 +3,7 @@
  * Handles individual segment video analysis with frame extraction and pose estimation
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { SegmentRawData, CalibrationData, FramePoseData } from './types';
 import { analyzeSegment } from '../../utils/multiCamera/multiCameraCore';
 import { extractFramesFromVideo } from '../../utils/videoProcessing';
@@ -79,6 +79,16 @@ export const SegmentAnalyzer: React.FC<SegmentAnalyzerProps> = ({
     }
   };
   
+  // Mark contact frame (needs to be before useEffect)
+  const handleMarkContact = useCallback(() => {
+    const frameToMark = currentFrame;
+    setContactMarks(prev => [...prev, frameToMark]);
+    setStatus(prevStatus => {
+      const count = contactMarks.length + 1;
+      return `接地マーク: ${count}回 (Frame ${frameToMark})`;
+    });
+  }, [currentFrame, contactMarks.length]);
+  
   // Keyboard controls
   useEffect(() => {
     if (!framesExtracted) return;
@@ -100,7 +110,7 @@ export const SegmentAnalyzer: React.FC<SegmentAnalyzerProps> = ({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [framesExtracted, totalFrames, contactMarks.length]); // 🔧 FIX: Add dependencies to ensure cleanup
+  }, [framesExtracted, totalFrames, handleMarkContact]); // 🔧 CRITICAL FIX: Use handleMarkContact from useCallback
   
   // Display current frame on canvas
   useEffect(() => {
@@ -115,11 +125,6 @@ export const SegmentAnalyzer: React.FC<SegmentAnalyzerProps> = ({
       }
     }
   }, [currentFrame, framesExtracted]);
-  
-  const handleMarkContact = () => {
-    setContactMarks(prev => [...prev, currentFrame]);
-    setStatus(`接地マーク: ${contactMarks.length + 1}回 (Frame ${currentFrame})`);
-  };
   
   // 🆕 Run pose estimation
   const handleRunPoseEstimation = async () => {
