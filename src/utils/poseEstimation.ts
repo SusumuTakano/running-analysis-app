@@ -197,8 +197,8 @@ export async function runPoseEstimationOnFrames(
     };
 
     // バッチ処理のサイズ（メモリ解放のタイミング）
-    const batchSize = isIPad ? 3 : (isMobile ? 5 : 20);
-    const timeoutDuration = isIPad ? 15000 : (isMobile ? 10000 : 5000);
+    const batchSize = isIPad ? 3 : (isMobile ? 5 : 10); // デスクトップも10フレームに削減
+    const timeoutDuration = 30000; // 全デバイス共通で30秒に延長（593フレーム対応）
 
     // 最初のフレームで動作確認
     if (totalFrames > 0) {
@@ -236,6 +236,18 @@ export async function runPoseEstimationOnFrames(
 
     onStatus("姿勢推定を実行中...");
 
+    // 🔧 FIX: onResults を1回だけ設定（コールバック競合を防ぐ）
+    let currentResolve: ((value: any) => void) | null = null;
+    let currentReject: ((reason?: any) => void) | null = null;
+
+    pose.onResults((result: any) => {
+      if (currentResolve) {
+        currentResolve(result);
+        currentResolve = null;
+        currentReject = null;
+      }
+    });
+
     // フレームごとに処理
     for (let i = 0; i < totalFrames; i++) {
       const frame = frames[i];
@@ -243,18 +255,35 @@ export async function runPoseEstimationOnFrames(
 
       try {
         const result = await new Promise<any>((resolve, reject) => {
+          currentResolve = resolve;
+          currentReject = reject;
+          
           const timeout = setTimeout(() => {
-            console.error(`❌ Frame ${i} timeout`);
-            reject(new Error(`Frame ${i} timeout`));
+            if (currentReject) {
+              console.error(`❌ Frame ${i} timeout`);
+              currentReject(new Error(`Frame ${i} timeout`));
+              currentResolve = null;
+              currentReject = null;
+            }
           }, timeoutDuration);
           
-          pose.onResults((r: any) => {
+          drawPoseInput();
+          pose.send({ image: poseCanvas }).catch((e: any) => {
             clearTimeout(timeout);
-            resolve(r);
+            if (currentReject) {
+              console.error(`❌ Frame ${i} send error:`, e);
+              currentReject(e);
+              currentResolve = null;
+              currentReject = null;
+            }
           });
           
-          drawPoseInput();
-          pose.send({ image: poseCanvas }).catch(reject);
+          // 成功時にタイムアウトをクリア
+          const originalResolve = resolve;
+          currentResolve = (r: any) => {
+            clearTimeout(timeout);
+            originalResolve(r);
+          };
         });
 
         if (result.poseLandmarks) {
@@ -282,9 +311,10 @@ export async function runPoseEstimationOnFrames(
         results.push(null);
       }
 
-      // バッチごとにメモリ解放
+      // バッチごとにメモリ解放（待機時間を延長）
       if ((i + 1) % batchSize === 0) {
-        await new Promise(resolve => setTimeout(resolve, 10));
+        console.log(`📦 Batch ${Math.floor((i + 1) / batchSize)} complete (${i + 1}/${totalFrames})`);
+        await new Promise(resolve => setTimeout(resolve, 100)); // 100ms待機
       }
     }
 
