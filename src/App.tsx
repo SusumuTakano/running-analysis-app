@@ -1559,8 +1559,9 @@ const [notesInput, setNotesInput] = useState<string>("");
     }
 
     // 🔥🔥 超高精度：つま先下降→完全停止を検出
-    const minDesc = range * 0.002; // これ以上なら「下降している」（さらに感度UP）
-    const flatEps = range * 0.001; // これ以内なら「完全停止」（最も厳しく）
+    // 🚀 CRITICAL FIX: 閾値を緩和して検出感度を上げる
+    const minDesc = range * 0.004; // これ以上なら「下降している」（感度UP: 0.002→0.004）
+    const flatEps = range * 0.002; // これ以内なら「完全停止」（感度UP: 0.001→0.002）
     
     // 接地候補を探す：下降から完全停止への遷移
     const candidates: Array<{frame: number, idx: number, score: number, flatDuration: number}> = [];
@@ -1725,8 +1726,9 @@ const [notesInput, setNotesInput] = useState<string>("");
     }
 
     // 🔥🔥 超高精度：接地後の完全停止→明確な上昇開始を検出
-    const velPlateau = range * 0.001; // プラトーとみなす速度（最も厳しく）
-    const velUp = range * 0.0015; // 「上昇開始」とみなす速度（さらに感度UP）
+    // 🚀 CRITICAL FIX: 閾値を緩和して検出感度を上げる
+    const velPlateau = range * 0.002; // プラトーとみなす速度（感度UP: 0.001→0.002）
+    const velUp = range * 0.003; // 「上昇開始」とみなす速度（感度UP: 0.0015→0.003）
 
     // ① contactFrame に対応するインデックスを探す
     let contactIdx = toePoints.findIndex((p) => p.frame === contactFrame);
