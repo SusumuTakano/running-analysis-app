@@ -150,6 +150,8 @@ export interface MergedAnalysisResult {
     avgCadence: number;
     
     medianStrideM: number;        // More robust than average
+    avgContactTimeS: number;      // Average contact time
+    avgFlightTimeS: number;       // Average flight time
   };
   
   // Boundary analysis

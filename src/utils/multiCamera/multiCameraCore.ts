@@ -340,6 +340,14 @@ export function mergeSegments(
   const avgSpeedMps = totalTimeS > 0 ? totalDistanceM / totalTimeS : 0;
   const avgCadence = totalTimeS > 0 ? (realSteps.length / (totalTimeS / 60)) : 0;
   
+  // Calculate average contact and flight times
+  const avgContactTimeS = realSteps.length > 0
+    ? realSteps.reduce((sum, s) => sum + s.contactTimeS, 0) / realSteps.length
+    : 0;
+  const avgFlightTimeS = realSteps.length > 0
+    ? realSteps.reduce((sum, s) => sum + s.flightTimeS, 0) / realSteps.length
+    : 0;
+  
   console.log(`\n✅ Merge complete:`);
   console.log(`   Total steps: ${finalSteps.length}`);
   console.log(`   Real steps: ${realSteps.length}`);
@@ -347,6 +355,8 @@ export function mergeSegments(
   console.log(`   Average stride: ${avgStrideM.toFixed(3)}m`);
   console.log(`   Median stride: ${medianStrideM.toFixed(3)}m`);
   console.log(`   Average speed: ${avgSpeedMps.toFixed(2)}m/s`);
+  console.log(`   Average contact time: ${avgContactTimeS.toFixed(3)}s`);
+  console.log(`   Average flight time: ${avgFlightTimeS.toFixed(3)}s`);
   
   return {
     allSteps: finalSteps,
@@ -360,6 +370,8 @@ export function mergeSegments(
       avgStrideM,
       avgCadence,
       medianStrideM,
+      avgContactTimeS,
+      avgFlightTimeS,
     },
     boundaries,
     warnings,

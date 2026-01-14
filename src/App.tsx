@@ -131,6 +131,7 @@ type MultiCameraSummary = {
   totalDistance: number;
   totalSegments: number;
   totalSteps: number;
+  realSteps?: number; // 🚀 NEW: Real (non-interpolated) steps
   avgStride: number | null;
   avgContact: number | null;
   avgFlight: number | null;
@@ -550,6 +551,11 @@ const [wizardStep, setWizardStep] = useState<WizardStep>(0);
   const [runSegments, setRunSegments] = useState<RunSegment[]>([]);
   const [isMultiCameraSetup, setIsMultiCameraSetup] = useState(false);
   const [multiCameraData, setMultiCameraData] = useState<MultiCameraState | null>(null);
+  
+  // 🚀 NEW: State for new multi-camera analysis system
+  const [isNewMultiCameraAnalysis, setIsNewMultiCameraAnalysis] = useState(false);
+  const [newMultiCameraRun, setNewMultiCameraRun] = useState<Run | null>(null);
+  const [newMultiCameraSegments, setNewMultiCameraSegments] = useState<RunSegment[]>([]);
 // ✅ multiで setState が反映される前に参照できるようにする（同期Ref）
   const videoFileRef = useRef<File | null>(null);
   const setVideoFileSync = (f: File | null) => { videoFileRef.current = f; setVideoFile(f); };
@@ -6502,73 +6508,77 @@ if (videoRef.current) {
 // ✅ 新 MultiCameraSetup 用：解析開始ボタンから呼ばれる
 // ✅ 新 MultiCameraSetup 用：解析開始ボタンから呼ばれる
 const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
-  console.log("✅ マルチカメラ解析開始（既存フロー使用）:", { run, segments });
-
+  console.log("✅ 新しいマルチカメラシステムで解析開始:", { run, segments });
+  
   // セグメントにキャリブレーションが設定されているか確認
   const hasCalibration = segments.every(seg => !!seg.calibration);
   console.log(`📊 Calibration check: ${hasCalibration ? 'All segments calibrated ✅' : 'Missing calibration ❌'}`);
-
-  // キャリブレーション情報は保持するが、既存の解析フローを使用
-  // （将来的にキャリブレーション情報を活用する場合のために保持）
-
-  // videoFiles マップを作成
-  const videoFiles: Record<string, File> = {};
-  segments.forEach((seg, i) => {
-    const f = seg.videoFile;
-    if (!f) return;
-    if (seg.id) videoFiles[seg.id] = f;
-    const idxKey = String(seg.segmentIndex ?? i);
-    videoFiles[idxKey] = f;
-  });
-
-  // 解析対象（動画あり）だけに絞る
-  const availableSegments = segments.filter((seg, i) => {
-    const idxKey = String(seg.segmentIndex ?? i);
-    return !!videoFiles[seg.id] || !!videoFiles[idxKey];
-  });
-
-  if (availableSegments.length === 0) {
-    alert("動画がアップロードされているセグメントがありません。");
+  
+  if (!hasCalibration) {
+    alert("すべてのセグメントでキャリブレーションを完了してください。");
     return;
   }
-
-  const nextState: MultiCameraState = {
-    run,
-    segments: availableSegments,
-    videoFiles,
-    currentIndex: 0,
-    segmentMetrics: {},
-    initialFps: selectedFps, // 現在のFPS設定を保存
-  };
   
-  console.log(`💾 Saving initial FPS: ${selectedFps} for multi-camera analysis`);
-
-  // 最初のセグメントのファイルを設定
-  const firstSeg = availableSegments[0];
-  const firstIdxKey = String(firstSeg.segmentIndex ?? 0);
-  const firstFile = videoFiles[firstSeg.id] ?? videoFiles[firstIdxKey];
-
-  if (firstFile) {
-    setVideoFile(firstFile);
-    const newUrl = URL.createObjectURL(firstFile);
-    setVideoUrl(newUrl);
-  }
-
-  // マルチカメラ解析フローへ
-  setCurrentRun(run);
-  setRunSegments(availableSegments);
-  setAnalysisMode("multi");
+  // 新しいマルチカメラ解析フローへ
+  setNewMultiCameraRun(run);
+  setNewMultiCameraSegments(segments);
+  setIsNewMultiCameraAnalysis(true);
   setIsMultiCameraSetup(false);
-  setMultiCameraSummary(null);
-  setMultiCameraData(nextState);
+  setAnalysisMode("multi");
+  
+  console.log("🚀 Starting new multi-camera analysis system");
+};
 
-  // Step 3（フレーム抽出）へ
-  setWizardStep(3);
+// 🚀 NEW: Handle completion of new multi-camera analysis
+const handleNewMultiCameraComplete = (result: any) => {
+  console.log("✅ 新しいマルチカメラ解析完了:", result);
+  
+  // Convert new format to old format for compatibility with existing charts
+  const convertedMetrics = result.allSteps.map((step: any, idx: number) => ({
+    index: idx,
+    contactFrame: step.contactFrame,
+    toeOffFrame: step.toeOffFrame,
+    contactTime: step.contactTimeS,
+    flightTime: step.flightTimeS,
+    stride: step.strideM,
+    fullStride: step.strideM,
+    distanceAtContact: step.distanceAtContactM,
+    speedMps: step.speedMps,
+    cadence: step.cadence,
+    quality: step.quality,
+    isInterpolated: step.isInterpolated,
+  }));
+  
+  // Save to existing state for charts
+  setMergedStepMetrics(convertedMetrics);
+  
+  // Show summary
+  setMultiCameraSummary({
+    totalDistance: result.summary.totalDistanceM,
+    totalSegments: newMultiCameraSegments.length,
+    totalSteps: result.summary.totalSteps,
+    realSteps: result.summary.realSteps,
+    avgStride: result.summary.avgStrideM,
+    avgContact: result.summary.avgContactTimeS || null,
+    avgFlight: result.summary.avgFlightTimeS || null,
+    avgSpeed: result.summary.avgSpeedMps,
+    totalTime: result.summary.totalTimeS,
+  });
+  
+  // Update status
+  setStatus(`解析完了！総ステップ: ${result.summary.totalSteps} (実測: ${result.summary.realSteps})`);
+  setWizardStep(9); // Go to final results screen
+  setIsNewMultiCameraAnalysis(false);
+  
+  console.log("📊 Converted metrics saved to state");
+};
 
-  // 最初のセグメントを読み込み
-  setTimeout(() => {
-    loadMultiCameraSegment(nextState, 0);
-  }, 100);
+// Handle cancel from new multi-camera analysis
+const handleCancelNewMultiCamera = () => {
+  setIsNewMultiCameraAnalysis(false);
+  setIsMultiCameraSetup(true);
+  setAnalysisMode("single");
+  setStatus("マルチカメラ解析をキャンセルしました。");
 };
 
 
@@ -7136,6 +7146,22 @@ if (analysisMode === 'multi' && isMultiCameraSetup) {
         setIsMultiCameraSetup(false);
         setAnalysisMode('single');
       }}
+    />
+  );
+}
+
+// 🚀 NEW: 新しいマルチカメラ解析システム
+if (analysisMode === 'multi' && isNewMultiCameraAnalysis && newMultiCameraRun && newMultiCameraSegments.length > 0) {
+  // Convert RunSegment[] to SegmentRawData[] (we'll need to add video processing logic)
+  // For now, pass directly to MultiCameraAnalysis
+  return (
+    <MultiCameraAnalysis
+      runId={newMultiCameraRun.id}
+      totalDistanceM={newMultiCameraRun.totalDistanceM}
+      segmentLengthM={newMultiCameraSegments[0]?.endDistanceM - newMultiCameraSegments[0]?.startDistanceM || 5}
+      segments={newMultiCameraSegments as any} // TypeScript: will fix later
+      onComplete={handleNewMultiCameraComplete}
+      onCancel={handleCancelNewMultiCamera}
     />
   );
 }
