@@ -3,6 +3,11 @@
  * Reusable functions for video frame extraction and MediaPipe pose estimation
  */
 
+export interface FramePoseData {
+  landmarks: Array<{ x: number; y: number; z: number; visibility?: number }>;
+  worldLandmarks?: Array<{ x: number; y: number; z: number; visibility?: number }>;
+}
+
 /**
  * Extract frames from a video file
  */
@@ -160,23 +165,129 @@ export async function extractFramesFromVideo(
 export async function runPoseEstimationOnFrames(
   frames: ImageData[],
   onProgress?: (progress: number, status: string) => void
-): Promise<Array<any | null>> {
+): Promise<Array<FramePoseData | null>> {
   console.log(`🏃 Running pose estimation on ${frames.length} frames`);
   
-  // This will be implemented using the existing MediaPipe integration
-  // For now, return a placeholder
-  const poseResults: Array<any | null> = [];
+  onProgress?.(0, '姿勢推定を準備中...');
   
-  for (let i = 0; i < frames.length; i++) {
-    // TODO: Integrate with existing MediaPipe pose estimation
-    // For now, push null as placeholder
-    poseResults.push(null);
-    
-    const progress = Math.floor((i / frames.length) * 100);
-    onProgress?.(progress, `Pose estimation: ${i + 1}/${frames.length}`);
+  // Check if MediaPipe is loaded
+  const Pose: any = (window as any).Pose;
+  if (!Pose) {
+    throw new Error('MediaPipe Pose not loaded. Please reload the page.');
   }
   
-  onProgress?.(100, `✅ Pose estimation complete`);
+  // Create Pose instance
+  const pose = new Pose({
+    locateFile: (file: string) => {
+      return `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`;
+    },
+  });
   
-  return poseResults;
+  // Device detection
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  const isIPad = /iPad/i.test(navigator.userAgent) || 
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  
+  // Configure based on device
+  const modelComplexity = isIPad ? 1 : (isMobile ? 1 : 2);
+  const minDetectionConfidence = 0.05;
+  const minTrackingConfidence = 0.05;
+  
+  pose.setOptions({
+    modelComplexity,
+    smoothLandmarks: true,
+    enableSegmentation: false,
+    smoothSegmentation: false,
+    minDetectionConfidence,
+    minTrackingConfidence,
+    selfieMode: false,
+    staticImageMode: false,
+  });
+  
+  console.log(`🔧 Pose config: modelComplexity=${modelComplexity}, mobile=${isMobile}, iPad=${isIPad}`);
+  
+  // Wait for initialization on iPad
+  if (isIPad) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  
+  const results: Array<FramePoseData | null> = [];
+  const totalFrames = frames.length;
+  
+  // Create canvases for processing
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = frames[0].width;
+  tempCanvas.height = frames[0].height;
+  const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+  
+  if (!tempCtx) {
+    throw new Error('Failed to create canvas context');
+  }
+  
+  // Downscale for MediaPipe
+  const maxPoseWidth = isIPad ? 540 : 960;
+  const poseScale = Math.min(1, maxPoseWidth / tempCanvas.width);
+  const poseCanvas = document.createElement('canvas');
+  poseCanvas.width = Math.round(tempCanvas.width * poseScale);
+  poseCanvas.height = Math.round(tempCanvas.height * poseScale);
+  const poseCtx = poseCanvas.getContext('2d', { willReadFrequently: true });
+  
+  if (!poseCtx) {
+    throw new Error('Failed to create pose canvas context');
+  }
+  
+  // Process frames
+  for (let i = 0; i < totalFrames; i++) {
+    const frame = frames[i];
+    
+    // Draw frame to canvas
+    tempCtx.putImageData(frame, 0, 0);
+    poseCtx.clearRect(0, 0, poseCanvas.width, poseCanvas.height);
+    poseCtx.drawImage(tempCanvas, 0, 0, poseCanvas.width, poseCanvas.height);
+    
+    // Run pose estimation
+    try {
+      const result = await new Promise<any>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          console.warn(`⚠️ Frame ${i} timeout`);
+          resolve(null);
+        }, isIPad ? 10000 : 5000);
+        
+        pose.onResults((r: any) => {
+          clearTimeout(timeout);
+          resolve(r);
+        });
+        
+        pose.send({ image: poseCanvas }).catch((e: any) => {
+          console.error(`❌ Frame ${i} error:`, e);
+          reject(e);
+        });
+      });
+      
+      if (result && result.poseLandmarks) {
+        results.push({
+          landmarks: result.poseLandmarks,
+          worldLandmarks: result.worldLandmarks,
+        });
+      } else {
+        results.push(null);
+      }
+    } catch (error) {
+      console.error(`❌ Frame ${i} error:`, error);
+      results.push(null);
+    }
+    
+    // Report progress
+    const progress = Math.floor(((i + 1) / totalFrames) * 100);
+    onProgress?.(
+      Math.min(progress, 99),
+      `姿勢推定中... ${i + 1}/${totalFrames}`
+    );
+  }
+  
+  onProgress?.(100, `✅ 姿勢推定完了 (${results.filter(r => r !== null).length}/${totalFrames} フレーム成功)`);
+  
+  console.log(`✅ Pose estimation complete: ${results.filter(r => r !== null).length}/${totalFrames} successful`);
+  
+  return results;
 }
