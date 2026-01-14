@@ -213,6 +213,7 @@ export const MultiCameraAnalysis: React.FC<MultiCameraAnalysisProps> = ({
         
         <div style={{ borderTop: '2px solid #ddd', paddingTop: '20px' }}>
           <SegmentAnalyzer
+            key={currentSegment.id} // 🔧 FIX: Force remount on segment change
             segment={currentSegment}
             onAnalysisComplete={handleSegmentAnalysisComplete}
             onCancel={onCancel}

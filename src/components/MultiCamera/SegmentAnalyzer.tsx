@@ -93,8 +93,10 @@ export const SegmentAnalyzer: React.FC<SegmentAnalyzerProps> = ({
     };
     
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [framesExtracted, totalFrames]);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [framesExtracted, totalFrames, contactMarks.length]); // 🔧 FIX: Add dependencies to ensure cleanup
   
   // Display current frame on canvas
   useEffect(() => {

@@ -109,25 +109,37 @@ export function analyzeSegment(
     const contactFrame = segmentData.contactFrames[i];
     const toeOffFrame = segmentData.toeOffFrames[i] || contactFrame + 10; // Default toe-off
     
+    // 🔧 NEW: Support manual marking without pose estimation
+    let distanceAtContactM: number;
+    let footPixel: { x: number; y: number };
+    
     const poseData = segmentData.poseResults[contactFrame];
-    if (!poseData) {
-      warnings.push(`Frame ${contactFrame}: No pose data`);
-      continue;
+    
+    if (poseData && poseData.landmarks) {
+      // Use pose data if available
+      footPixel = getFootPixelCoordinates(poseData, videoWidth, videoHeight);
+      
+      // Apply Homography to get world coordinates
+      const [worldX, worldY] = applyHomography(H, footPixel.x, footPixel.y);
+      
+      if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) {
+        warnings.push(`Frame ${contactFrame}: Invalid Homography result`);
+        continue;
+      }
+      
+      distanceAtContactM = worldX;
+    } else {
+      // 🚀 FALLBACK: Manual marking without pose estimation
+      // Estimate distance based on frame position and segment length
+      const segmentLength = segmentData.endDistanceM - segmentData.startDistanceM;
+      const frameFraction = contactFrame / (segmentData.totalFrames || 1);
+      distanceAtContactM = segmentData.startDistanceM + (frameFraction * segmentLength);
+      
+      // Use center-bottom as foot position (approximation)
+      footPixel = { x: videoWidth / 2, y: videoHeight };
+      
+      console.log(`   ⚠️ Step ${i}: No pose data, using frame-based estimation: ${distanceAtContactM.toFixed(3)}m`);
     }
-    
-    // Get foot pixel coordinates
-    const footPixel = getFootPixelCoordinates(poseData, videoWidth, videoHeight);
-    
-    // Apply Homography to get world coordinates
-    const [worldX, worldY] = applyHomography(H, footPixel.x, footPixel.y);
-    
-    if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) {
-      warnings.push(`Frame ${contactFrame}: Invalid Homography result`);
-      continue;
-    }
-    
-    // worldX is the distance along the track
-    const distanceAtContactM = worldX;
     
     // Calculate contact and flight times
     const nextContactFrame = segmentData.contactFrames[i + 1] || toeOffFrame + 10;
