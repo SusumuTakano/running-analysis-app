@@ -11,6 +11,7 @@ import Chart from "chart.js/auto";
 import { generateRunningEvaluation, type RunningEvaluation } from "./runningEvaluation";
 // New multi-camera components
 import { MultiCameraSetup } from './components/MultiCameraSetup';
+import { MultiCameraAnalysis } from './components/MultiCamera/MultiCameraAnalysis';
 import CanvasRoiSelector from './components/CanvasRoiSelector';
 import { CanvasRoi, getCanvasCoordinates, drawFrameWithOverlay, extractRoiForPoseEstimation } from './utils/canvasUtils';
 import { Step5Simple } from './components/Step5Simple';
