@@ -82,12 +82,12 @@ export const SegmentAnalyzer: React.FC<SegmentAnalyzerProps> = ({
   // Mark contact frame (needs to be before useEffect)
   const handleMarkContact = useCallback(() => {
     const frameToMark = currentFrame;
-    setContactMarks(prev => [...prev, frameToMark]);
-    setStatus(prevStatus => {
-      const count = contactMarks.length + 1;
-      return `接地マーク: ${count}回 (Frame ${frameToMark})`;
+    setContactMarks(prev => {
+      const newMarks = [...prev, frameToMark];
+      setStatus(`接地マーク: ${newMarks.length}回 (Frame ${frameToMark})`);
+      return newMarks;
     });
-  }, [currentFrame, contactMarks.length]);
+  }, [currentFrame]); // 🔧 CRITICAL FIX: Remove contactMarks.length dependency
   
   // Keyboard controls
   useEffect(() => {
