@@ -6581,6 +6581,40 @@ const handleCancelNewMultiCamera = () => {
   setStatus("マルチカメラ解析をキャンセルしました。");
 };
 
+// 🚀 NEW: Convert RunSegment to SegmentRawData
+const convertToSegmentRawData = (runSegments: RunSegment[]): any[] => {
+  return runSegments.map((seg, idx) => {
+    const videoUrl = seg.videoFile ? URL.createObjectURL(seg.videoFile) : '';
+    
+    return {
+      id: seg.id,
+      segmentIndex: idx,
+      videoFile: seg.videoFile!,
+      videoObjectURL: videoUrl,
+      
+      startDistanceM: seg.startDistanceM,
+      endDistanceM: seg.endDistanceM,
+      
+      fps: seg.fps || 120,
+      totalFrames: 0, // Will be filled during extraction
+      frames: [], // Will be filled during extraction
+      
+      poseResults: [], // Will be filled during pose estimation
+      
+      contactFrames: [], // User will mark these
+      toeOffFrames: [], // Optional
+      
+      calibration: seg.calibration ? {
+        H_img_to_world: seg.calibration.H_img_to_world,
+        coneClicks: seg.calibration.imgPoints,
+        videoWidth: 1920, // Default, will be updated
+        videoHeight: 1080, // Default, will be updated
+        quality: 1.0, // Assume good quality
+      } : null,
+    };
+  });
+};
+
 
   // マルチカメラ解析を中断して設定画面へ戻る
   const handleCancelMultiCamera = () => {
@@ -7152,14 +7186,15 @@ if (analysisMode === 'multi' && isMultiCameraSetup) {
 
 // 🚀 NEW: 新しいマルチカメラ解析システム
 if (analysisMode === 'multi' && isNewMultiCameraAnalysis && newMultiCameraRun && newMultiCameraSegments.length > 0) {
-  // Convert RunSegment[] to SegmentRawData[] (we'll need to add video processing logic)
-  // For now, pass directly to MultiCameraAnalysis
+  // Convert RunSegment[] to SegmentRawData[]
+  const segmentRawData = convertToSegmentRawData(newMultiCameraSegments);
+  
   return (
     <MultiCameraAnalysis
       runId={newMultiCameraRun.id}
       totalDistanceM={newMultiCameraRun.totalDistanceM}
       segmentLengthM={newMultiCameraSegments[0]?.endDistanceM - newMultiCameraSegments[0]?.startDistanceM || 5}
-      segments={newMultiCameraSegments as any} // TypeScript: will fix later
+      segments={segmentRawData}
       onComplete={handleNewMultiCameraComplete}
       onCancel={handleCancelNewMultiCamera}
     />
