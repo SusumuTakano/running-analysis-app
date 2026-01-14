@@ -6600,6 +6600,59 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
       }
     }
 
+    // ==========================================
+    // 🔧 自動スケール補正: Homography距離の検証と補正
+    // ==========================================
+    console.log(`\n🔍 === Auto-Scale Correction for Segment ${currentIndex + 1} ===`);
+    
+    if (metricsSnapshot.length >= 2 && currentSegment.calibration?.H_img_to_world) {
+      // 最初と最後のステップの距離を取得
+      const firstStep = metricsSnapshot[0];
+      const lastStep = metricsSnapshot[metricsSnapshot.length - 1];
+      const measuredDistance = (lastStep.distanceAtContact || 0) - (firstStep.distanceAtContact || 0);
+      const segmentLength = currentSegment.endDistanceM - currentSegment.startDistanceM;
+      
+      console.log(`   Segment ${currentIndex + 1} (${currentSegment.startDistanceM}-${currentSegment.endDistanceM}m):`);
+      console.log(`   Steps detected: ${metricsSnapshot.length}`);
+      console.log(`   First step: ${firstStep.distanceAtContact?.toFixed(3)}m`);
+      console.log(`   Last step: ${lastStep.distanceAtContact?.toFixed(3)}m`);
+      console.log(`   Measured distance: ${measuredDistance.toFixed(3)}m`);
+      console.log(`   Expected distance: ${segmentLength.toFixed(3)}m`);
+      
+      const scaleFactor = segmentLength / measuredDistance;
+      console.log(`   📏 Scale correction factor: ${scaleFactor.toFixed(3)}`);
+      
+      // スケール補正が必要か判定（10%以上のズレ）
+      if (Math.abs(scaleFactor - 1.0) > 0.1) {
+        console.log(`   ⚠️ Significant scale mismatch detected. Applying correction...`);
+        
+        // 全ステップの距離とストライドを補正
+        metricsSnapshot.forEach((step, idx) => {
+          const originalDist = step.distanceAtContact || 0;
+          const originalStride = step.stride || 0;
+          
+          // セグメント開始点からの相対距離を計算
+          const relativeDistance = originalDist - currentSegment.startDistanceM;
+          
+          // 補正後の絶対距離
+          const correctedDistance = currentSegment.startDistanceM + (relativeDistance * scaleFactor);
+          const correctedStride = originalStride * scaleFactor;
+          
+          step.distanceAtContact = correctedDistance;
+          step.stride = correctedStride;
+          step.fullStride = correctedStride;
+          
+          console.log(`      Step ${idx}: ${originalDist.toFixed(3)}m → ${correctedDistance.toFixed(3)}m (stride: ${originalStride.toFixed(3)}m → ${correctedStride.toFixed(3)}m)`);
+        });
+        
+        console.log(`   ✅ Scale correction applied to ${metricsSnapshot.length} steps`);
+      } else {
+        console.log(`   ✅ Scale is acceptable (within 10%). No correction needed.`);
+      }
+    } else {
+      console.log(`   ⚠️ Insufficient data for scale correction (steps: ${metricsSnapshot.length}, calibration: ${currentSegment.calibration ? 'yes' : 'no'})`);
+    }
+
     const updatedMetrics: Record<string, StepMetric[]> = {
       ...segmentMetrics,
       [currentSegment.id]: metricsSnapshot,
