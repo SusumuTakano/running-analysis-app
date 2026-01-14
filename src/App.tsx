@@ -6993,20 +6993,21 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     // 補間ステップは既にfinalStepsに含まれているので、再構築は不要
     
     // 🔧 CRITICAL FIX: 同じ距離のステップを削除（セグメント境界の重複）
-    console.log(`\n🔧 === Removing exact distance duplicates ===`);
+    // 🚀 NEW: 0.05m（5cm）精度で重複判定（1cm精度は厳しすぎた）
+    console.log(`\n🔧 === Removing exact distance duplicates (5cm precision) ===`);
     const uniqueSteps: StepMetric[] = [];
     const seenDistances = new Set<number>();
     
     finalSteps.forEach((step, idx) => {
       const dist = step.distanceAtContact || 0;
-      const roundedDist = Math.round(dist * 100) / 100; // 0.01m精度で丸める
+      const roundedDist = Math.round(dist * 20) / 20; // 0.05m精度で丸める（1cm→5cm）
       
       if (!seenDistances.has(roundedDist)) {
         seenDistances.add(roundedDist);
         uniqueSteps.push(step);
-        console.log(`  ✅ Keep step at ${dist.toFixed(2)}m (segment: ${step.segmentId?.slice(-10) ?? 'N/A'})`);
+        console.log(`  ✅ Keep step at ${dist.toFixed(3)}m (rounded: ${roundedDist.toFixed(2)}m, segment: ${step.segmentId?.slice(-10) ?? 'N/A'})`);
       } else {
-        console.log(`  ⚠️ Skip duplicate at ${dist.toFixed(2)}m (segment: ${step.segmentId?.slice(-10) ?? 'N/A'})`);
+        console.log(`  ⚠️ Skip duplicate at ${dist.toFixed(3)}m (rounded: ${roundedDist.toFixed(2)}m, segment: ${step.segmentId?.slice(-10) ?? 'N/A'})`);
       }
     });
     
@@ -7030,7 +7031,8 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     segments.forEach((seg, idx) => {
       const segSteps = finalSteps.filter(s => {
         const dist = s.distanceAtContact || 0;
-        return dist >= seg.startDistanceM && dist < seg.endDistanceM;
+        // 🚀 CRITICAL FIX: 終了距離+0.2mまでのステップを含める（15m→15.2mまでOK）
+        return dist >= seg.startDistanceM && dist <= seg.endDistanceM + 0.2;
       });
       
       if (segSteps.length === 0) {
