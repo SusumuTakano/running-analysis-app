@@ -129,13 +129,15 @@ const CalibrationPanel: React.FC<{
       x1_far: points[3].px
     };
 
-    // World points: x-axis = lane width (0~1.22m), y-axis = running direction (0~15m)
-    // near = camera-side (x=0), far = opposite-side (x=laneWidthM)
+    // 🔧 FIX: World points coordinate system
+    // X-axis = running direction (distance: 0~15m)
+    // Y-axis = lane width (0~1.22m)
+    // near = camera-side (y=0), far = opposite-side (y=laneWidthM)
     const worldPoints = {
-      x0_near: [0, x0] as [number, number],          // (0, startDistanceM)
-      x0_far: [laneWidthM, x0] as [number, number],  // (1.22, startDistanceM)
-      x1_near: [0, x1] as [number, number],          // (0, endDistanceM)
-      x1_far: [laneWidthM, x1] as [number, number]   // (1.22, endDistanceM)
+      x0_near: [x0, 0] as [number, number],               // (startDistanceM, 0)
+      x0_far: [x0, laneWidthM] as [number, number],       // (startDistanceM, 1.22)
+      x1_near: [x1, 0] as [number, number],               // (endDistanceM, 0)
+      x1_far: [x1, laneWidthM] as [number, number]        // (endDistanceM, 1.22)
     };
 
     let H: SegmentCalibration['H_img_to_world'] | null = null;

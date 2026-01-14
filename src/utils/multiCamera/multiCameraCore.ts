@@ -104,6 +104,10 @@ export function analyzeSegment(
   const videoHeight = segmentData.calibration.videoHeight;
   const fps = segmentData.fps;
   
+  // 🔍 DEBUG: Log Homography matrix
+  console.log(`   📐 Homography matrix:`, H);
+  console.log(`   📹 Video resolution: ${videoWidth} × ${videoHeight}`);
+  
   // Process each contact frame
   for (let i = 0; i < segmentData.contactFrames.length; i++) {
     const contactFrame = segmentData.contactFrames[i];
@@ -119,8 +123,14 @@ export function analyzeSegment(
       // Use pose data if available
       footPixel = getFootPixelCoordinates(poseData, videoWidth, videoHeight);
       
+      // 🔍 DEBUG: Log before Homography
+      console.log(`   📍 Step ${i} foot pixel: (${footPixel.x.toFixed(1)}, ${footPixel.y.toFixed(1)})`);
+      
       // Apply Homography to get world coordinates
       const [worldX, worldY] = applyHomography(H, footPixel.x, footPixel.y);
+      
+      // 🔍 DEBUG: Log after Homography
+      console.log(`   🌐 Step ${i} world coordinates: (${worldX.toFixed(3)}m, ${worldY.toFixed(3)}m)`);
       
       if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) {
         warnings.push(`Frame ${contactFrame}: Invalid Homography result`);
