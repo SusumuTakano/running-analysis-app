@@ -6592,6 +6592,12 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
       return;
     }
 
+    // 🔍 DEBUG: stepMetrics の中身を確認
+    console.log(`🔍 [DEBUG] stepMetrics before snapshot: ${stepMetrics.length} steps`);
+    stepMetrics.forEach((step, idx) => {
+      console.log(`   Step ${idx}: contactFrame=${step.contactFrame}, dist=${step.distanceAtContact?.toFixed(3)}m`);
+    });
+
     const metricsSnapshot = stepMetrics.map((metric) => ({ ...metric }));
     if (!metricsSnapshot.length) {
       const shouldSkip = confirm(
