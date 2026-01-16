@@ -314,11 +314,15 @@ export function mergeSegments(
   // Sort by distance
   allSteps.sort((a, b) => a.distanceAtContactM - b.distanceAtContactM);
   
-  // Step 1: Detect boundary duplicates
-  const boundaries = detectBoundaryDuplicates(allSteps, segmentResults, segmentLengthM);
+  // Step 1: Remove exact duplicates (same distance within 0.05m)
+  const uniqueSteps = removeExactDuplicates(allSteps);
+  console.log(`   After exact duplicate removal: ${uniqueSteps.length} steps (removed ${allSteps.length - uniqueSteps.length})`);
   
-  // Step 2: Remove duplicates (keep only selected steps)
-  const deduplicatedSteps = removeBoundaryDuplicates(allSteps, boundaries);
+  // Step 2: Detect boundary duplicates
+  const boundaries = detectBoundaryDuplicates(uniqueSteps, segmentResults, segmentLengthM);
+  
+  // Step 3: Remove boundary duplicates (keep only selected steps)
+  const deduplicatedSteps = removeBoundaryDuplicates(uniqueSteps, boundaries);
   
   console.log(`   After deduplication: ${deduplicatedSteps.length} steps`);
   
@@ -399,6 +403,29 @@ export function mergeSegments(
     warnings,
     errors: [],
   };
+}
+
+/**
+ * Remove exact duplicates (steps with nearly identical distances)
+ */
+function removeExactDuplicates(steps: StepData[]): StepData[] {
+  if (steps.length === 0) return [];
+  
+  const result: StepData[] = [steps[0]];
+  const minDistanceDiff = 0.05; // 5cm tolerance
+  
+  for (let i = 1; i < steps.length; i++) {
+    const prevDist = result[result.length - 1].distanceAtContactM;
+    const currDist = steps[i].distanceAtContactM;
+    
+    if (Math.abs(currDist - prevDist) > minDistanceDiff) {
+      result.push(steps[i]);
+    } else {
+      console.log(`   🗑️ Removed exact duplicate: ${currDist.toFixed(3)}m (too close to ${prevDist.toFixed(3)}m)`);
+    }
+  }
+  
+  return result;
 }
 
 /**
