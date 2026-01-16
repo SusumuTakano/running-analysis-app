@@ -58,7 +58,7 @@ export const SegmentAnalyzer: React.FC<SegmentAnalyzerProps> = ({
     try {
       const result = await extractFramesFromVideo(
         segment.videoFile,
-        segment.fps || 30, // 🔧 FIX: 120 → 30 FPS (メモリ節約)
+        30, // 🔧 FORCE 30 FPS (segment.fps を無視してメモリ節約)
         (progress, statusText) => {
           setExtractionProgress(progress);
           setStatus(statusText);
