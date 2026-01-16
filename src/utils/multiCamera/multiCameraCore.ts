@@ -104,7 +104,7 @@ export function analyzeSegment(
   const videoHeight = segmentData.calibration.videoHeight;
   const fps = segmentData.fps;
   
-  // 🔍 DEBUG: Log Homography matrix
+  // 🔍 DEBUG: Log Homography matrix and video resolution
   console.log(`   📐 Homography matrix:`, H);
   console.log(`   📹 Video resolution: ${videoWidth} × ${videoHeight}`);
   
