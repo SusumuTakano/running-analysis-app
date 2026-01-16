@@ -258,7 +258,7 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
   const [config, setConfig] = useState<MultiCameraConfig>({
     segmentLengthM: 5,
     totalDistanceM: 15,
-    fps: 120,
+    fps: 30, // 🔧 FIX: 120 → 30 (メモリ節約のため強制的に 30 FPS)
     // @ts-ignore - 既に型に含めている前提（含まれていない場合は multiCameraTypes 側へ追加してください）
     laneWidthM: 1.22,
     // @ts-ignore
