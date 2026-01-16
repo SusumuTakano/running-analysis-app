@@ -12,6 +12,7 @@ import { generateRunningEvaluation, type RunningEvaluation } from "./runningEval
 // New multi-camera components
 import { MultiCameraSetup } from './components/MultiCameraSetup';
 import { MultiCameraAnalysis } from './components/MultiCamera/MultiCameraAnalysis';
+import MultiSegmentAnalysis from './components/MultiSegmentAnalysis';
 import CanvasRoiSelector from './components/CanvasRoiSelector';
 import { CanvasRoi, getCanvasCoordinates, drawFrameWithOverlay, extractRoiForPoseEstimation } from './utils/canvasUtils';
 import { Step5Simple } from './components/Step5Simple';
@@ -551,6 +552,9 @@ const [wizardStep, setWizardStep] = useState<WizardStep>(0);
   const [runSegments, setRunSegments] = useState<RunSegment[]>([]);
   const [isMultiCameraSetup, setIsMultiCameraSetup] = useState(false);
   const [multiCameraData, setMultiCameraData] = useState<MultiCameraState | null>(null);
+  
+  // 🚀 NEW: Multi-Segment Analysis (Single Camera x 3)
+  const [isMultiSegmentAnalysis, setIsMultiSegmentAnalysis] = useState(false);
   
   // 🚀 NEW: State for new multi-camera analysis system
   const [isNewMultiCameraAnalysis, setIsNewMultiCameraAnalysis] = useState(false);
@@ -11387,6 +11391,29 @@ case 6: {
                 ＋ 新しい解析を開始
               </button>
 
+              {/* ★ 複数セグメント解析ボタン */}
+              <button
+                type="button"
+                onClick={() => setIsMultiSegmentAnalysis(true)}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 999,
+                  border: "none",
+                  background:
+                    "linear-gradient(135deg, #8b5cf6 0%, #a78bfa 50%, #8b5cf6 100%)",
+                  color: "white",
+                  fontSize: "0.9rem",
+                  fontWeight: 600,
+                  boxShadow: "0 8px 20px rgba(139,92,246,0.4)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                📦 複数セグメント解析
+              </button>
+
               {/* ユーザー名表示（おまけ） */}
               <span
                 style={{
@@ -11431,7 +11458,13 @@ case 6: {
       </div>
 
       {/* コンテンツエリア */}
-      <main className="wizard-main">{renderStepContent()}</main>
+      <main className="wizard-main">
+        {isMultiSegmentAnalysis ? (
+          <MultiSegmentAnalysis onBack={() => setIsMultiSegmentAnalysis(false)} />
+        ) : (
+          renderStepContent()
+        )}
+      </main>
 
       {/* 非表示のビデオ要素とキャンバス */}
       <div style={{ display: "none" }}>
