@@ -13,7 +13,7 @@ export interface FramePoseData {
  */
 export async function extractFramesFromVideo(
   videoFile: File,
-  targetFps: number = 120,
+  targetFps: number = 30, // 🔧 FIX: 120 → 30 FPS (メモリ節約: 593フレーム → 148フレーム)
   onProgress?: (progress: number, status: string) => void
 ): Promise<{
   frames: ImageData[];
@@ -23,7 +23,7 @@ export async function extractFramesFromVideo(
   duration: number;
 }> {
   console.log(`🎬 Extracting frames from video: ${videoFile.name}`);
-  console.log(`🎬 Target FPS: ${targetFps}`);
+  console.log(`🎬 Target FPS: ${targetFps} (メモリ効率化のため 30 FPS に削減)`);
   
   return new Promise((resolve, reject) => {
     // Create video and canvas elements
