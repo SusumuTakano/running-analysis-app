@@ -49,6 +49,20 @@ export async function runPoseEstimationOnFrames(
   } = options;
 
   try {
+    // CRITICAL: MediaPipe のロード完了を待つ
+    console.log('⏳ Waiting for MediaPipe to load...');
+    if ((window as any).mediaPipeLoadPromise) {
+      try {
+        await (window as any).mediaPipeLoadPromise;
+        console.log('✅ MediaPipe load promise resolved');
+      } catch (loadError) {
+        console.error('❌ MediaPipe load promise rejected:', loadError);
+        throw new Error("MediaPipe のロードに失敗しました。ネットワーク接続を確認してページをリロードしてください。");
+      }
+    } else {
+      console.warn('⚠️ mediaPipeLoadPromise not found, checking directly...');
+    }
+    
     // MediaPipeの存在をチェック
     console.log('🔍 Checking MediaPipe availability...');
     console.log('window.Pose:', typeof (window as any).Pose);
@@ -96,13 +110,40 @@ export async function runPoseEstimationOnFrames(
 
     // Poseインスタンスを作成
     console.log('🎯 Creating Pose instance...');
-    const pose = new Pose({
-      locateFile: (file: string) => {
-        const url = `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`;
-        console.log(`📁 Loading MediaPipe file: ${file} from ${url}`);
-        return url;
-      },
-    });
+    
+    // CRITICAL FIX: CDN + リトライ機構で確実に初期化
+    let poseInitialized = false;
+    let pose: any = null;
+    
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`🔄 Initialization attempt ${attempt}/3...`);
+        
+        pose = new Pose({
+          locateFile: (file: string) => {
+            const url = `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`;
+            console.log(`📁 Loading MediaPipe file: ${file} from ${url}`);
+            return url;
+          },
+        });
+        
+        // 初期化を待つ（重要）
+        await new Promise(resolve => setTimeout(resolve, attempt * 1000)); // 段階的に待機時間を増やす
+        
+        poseInitialized = true;
+        console.log(`✅ Pose instance created successfully (attempt ${attempt})`);
+        break;
+      } catch (error) {
+        console.error(`❌ Initialization attempt ${attempt} failed:`, error);
+        if (attempt === 3) {
+          throw new Error("MediaPipe Pose の初期化に3回失敗しました。ページをリロードしてください。");
+        }
+      }
+    }
+    
+    if (!pose || !poseInitialized) {
+      throw new Error("MediaPipe Pose の初期化に失敗しました。");
+    }
 
     // デバイスに応じた設定
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -198,7 +239,7 @@ export async function runPoseEstimationOnFrames(
 
     // バッチ処理のサイズ（メモリ解放のタイミング）
     const batchSize = isIPad ? 3 : (isMobile ? 5 : 10); // デスクトップも10フレームに削減
-    const timeoutDuration = 30000; // 全デバイス共通で30秒に延長（593フレーム対応）
+    const timeoutDuration = 60000; // 全デバイス共通で60秒に延長（WASM初期化待ち）
 
     // 最初のフレームで動作確認
     if (totalFrames > 0) {
@@ -208,9 +249,9 @@ export async function runPoseEstimationOnFrames(
       try {
         const testResult = await new Promise<any>((resolve, reject) => {
           const timeout = setTimeout(() => {
-            console.error('❌ Test frame timeout');
+            console.error('❌ Test frame timeout (60s)');
             reject(new Error("Test timeout"));
-          }, isIPad ? 10000 : 5000);
+          }, 60000); // 60秒に延長（WASM 初期化を待つ）
           
           pose.onResults((r: any) => {
             clearTimeout(timeout);
