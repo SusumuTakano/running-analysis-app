@@ -984,7 +984,8 @@ const [notesInput, setNotesInput] = useState<string>("");
         ? parseFloat(athleteInfo.target_record) 
         : null;
 
-      const payload = {
+      // weight_kg カラムが存在するか確認するため、まず insert を試みる
+      const payload: any = {
         owner_auth_user_id: authUserId,
         full_name: athleteInfo.name,
         sex: athleteInfo.gender,
@@ -993,17 +994,40 @@ const [notesInput, setNotesInput] = useState<string>("");
           : null,
         affiliation: athleteInfo.affiliation || null,
         height_cm: athleteInfo.height_cm,
-        weight_kg: athleteInfo.weight_kg,
         current_record_s: currentRecordValue,
         target_record_s: targetRecordValue,
       };
 
+      // weight_kg を含めて試す
+      if (athleteInfo.weight_kg != null) {
+        payload.weight_kg = athleteInfo.weight_kg;
+      }
+
       console.log('📤 保存ペイロード:', payload);
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('athletes')
         .insert(payload)
         .select();
+
+      // もし weight_kg カラムが見つからないエラーなら、weight_kg なしで再試行
+      if (error && error.code === 'PGRST204' && error.message.includes('weight_kg')) {
+        console.warn('⚠️ weight_kg カラムが見つかりません。weight_kg なしで保存を試みます...');
+        delete payload.weight_kg;
+        
+        const retry = await supabase
+          .from('athletes')
+          .insert(payload)
+          .select();
+        
+        data = retry.data;
+        error = retry.error;
+        
+        if (!error) {
+          console.log('✅ weight_kg なしで保存成功');
+          alert('選手情報を保存しました！\n\n※ 体重情報はデータベースに保存されていません。\nSupabase で weight_kg カラムを追加後、再度保存してください。');
+        }
+      }
 
       if (error) {
         console.error('❌ Supabase保存エラー:', error);
