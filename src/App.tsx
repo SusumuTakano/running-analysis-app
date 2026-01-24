@@ -965,7 +965,7 @@ const handleStartNewAnalysis = () => {
 };
 
 // ------------- 距離・速度・ラベル -------------
-const [distanceInput, setDistanceInput] = useState<string>("10");
+const [distanceInput, setDistanceInput] = useState<string>("0");
 const [labelInput, setLabelInput] = useState<string>("");
 const [notesInput, setNotesInput] = useState<string>("");
 
@@ -9781,90 +9781,10 @@ case 6: {
                   lineHeight: '1.6'
                 }}>
                   <div><strong>📌 使い方:</strong></div>
-                  <div>1. 各スプリット地点の距離を入力</div>
-                  <div>2. ビデオスライダーで地点に移動</div>
-                  <div>3. 「スプリット追加」ボタンをクリック</div>
+                  <div>1. 動画下の登録ボタンで各地点を登録</div>
+                  <div>2. 最初にスタート地点（0m）を登録</div>
+                  <div>3. 次にスプリット地点（10m, 20m...）を登録</div>
                   <div>4. 測定開始点と終了点を選択してH-FVP計算</div>
-                </div>
-                
-                {/* 距離入力フィールド */}
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={{ 
-                    display: 'block', 
-                    marginBottom: '8px',
-                    fontWeight: 'bold',
-                    fontSize: '0.95rem'
-                  }}>
-                    📏 スプリット地点の距離 (m):
-                  </label>
-                  <input
-                    type="number"
-                    value={distanceInput}
-                    onChange={(e) => setDistanceInput(e.target.value)}
-                    placeholder="例: 10, 20, 30..."
-                    step="0.1"
-                    style={{
-                      width: '100%',
-                      padding: '12px',
-                      fontSize: '1rem',
-                      border: '2px solid rgba(255,255,255,0.3)',
-                      borderRadius: '8px',
-                      background: 'rgba(255,255,255,0.2)',
-                      color: 'white'
-                    }}
-                  />
-                  <div style={{ 
-                    marginTop: '6px', 
-                    fontSize: '0.85rem', 
-                    opacity: 0.8 
-                  }}>
-                    💡 例: 10m地点、20m地点、30m地点...と入力
-                  </div>
-                </div>
-                
-                {/* スプリットタイム追加ボタン */}
-                <div style={{ marginBottom: '16px' }}>
-                  <button
-                    onClick={() => {
-                      const frame = currentFrame;
-                      const time = usedTargetFps ? frame / usedTargetFps : 0;
-                      const distance = parseFloat(distanceInput) || 0;
-                      if (distance <= 0) {
-                        alert('距離を入力してください');
-                        return;
-                      }
-                      const newSplits: PanningSplit[] = [...(panningSplits || []), { 
-                        frame, 
-                        time, 
-                        distance 
-                      }];
-                      setPanningSplits(newSplits);
-                      // 次の距離提案
-                      setDistanceInput(String(distance + 10));
-                    }}
-                    style={{
-                      padding: '16px 32px',
-                      fontSize: '1.1rem',
-                      fontWeight: 'bold',
-                      background: 'rgba(255,255,255,0.3)',
-                      border: '2px solid rgba(255,255,255,0.5)',
-                      borderRadius: '12px',
-                      color: 'white',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                      width: '100%'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(255,255,255,0.4)';
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'rgba(255,255,255,0.3)';
-                      e.currentTarget.style.transform = 'translateY(0)';
-                    }}
-                  >
-                    ➕ スプリット追加 (フレーム {currentFrame})
-                  </button>
                 </div>
                 
                 {/* スプリットタイム一覧 */}
@@ -10066,6 +9986,126 @@ case 6: {
                     <div style={{ fontWeight: 'bold' }}>{currentFrame} / {framesRef.current.length - 1}</div>
                   </div>
                 </div>
+
+                {/* パーン撮影モード: スプリット登録ボタン（動画の下） */}
+                {analysisMode === 'panning' && (
+                  <div style={{
+                    marginTop: '16px',
+                    padding: '16px',
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    borderRadius: '12px',
+                    color: 'white'
+                  }}>
+                    <div style={{ marginBottom: '12px', fontWeight: 'bold', fontSize: '1.1rem' }}>
+                      {panningSplits.length === 0 ? '🏁 スタート地点を登録' : '⏱️ スプリット地点を登録'}
+                    </div>
+                    
+                    {/* 距離入力 */}
+                    <div style={{ marginBottom: '12px' }}>
+                      <label style={{ 
+                        display: 'block', 
+                        marginBottom: '6px',
+                        fontSize: '0.9rem',
+                        opacity: 0.9
+                      }}>
+                        📏 距離 (m):
+                      </label>
+                      <input
+                        type="number"
+                        value={distanceInput}
+                        onChange={(e) => setDistanceInput(e.target.value)}
+                        placeholder={panningSplits.length === 0 ? "0" : `例: ${(parseFloat(distanceInput) || 10)}`}
+                        step="0.1"
+                        style={{
+                          width: '100%',
+                          padding: '10px',
+                          fontSize: '1rem',
+                          border: '2px solid rgba(255,255,255,0.3)',
+                          borderRadius: '8px',
+                          background: 'rgba(255,255,255,0.2)',
+                          color: 'white'
+                        }}
+                      />
+                    </div>
+                    
+                    {/* 登録ボタン */}
+                    <button
+                      onClick={() => {
+                        const frame = currentFrame;
+                        const time = usedTargetFps ? frame / usedTargetFps : 0;
+                        const distance = parseFloat(distanceInput) || 0;
+                        
+                        // スタート地点は0m必須
+                        if (panningSplits.length === 0 && distance !== 0) {
+                          alert('最初はスタート地点（0m）を登録してください');
+                          return;
+                        }
+                        
+                        // 2地点目以降は0より大きい必要
+                        if (panningSplits.length > 0 && distance <= 0) {
+                          alert('0mより大きい距離を入力してください');
+                          return;
+                        }
+                        
+                        // 重複チェック
+                        if (panningSplits.some(s => s.distance === distance)) {
+                          alert(`${distance}m地点は既に登録されています`);
+                          return;
+                        }
+                        
+                        const newSplits: PanningSplit[] = [...(panningSplits || []), { 
+                          frame, 
+                          time, 
+                          distance 
+                        }];
+                        setPanningSplits(newSplits);
+                        
+                        // 次の距離提案
+                        if (panningSplits.length === 0) {
+                          setDistanceInput('10'); // スタート後は10m
+                        } else {
+                          setDistanceInput(String(distance + 10));
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '14px',
+                        fontSize: '1.1rem',
+                        fontWeight: 'bold',
+                        background: 'rgba(255,255,255,0.3)',
+                        border: '2px solid rgba(255,255,255,0.5)',
+                        borderRadius: '8px',
+                        color: 'white',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.4)';
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.3)';
+                        e.currentTarget.style.transform = 'translateY(0)';
+                      }}
+                    >
+                      {panningSplits.length === 0 
+                        ? `🏁 スタート地点を登録 (フレーム ${currentFrame})` 
+                        : `➕ スプリット追加 (フレーム ${currentFrame})`
+                      }
+                    </button>
+                    
+                    {panningSplits.length === 0 && (
+                      <div style={{ 
+                        marginTop: '8px', 
+                        fontSize: '0.85rem', 
+                        opacity: 0.8,
+                        textAlign: 'center'
+                      }}>
+                        💡 まずスタート地点（0m）を登録してください
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
