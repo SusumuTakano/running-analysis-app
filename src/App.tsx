@@ -43,6 +43,7 @@ type AthleteInfo = {
   gender: 'male' | 'female' | 'other' | null;
   affiliation: string;
   height_cm: number | null;
+  weight_kg?: number | null;  // 体重（kg）- オプショナル
   current_record: string;
   target_record: string;
 };
@@ -594,6 +595,7 @@ const initialAthleteInfo: AthleteInfo = {
   gender: null,
   affiliation: "",
   height_cm: null,
+  weight_kg: null,  // 体重（kg）
   current_record: "",
   target_record: "",
 };
@@ -2405,7 +2407,7 @@ const clearMarksByButton = () => {
 
   // ⚡ H-FVP 計算（Horizontal Force-Velocity Profile）
   const hfvpResult = useMemo((): HFVPResult | null => {
-    console.log(`🔍 H-FVP check: stepMetrics.length=${stepMetrics.length}, bodyMass=${bodyMassInput}, height=${subjectHeightInput}`);
+    console.log(`🔍 H-FVP check: stepMetrics.length=${stepMetrics.length}, athleteInfo.weight_kg=${athleteInfo.weight_kg}, athleteInfo.height_cm=${athleteInfo.height_cm}`);
     
     // 最低3ステップ必要
     if (stepMetrics.length < 3) {
@@ -2413,9 +2415,9 @@ const clearMarksByButton = () => {
       return null;
     }
     
-    // 体重と身長をパース
-    const bodyMass = parseFloat(bodyMassInput);
-    const athleteHeight = parseFloat(subjectHeightInput) / 100; // cm → m
+    // 選手情報から体重と身長を取得
+    const bodyMass = athleteInfo.weight_kg ?? 70; // デフォルト70kg
+    const athleteHeight = (athleteInfo.height_cm ?? 170) / 100; // cm → m、デフォルト170cm
     
     // バリデーション
     if (isNaN(bodyMass) || bodyMass <= 0 || bodyMass > 200) {
@@ -2458,7 +2460,7 @@ const clearMarksByButton = () => {
     }
     
     return result;
-  }, [stepMetrics, bodyMassInput, subjectHeightInput]);
+  }, [stepMetrics, athleteInfo.weight_kg, athleteInfo.height_cm]);
 
   // 🎯 10mタイム・スピード計算（トルソーが0m→10mを通過する時間、線形補間でサブフレーム精度）
   const sectionTimeSpeed = useMemo(() => {
