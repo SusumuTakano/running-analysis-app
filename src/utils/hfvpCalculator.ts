@@ -56,6 +56,10 @@ export interface HFVPResult {
     warnings: string[];
     dataQuality: 'excellent' | 'good' | 'fair' | 'poor';
   };
+  
+  // Measurement mode (added for panning support)
+  measurementMode?: 'fixed' | 'panning';
+  isPanningHighQuality?: boolean;
 }
 
 export interface StepDataForHFVP {

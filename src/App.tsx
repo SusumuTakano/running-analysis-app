@@ -2604,13 +2604,20 @@ const clearMarksByButton = () => {
 
   // ⚡ H-FVP 計算（Horizontal Force-Velocity Profile）
   const hfvpResult = useMemo((): HFVPResult | null => {
-    console.log(`🔍 H-FVP check: stepMetrics.length=${stepMetrics.length}, athleteInfo.weight_kg=${athleteInfo.weight_kg}, athleteInfo.height_cm=${athleteInfo.height_cm}`);
+    const mode = analysisMode === 'panning' ? 'PANNING' : 'FIXED';
+    console.log(`🔍 H-FVP check [${mode}]: stepMetrics.length=${stepMetrics.length}, athleteInfo.weight_kg=${athleteInfo.weight_kg}, athleteInfo.height_cm=${athleteInfo.height_cm}`);
     
-    // 最低3ステップ必要
-    if (stepMetrics.length < 3) {
-      console.log(`⚠️ H-FVP: Not enough steps (${stepMetrics.length} < 3)`);
+    // パーン撮影モード: 最低8ステップ推奨（30-40m）
+    // 固定カメラ: 最低3ステップ（5-10m、精度低め）
+    const minSteps = analysisMode === 'panning' ? 8 : 3;
+    
+    if (stepMetrics.length < minSteps) {
+      console.log(`⚠️ H-FVP [${mode}]: Not enough steps (${stepMetrics.length} < ${minSteps})`);
       return null;
     }
+    
+    // パーン撮影モードで8ステップ以上の場合、高品質フラグを追加
+    const isPanningHighQuality = analysisMode === 'panning' && stepMetrics.length >= 8;
     
     // 選手情報から体重と身長を取得
     const bodyMass = athleteInfo.weight_kg ?? 70; // デフォルト70kg
@@ -2643,21 +2650,30 @@ const clearMarksByButton = () => {
         flightTimeS: step.flightTime!,
       }));
     
-    console.log(`🔍 H-FVP: Valid steps after filter: ${hfvpSteps.length}/${stepMetrics.length}`);
+    console.log(`🔍 H-FVP [${mode}]: Valid steps after filter: ${hfvpSteps.length}/${stepMetrics.length}`);
     
-    if (hfvpSteps.length < 3) {
-      console.log(`⚠️ H-FVP: Not enough valid steps after filtering (${hfvpSteps.length} < 3)`);
+    if (hfvpSteps.length < minSteps) {
+      console.log(`⚠️ H-FVP [${mode}]: Not enough valid steps after filtering (${hfvpSteps.length} < ${minSteps})`);
       return null;
     }
     
     const result = calculateHFVP(hfvpSteps, bodyMass, athleteHeight);
     
     if (result) {
-      console.log(`✅ H-FVP calculated: ${result.quality.isValid ? 'SUCCESS' : 'FAILED'}`, result);
+      console.log(`✅ H-FVP [${mode}] calculated: ${result.quality.isValid ? 'SUCCESS' : 'FAILED'}`, result);
+      
+      // パーン撮影モードの品質情報を追加
+      if (analysisMode === 'panning') {
+        result.measurementMode = 'panning';
+        result.isPanningHighQuality = isPanningHighQuality;
+      } else {
+        result.measurementMode = 'fixed';
+        result.isPanningHighQuality = false;
+      }
     }
     
     return result;
-  }, [stepMetrics, athleteInfo.weight_kg, athleteInfo.height_cm]);
+  }, [stepMetrics, athleteInfo.weight_kg, athleteInfo.height_cm, analysisMode]);
 
   // 🎯 10mタイム・スピード計算（トルソーが0m→10mを通過する時間、線形補間でサブフレーム精度）
   const sectionTimeSpeed = useMemo(() => {
@@ -8030,6 +8046,16 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
         <label className="input-label">
           <span className="label-text">
             走行距離 (m) <span style={{ color: "red" }}>*</span>
+            {analysisMode === 'panning' && (
+              <span style={{ 
+                fontSize: '0.85rem', 
+                color: '#f59e0b', 
+                marginLeft: '8px',
+                fontWeight: 'normal'
+              }}>
+                （パーン撮影: 30-40m推奨）
+              </span>
+            )}
           </span>
           <input
             type="number"
@@ -8038,7 +8064,7 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
             value={distanceInput}
             onChange={(e) => setDistanceInput(e.target.value)}
             className="input-field"
-            placeholder="例: 10"
+            placeholder={analysisMode === 'panning' ? "例: 30" : "例: 10"}
             style={{
               borderColor:
                 distanceValue && distanceValue > 0
@@ -10691,6 +10717,33 @@ case 6: {
                           marginBottom: '16px',
                           fontSize: '0.9rem'
                         }}>
+                          {/* 測定モード表示 */}
+                          {hfvpResult.measurementMode && (
+                            <div style={{ 
+                              display: 'flex', 
+                              justifyContent: 'space-between', 
+                              alignItems: 'center',
+                              marginBottom: '8px',
+                              paddingBottom: '8px',
+                              borderBottom: '1px solid rgba(255,255,255,0.2)'
+                            }}>
+                              <span>測定モード:</span>
+                              <span style={{ 
+                                fontWeight: 'bold',
+                                padding: '4px 12px',
+                                borderRadius: '12px',
+                                background: hfvpResult.measurementMode === 'panning' 
+                                  ? 'rgba(34, 197, 94, 0.3)' 
+                                  : 'rgba(251, 191, 36, 0.3)',
+                                border: hfvpResult.measurementMode === 'panning'
+                                  ? '1px solid rgba(34, 197, 94, 0.5)'
+                                  : '1px solid rgba(251, 191, 36, 0.5)'
+                              }}>
+                                {hfvpResult.measurementMode === 'panning' ? '🎥 パーン撮影' : '📹 固定カメラ'}
+                                {hfvpResult.isPanningHighQuality && ' (高品質)'}
+                              </span>
+                            </div>
+                          )}
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span>データ品質:</span>
                             <span style={{ fontWeight: 'bold' }}>
@@ -10703,6 +10756,10 @@ case 6: {
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
                             <span>R² (回帰精度):</span>
                             <span style={{ fontWeight: 'bold' }}>{hfvpResult.rSquared.toFixed(3)}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                            <span>データ点数:</span>
+                            <span style={{ fontWeight: 'bold' }}>{hfvpResult.dataPoints.length} ステップ</span>
                           </div>
                         </div>
 
@@ -10930,6 +10987,44 @@ case 6: {
                               })()}
                             </div>
                           </div>
+
+                          {/* 測定品質に関するメッセージ */}
+                          {hfvpResult.measurementMode === 'fixed' && !hfvpResult.isPanningHighQuality && hfvpResult.dataPoints.length < 8 && (
+                            <div style={{ 
+                              padding: '16px', 
+                              background: 'rgba(251, 191, 36, 0.2)', 
+                              borderRadius: '8px', 
+                              marginTop: '16px',
+                              border: '2px solid rgba(251, 191, 36, 0.4)'
+                            }}>
+                              <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '1rem' }}>⚠️ 測定精度について</div>
+                              <div style={{ fontSize: '0.9rem', lineHeight: '1.6' }}>
+                                <div>• 現在の測定: 固定カメラ（{hfvpResult.dataPoints.length}ステップ）</div>
+                                <div>• 推奨: パーン撮影モード + 30-40m測定（8ステップ以上）</div>
+                                <div>• より多くのデータ点で、H-FVP精度が向上します</div>
+                                <div style={{ marginTop: '8px', fontSize: '0.85rem', opacity: 0.9 }}>
+                                  💡 Step 0で「🎥 パーン撮影（30-40m推奨）」を選択すると、より正確な力-速度プロファイルを取得できます
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {hfvpResult.isPanningHighQuality && (
+                            <div style={{ 
+                              padding: '16px', 
+                              background: 'rgba(34, 197, 94, 0.2)', 
+                              borderRadius: '8px', 
+                              marginTop: '16px',
+                              border: '2px solid rgba(34, 197, 94, 0.4)'
+                            }}>
+                              <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '1rem' }}>✅ 高品質測定</div>
+                              <div style={{ fontSize: '0.9rem', lineHeight: '1.6' }}>
+                                <div>• パーン撮影モード: {hfvpResult.dataPoints.length}ステップ検出</div>
+                                <div>• データ点数が十分で、H-FVP精度が高いです</div>
+                                <div>• 文献推奨値（30-60m、8ステップ以上）を満たしています</div>
+                              </div>
+                            </div>
+                          )}
 
                           {/* 総合アドバイス */}
                           <div style={{ padding: '16px', background: 'rgba(255,255,255,0.2)', borderRadius: '8px', marginTop: '16px' }}>
