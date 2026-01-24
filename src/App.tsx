@@ -780,7 +780,16 @@ useEffect(() => {
   const [currentFrame, setCurrentFrame] = useState(0);
   
   // パーン撮影モード用スプリットタイム
-  const [panningSplits, setPanningSplits] = useState<Array<{ frame: number; time: number }>>([]);
+  interface PanningSplit {
+    frame: number;
+    time: number;
+    distance: number;
+    isStart?: boolean;
+    isEnd?: boolean;
+  }
+  const [panningSplits, setPanningSplits] = useState<PanningSplit[]>([]);
+  const [panningStartIndex, setPanningStartIndex] = useState<number | null>(null);
+  const [panningEndIndex, setPanningEndIndex] = useState<number | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [videoWidth, setVideoWidth] = useState<number | null>(null);
@@ -2619,17 +2628,24 @@ const clearMarksByButton = () => {
     const mode = analysisMode === 'panning' ? 'PANNING' : 'FIXED';
     console.log(`🔍 H-FVP check [${mode}]: stepMetrics.length=${stepMetrics.length}, athleteInfo.weight_kg=${athleteInfo.weight_kg}, athleteInfo.height_cm=${athleteInfo.height_cm}`);
     
-    // パーン撮影モード: ステップ検出不要、フレームベース計算のため現時点ではH-FVP計算をスキップ
-    if (analysisMode === 'panning') {
-      console.log(`⚠️ H-FVP [PANNING]: Frame-based calculation mode - H-FVP requires step detection (not yet implemented for panning)`);
+    // 固定カメラモード: H-FVP計算を無効化
+    if (analysisMode !== 'panning') {
+      console.log(`⚠️ H-FVP [FIXED]: H-FVP calculation is disabled for fixed camera mode`);
       return null;
     }
     
-    // 固定カメラ: 最低3ステップ
-    const minSteps = 3;
+    // パーン撮影モード: スプリットから測定区間を取得
+    if (panningStartIndex === null || panningEndIndex === null || panningStartIndex >= panningEndIndex) {
+      console.log(`⚠️ H-FVP [PANNING]: No valid measurement interval selected`);
+      return null;
+    }
     
-    if (stepMetrics.length < minSteps) {
-      console.log(`⚠️ H-FVP [${mode}]: Not enough steps (${stepMetrics.length} < ${minSteps})`);
+    const startSplit = panningSplits[panningStartIndex];
+    const endSplit = panningSplits[panningEndIndex];
+    const intervalSplits = panningSplits.slice(panningStartIndex, panningEndIndex + 1);
+    
+    if (intervalSplits.length < 3) {
+      console.log(`⚠️ H-FVP [PANNING]: Need at least 3 splits for H-FVP calculation (found ${intervalSplits.length})`);
       return null;
     }
     
@@ -2648,41 +2664,38 @@ const clearMarksByButton = () => {
       return null;
     }
     
-    // stepMetrics を H-FVP 用のフォーマットに変換（null をフィルタ）
-    const hfvpSteps: StepDataForHFVP[] = stepMetrics
-      .filter(step => 
-        step.speedMps != null && 
-        step.stride != null && 
-        step.contactTime != null && 
-        step.flightTime != null
-      )
-      .map(step => ({
-        distanceAtContactM: step.distanceAtContact ?? 0,
-        speedMps: step.speedMps!,
-        strideM: step.stride!,
-        contactTimeS: step.contactTime!,
-        flightTimeS: step.flightTime!,
-      }));
-    
-    console.log(`🔍 H-FVP [${mode}]: Valid steps after filter: ${hfvpSteps.length}/${stepMetrics.length}`);
-    
-    if (hfvpSteps.length < minSteps) {
-      console.log(`⚠️ H-FVP [${mode}]: Not enough valid steps after filtering (${hfvpSteps.length} < ${minSteps})`);
-      return null;
+    // スプリットから速度データを生成
+    const hfvpSteps: StepDataForHFVP[] = [];
+    for (let i = 1; i < intervalSplits.length; i++) {
+      const prevSplit = intervalSplits[i - 1];
+      const currSplit = intervalSplits[i];
+      const distanceDelta = currSplit.distance - prevSplit.distance;
+      const timeDelta = currSplit.time - prevSplit.time;
+      const speed = distanceDelta / timeDelta;
+      
+      hfvpSteps.push({
+        distanceAtContactM: currSplit.distance,
+        speedMps: speed,
+        strideM: distanceDelta, // 近似値
+        contactTimeS: timeDelta * 0.5, // 近似値（接地時間を区間時間の半分と仮定）
+        flightTimeS: timeDelta * 0.5, // 近似値（滞空時間を区間時間の半分と仮定）
+      });
     }
+    
+    console.log(`🔍 H-FVP [PANNING]: Generated ${hfvpSteps.length} speed data points from splits`);
     
     const result = calculateHFVP(hfvpSteps, bodyMass, athleteHeight);
     
     if (result) {
-      console.log(`✅ H-FVP [${mode}] calculated: ${result.quality.isValid ? 'SUCCESS' : 'FAILED'}`, result);
+      console.log(`✅ H-FVP [PANNING] calculated: ${result.quality.isValid ? 'SUCCESS' : 'FAILED'}`, result);
       
-      // 固定カメラモードの品質情報を追加（パーンモードは上でスキップ済み）
-      result.measurementMode = 'fixed';
-      result.isPanningHighQuality = false;
+      // パーン撮影モードの品質情報を追加
+      result.measurementMode = 'panning';
+      result.isPanningHighQuality = hfvpSteps.length >= 8;
     }
     
     return result;
-  }, [stepMetrics, athleteInfo.weight_kg, athleteInfo.height_cm, analysisMode]);
+  }, [analysisMode, panningSplits, panningStartIndex, panningEndIndex, athleteInfo.weight_kg, athleteInfo.height_cm]);
 
   // 🎯 タイム・スピード計算
   const sectionTimeSpeed = useMemo(() => {
@@ -9763,9 +9776,45 @@ case 6: {
                   lineHeight: '1.6'
                 }}>
                   <div><strong>📌 使い方:</strong></div>
-                  <div>1. 下のビデオスライダーで測定したい地点に移動</div>
-                  <div>2. 「スプリット追加」ボタンをクリック</div>
-                  <div>3. 複数地点を計測して区間タイム・連続タイムを確認</div>
+                  <div>1. 各スプリット地点の距離を入力</div>
+                  <div>2. ビデオスライダーで地点に移動</div>
+                  <div>3. 「スプリット追加」ボタンをクリック</div>
+                  <div>4. 測定開始点と終了点を選択してH-FVP計算</div>
+                </div>
+                
+                {/* 距離入力フィールド */}
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '8px',
+                    fontWeight: 'bold',
+                    fontSize: '0.95rem'
+                  }}>
+                    📏 スプリット地点の距離 (m):
+                  </label>
+                  <input
+                    type="number"
+                    value={distanceInput}
+                    onChange={(e) => setDistanceInput(e.target.value)}
+                    placeholder="例: 10, 20, 30..."
+                    step="0.1"
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      fontSize: '1rem',
+                      border: '2px solid rgba(255,255,255,0.3)',
+                      borderRadius: '8px',
+                      background: 'rgba(255,255,255,0.2)',
+                      color: 'white'
+                    }}
+                  />
+                  <div style={{ 
+                    marginTop: '6px', 
+                    fontSize: '0.85rem', 
+                    opacity: 0.8 
+                  }}>
+                    💡 例: 10m地点、20m地点、30m地点...と入力
+                  </div>
                 </div>
                 
                 {/* スプリットタイム追加ボタン */}
@@ -9774,8 +9823,19 @@ case 6: {
                     onClick={() => {
                       const frame = currentFrame;
                       const time = usedTargetFps ? frame / usedTargetFps : 0;
-                      const newSplits = [...(panningSplits || []), { frame, time }];
+                      const distance = parseFloat(distanceInput) || 0;
+                      if (distance <= 0) {
+                        alert('距離を入力してください');
+                        return;
+                      }
+                      const newSplits: PanningSplit[] = [...(panningSplits || []), { 
+                        frame, 
+                        time, 
+                        distance 
+                      }];
                       setPanningSplits(newSplits);
+                      // 次の距離提案
+                      setDistanceInput(String(distance + 10));
                     }}
                     style={{
                       padding: '16px 32px',
@@ -9821,36 +9881,79 @@ case 6: {
                       <thead>
                         <tr style={{ borderBottom: '2px solid rgba(255,255,255,0.3)' }}>
                           <th style={{ padding: '8px', textAlign: 'left' }}>#</th>
+                          <th style={{ padding: '8px', textAlign: 'right' }}>距離(m)</th>
                           <th style={{ padding: '8px', textAlign: 'right' }}>フレーム</th>
-                          <th style={{ padding: '8px', textAlign: 'right' }}>連続タイム</th>
-                          <th style={{ padding: '8px', textAlign: 'right' }}>区間タイム</th>
+                          <th style={{ padding: '8px', textAlign: 'right' }}>タイム(s)</th>
+                          <th style={{ padding: '8px', textAlign: 'center' }}>測定点</th>
                           <th style={{ padding: '8px', textAlign: 'center' }}>削除</th>
                         </tr>
                       </thead>
                       <tbody>
                         {panningSplits.map((split, idx) => {
-                          const prevTime = idx > 0 ? panningSplits[idx - 1].time : 0;
-                          const lapTime = split.time - prevTime;
+                          const isStartPoint = panningStartIndex === idx;
+                          const isEndPoint = panningEndIndex === idx;
                           return (
-                            <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.2)' }}>
+                            <tr key={idx} style={{ 
+                              borderBottom: '1px solid rgba(255,255,255,0.2)',
+                              background: isStartPoint ? 'rgba(34, 197, 94, 0.2)' : isEndPoint ? 'rgba(239, 68, 68, 0.2)' : 'transparent'
+                            }}>
                               <td style={{ padding: '8px' }}>{idx + 1}</td>
+                              <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold' }}>
+                                {split.distance.toFixed(1)}
+                              </td>
                               <td style={{ padding: '8px', textAlign: 'right' }}>{split.frame}</td>
                               <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold' }}>
-                                {split.time.toFixed(3)}s
+                                {split.time.toFixed(3)}
                               </td>
-                              <td style={{ padding: '8px', textAlign: 'right', color: '#fde68a' }}>
-                                +{lapTime.toFixed(3)}s
+                              <td style={{ padding: '8px', textAlign: 'center' }}>
+                                <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                                  <button
+                                    onClick={() => setPanningStartIndex(idx)}
+                                    style={{
+                                      padding: '4px 8px',
+                                      fontSize: '0.75rem',
+                                      background: isStartPoint ? 'rgba(34, 197, 94, 0.9)' : 'rgba(34, 197, 94, 0.5)',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                      color: 'white',
+                                      cursor: 'pointer',
+                                      fontWeight: isStartPoint ? 'bold' : 'normal'
+                                    }}
+                                  >
+                                    {isStartPoint ? '🟢開始' : '開始'}
+                                  </button>
+                                  <button
+                                    onClick={() => setPanningEndIndex(idx)}
+                                    style={{
+                                      padding: '4px 8px',
+                                      fontSize: '0.75rem',
+                                      background: isEndPoint ? 'rgba(239, 68, 68, 0.9)' : 'rgba(239, 68, 68, 0.5)',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                      color: 'white',
+                                      cursor: 'pointer',
+                                      fontWeight: isEndPoint ? 'bold' : 'normal'
+                                    }}
+                                  >
+                                    {isEndPoint ? '🔴終了' : '終了'}
+                                  </button>
+                                </div>
                               </td>
                               <td style={{ padding: '8px', textAlign: 'center' }}>
                                 <button
                                   onClick={() => {
                                     const newSplits = panningSplits.filter((_, i) => i !== idx);
                                     setPanningSplits(newSplits);
+                                    // インデックス調整
+                                    if (panningStartIndex === idx) setPanningStartIndex(null);
+                                    if (panningEndIndex === idx) setPanningEndIndex(null);
+                                    if (panningStartIndex !== null && panningStartIndex > idx) setPanningStartIndex(panningStartIndex - 1);
+                                    if (panningEndIndex !== null && panningEndIndex > idx) setPanningEndIndex(panningEndIndex - 1);
                                   }}
                                   style={{
                                     padding: '4px 8px',
                                     fontSize: '0.8rem',
-                                    background: 'rgba(239, 68, 68, 0.8)',
+                                    background: 'rgba(107, 114, 128, 0.8)',
                                     border: 'none',
                                     borderRadius: '4px',
                                     color: 'white',
@@ -9866,9 +9969,41 @@ case 6: {
                       </tbody>
                     </table>
                     
+                    {/* 測定区間情報 */}
+                    {panningStartIndex !== null && panningEndIndex !== null && panningStartIndex < panningEndIndex && (
+                      <div style={{
+                        marginTop: '16px',
+                        padding: '12px',
+                        background: 'rgba(59, 130, 246, 0.2)',
+                        borderRadius: '8px',
+                        border: '2px solid rgba(59, 130, 246, 0.5)'
+                      }}>
+                        <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>
+                          📐 測定区間
+                        </div>
+                        <div style={{ fontSize: '0.9rem' }}>
+                          <div>開始: {panningSplits[panningStartIndex].distance.toFixed(1)}m ({panningSplits[panningStartIndex].time.toFixed(3)}s)</div>
+                          <div>終了: {panningSplits[panningEndIndex].distance.toFixed(1)}m ({panningSplits[panningEndIndex].time.toFixed(3)}s)</div>
+                          <div style={{ marginTop: '8px', fontWeight: 'bold', color: '#fde68a' }}>
+                            区間距離: {(panningSplits[panningEndIndex].distance - panningSplits[panningStartIndex].distance).toFixed(1)}m
+                          </div>
+                          <div style={{ fontWeight: 'bold', color: '#fde68a' }}>
+                            区間タイム: {(panningSplits[panningEndIndex].time - panningSplits[panningStartIndex].time).toFixed(3)}s
+                          </div>
+                          <div style={{ fontWeight: 'bold', color: '#86efac' }}>
+                            平均速度: {((panningSplits[panningEndIndex].distance - panningSplits[panningStartIndex].distance) / (panningSplits[panningEndIndex].time - panningSplits[panningStartIndex].time)).toFixed(2)}m/s
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
                     {/* クリアボタン */}
                     <button
-                      onClick={() => setPanningSplits([])}
+                      onClick={() => {
+                        setPanningSplits([]);
+                        setPanningStartIndex(null);
+                        setPanningEndIndex(null);
+                      }}
                       style={{
                         marginTop: '12px',
                         padding: '8px 16px',
@@ -9882,6 +10017,25 @@ case 6: {
                     >
                       🗑️ すべてクリア
                     </button>
+                  </div>
+                )}
+                
+                {/* H-FVP計算のガイダンス */}
+                {(!panningStartIndex || !panningEndIndex || panningStartIndex >= panningEndIndex) && (
+                  <div style={{
+                    marginBottom: '16px',
+                    padding: '12px',
+                    background: 'rgba(251, 191, 36, 0.2)',
+                    borderRadius: '8px',
+                    border: '2px solid rgba(251, 191, 36, 0.5)',
+                    fontSize: '0.9rem'
+                  }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: '6px' }}>
+                      💡 H-FVP計算を行うには:
+                    </div>
+                    <div>1. 3地点以上のスプリットを追加</div>
+                    <div>2. 開始点と終了点を選択</div>
+                    <div>3. H-FVP分析が自動表示されます</div>
                   </div>
                 )}
                 
