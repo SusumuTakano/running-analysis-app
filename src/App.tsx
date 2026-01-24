@@ -948,20 +948,33 @@ const [notesInput, setNotesInput] = useState<string>("");
 
   // ------------ 選手情報の保存 ------------
   const handleSaveAthlete = async () => {
+    console.log('💾 選手情報保存開始');
+    console.log('athleteInfo:', athleteInfo);
+    
     // バリデーション
     if (!athleteInfo.name || !athleteInfo.age || !athleteInfo.gender || !athleteInfo.height_cm || !athleteInfo.weight_kg) {
+      console.error('❌ バリデーションエラー:', {
+        name: athleteInfo.name,
+        age: athleteInfo.age,
+        gender: athleteInfo.gender,
+        height_cm: athleteInfo.height_cm,
+        weight_kg: athleteInfo.weight_kg,
+      });
       alert('選手情報を保存するには、氏名・年齢・性別・身長・体重が必須です。');
       return;
     }
 
     try {
+      console.log('🔐 認証チェック...');
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !sessionData?.session) {
+        console.error('❌ 認証エラー:', sessionError);
         alert('ログインが必要です。');
         return;
       }
 
       const authUserId = sessionData.session.user.id;
+      console.log('✅ 認証成功 - User ID:', authUserId);
 
       // 現在の記録と目標記録を数値に変換
       const currentRecordValue = athleteInfo.current_record 
@@ -985,17 +998,21 @@ const [notesInput, setNotesInput] = useState<string>("");
         target_record_s: targetRecordValue,
       };
 
+      console.log('📤 保存ペイロード:', payload);
+
       const { data, error } = await supabase
         .from('athletes')
         .insert(payload)
         .select();
 
       if (error) {
-        console.error('選手情報の保存に失敗しました:', error);
-        alert('選手情報の保存に失敗しました。');
+        console.error('❌ Supabase保存エラー:', error);
+        console.error('エラー詳細:', JSON.stringify(error, null, 2));
+        alert(`選手情報の保存に失敗しました。\n\nエラー: ${error.message}`);
         return;
       }
 
+      console.log('✅ 保存成功:', data);
       alert('選手情報を保存しました！');
       
       // 選手リストを再読み込み
