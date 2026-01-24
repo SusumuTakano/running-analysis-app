@@ -2213,6 +2213,12 @@ const clearMarksByButton = () => {
 
   // ------------ ステップメトリクス ------------
   const stepMetrics: StepMetric[] = useMemo(() => {
+    // パーン撮影モード: ステップ検出をスキップ（フレームレートから直接計算）
+    if (analysisMode === 'panning') {
+      console.log(`🎥 Panning mode: Skipping step detection, using frame-based calculation only`);
+      return [];
+    }
+    
     // マルチカメラモードで結合データがある場合は、それを返す
     if (false /* multi mode disabled */ && mergedStepMetrics.length > 0) {
       console.log(`📊 Using merged step metrics: ${mergedStepMetrics.length} steps`);
@@ -2607,17 +2613,19 @@ const clearMarksByButton = () => {
     const mode = analysisMode === 'panning' ? 'PANNING' : 'FIXED';
     console.log(`🔍 H-FVP check [${mode}]: stepMetrics.length=${stepMetrics.length}, athleteInfo.weight_kg=${athleteInfo.weight_kg}, athleteInfo.height_cm=${athleteInfo.height_cm}`);
     
-    // パーン撮影モード: 最低8ステップ推奨（30-40m）
-    // 固定カメラ: 最低3ステップ（5-10m、精度低め）
-    const minSteps = analysisMode === 'panning' ? 8 : 3;
+    // パーン撮影モード: ステップ検出不要、フレームベース計算のため現時点ではH-FVP計算をスキップ
+    if (analysisMode === 'panning') {
+      console.log(`⚠️ H-FVP [PANNING]: Frame-based calculation mode - H-FVP requires step detection (not yet implemented for panning)`);
+      return null;
+    }
+    
+    // 固定カメラ: 最低3ステップ
+    const minSteps = 3;
     
     if (stepMetrics.length < minSteps) {
       console.log(`⚠️ H-FVP [${mode}]: Not enough steps (${stepMetrics.length} < ${minSteps})`);
       return null;
     }
-    
-    // パーン撮影モードで8ステップ以上の場合、高品質フラグを追加
-    const isPanningHighQuality = analysisMode === 'panning' && stepMetrics.length >= 8;
     
     // 選手情報から体重と身長を取得
     const bodyMass = athleteInfo.weight_kg ?? 70; // デフォルト70kg
@@ -2662,26 +2670,41 @@ const clearMarksByButton = () => {
     if (result) {
       console.log(`✅ H-FVP [${mode}] calculated: ${result.quality.isValid ? 'SUCCESS' : 'FAILED'}`, result);
       
-      // パーン撮影モードの品質情報を追加
-      if (analysisMode === 'panning') {
-        result.measurementMode = 'panning';
-        result.isPanningHighQuality = isPanningHighQuality;
-      } else {
-        result.measurementMode = 'fixed';
-        result.isPanningHighQuality = false;
-      }
+      // 固定カメラモードの品質情報を追加（パーンモードは上でスキップ済み）
+      result.measurementMode = 'fixed';
+      result.isPanningHighQuality = false;
     }
     
     return result;
   }, [stepMetrics, athleteInfo.weight_kg, athleteInfo.height_cm, analysisMode]);
 
-  // 🎯 10mタイム・スピード計算（トルソーが0m→10mを通過する時間、線形補間でサブフレーム精度）
+  // 🎯 タイム・スピード計算
   const sectionTimeSpeed = useMemo(() => {
-    if (!usedTargetFps || !poseResults.length || distanceValue == null) {
+    if (!usedTargetFps || distanceValue == null) {
       return { time: null as number | null, speed: null as number | null };
     }
     
     const sectionLengthM = distanceValue;
+    
+    // パーン撮影モード: フレーム数からシンプルに計算
+    if (analysisMode === 'panning') {
+      const totalFrames = framesRef.current.length;
+      if (totalFrames === 0) {
+        return { time: null, speed: null };
+      }
+      
+      const time = totalFrames / usedTargetFps; // タイム = フレーム数 ÷ FPS
+      const speed = sectionLengthM / time; // 速度 = 距離 ÷ タイム
+      
+      console.log(`🎥 Panning mode simple calculation: ${totalFrames} frames @ ${usedTargetFps} fps = ${time.toFixed(3)}s, ${speed.toFixed(2)}m/s`);
+      
+      return { time, speed };
+    }
+    
+    // 固定カメラモード: トルソー位置から詳細計算
+    if (!poseResults.length) {
+      return { time: null, speed: null };
+    }
     
     // トルソー位置取得関数
     const getTorsoX = (frame: number): number | null => {
@@ -8567,6 +8590,15 @@ if (true /* single mode */ && !videoFile) {
 
       case 5:
 
+        // パーン撮影モードの場合は区間設定・マーカー設定をスキップして結果へ
+        if (analysisMode === 'panning') {
+          // パーン撮影モード: フレームレートからタイムを算出するのみ
+          setSectionStartFrame(0);
+          setSectionEndFrame(framesRef.current.length - 1);
+          setWizardStep(7); // 直接結果画面へ
+          return null;
+        }
+        
         // マルチカメラモードの場合は区間設定をスキップ
         if (false /* multi mode disabled */) {
           // マルチカメラモードでは区間はすでに設定済みなのでスキップ
@@ -9684,11 +9716,99 @@ case 6: {
         return (
           <div className="wizard-content">
             <div className="wizard-step-header">
-              <h2 className="wizard-step-title">ステップ 8: 解析結果</h2>
+              <h2 className="wizard-step-title">
+                {analysisMode === 'panning' ? 'ステップ 7: パーン撮影結果' : 'ステップ 8: 解析結果'}
+              </h2>
               <p className="wizard-step-desc">
-                ステップ解析結果とグラフを確認できます。スライダーで各フレームの角度を確認できます。
+                {analysisMode === 'panning' 
+                  ? 'フレームレートから算出したタイムと速度を表示します。'
+                  : 'ステップ解析結果とグラフを確認できます。スライダーで各フレームの角度を確認できます。'}
               </p>
             </div>
+            
+            {/* パーン撮影モードの簡易結果表示 */}
+            {analysisMode === 'panning' && (
+              <div style={{
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: 'white',
+                padding: '24px',
+                borderRadius: '12px',
+                marginBottom: '24px',
+                boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+              }}>
+                <h3 style={{ 
+                  margin: '0 0 16px 0', 
+                  fontSize: '1.3rem',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px'
+                }}>
+                  🎥 パーン撮影モード結果
+                </h3>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                  gap: '16px'
+                }}>
+                  <div style={{
+                    background: 'rgba(255,255,255,0.2)',
+                    padding: '16px',
+                    borderRadius: '8px'
+                  }}>
+                    <div style={{ fontSize: '0.9rem', opacity: 0.9, marginBottom: '4px' }}>測定距離</div>
+                    <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{distanceValue?.toFixed(1) ?? '---'}</div>
+                    <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>m</div>
+                  </div>
+                  <div style={{
+                    background: 'rgba(255,255,255,0.2)',
+                    padding: '16px',
+                    borderRadius: '8px'
+                  }}>
+                    <div style={{ fontSize: '0.9rem', opacity: 0.9, marginBottom: '4px' }}>フレーム数</div>
+                    <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{framesRef.current.length}</div>
+                    <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>frames @ {usedTargetFps ?? '---'} fps</div>
+                  </div>
+                  <div style={{
+                    background: 'rgba(255,255,255,0.2)',
+                    padding: '16px',
+                    borderRadius: '8px'
+                  }}>
+                    <div style={{ fontSize: '0.9rem', opacity: 0.9, marginBottom: '4px' }}>タイム</div>
+                    <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
+                      {sectionTimeSpeed.time != null ? sectionTimeSpeed.time.toFixed(3) : '---'}
+                    </div>
+                    <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>秒</div>
+                  </div>
+                  <div style={{
+                    background: 'rgba(255,255,255,0.2)',
+                    padding: '16px',
+                    borderRadius: '8px'
+                  }}>
+                    <div style={{ fontSize: '0.9rem', opacity: 0.9, marginBottom: '4px' }}>平均速度</div>
+                    <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
+                      {sectionTimeSpeed.speed != null ? sectionTimeSpeed.speed.toFixed(2) : '---'}
+                    </div>
+                    <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>m/s</div>
+                  </div>
+                </div>
+                <div style={{
+                  marginTop: '16px',
+                  padding: '12px',
+                  background: 'rgba(255,255,255,0.15)',
+                  borderRadius: '8px',
+                  fontSize: '0.9rem',
+                  lineHeight: '1.6'
+                }}>
+                  <div>📊 <strong>計算方法:</strong></div>
+                  <div>• タイム = フレーム数 ÷ FPS</div>
+                  <div>• 速度 = 測定距離 ÷ タイム</div>
+                  <div style={{ marginTop: '8px', fontSize: '0.85rem', opacity: 0.9 }}>
+                    💡 ステップ検出は不要です。フレームレートから直接算出しています。
+                  </div>
+                </div>
+              </div>
+            )}
 
             {isMultiModeActive && currentMultiSegment && (
               <div
@@ -10441,7 +10561,8 @@ case 6: {
               </div>
             </div>
 
-            {/* 全ユーザーに表示（ベータ版） */}
+            {/* 全ユーザーに表示（ベータ版） - パーンモードでは非表示 */}
+            {analysisMode !== 'panning' && (
             <>
                 {/* ステップメトリクス */}
                 <div className="result-card">
@@ -11649,6 +11770,7 @@ case 6: {
                 )}
               </div>
             </>
+            )}
 
             {/* ナビゲーションボタン */}
             <div style={{ marginTop: '32px', display: 'flex', gap: '12px', justifyContent: 'space-between', flexWrap: 'wrap' }}>
