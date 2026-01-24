@@ -370,6 +370,89 @@ npm run build
 - **推奨用途**: 簡易的なピッチ・ストライド確認
 - **制限事項**: 接地時間、ブレーキ率、キック率は非対応
 
+## 🌐 Netlify デプロイ
+
+### 自動デプロイ（推奨）
+
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/SusumuTakano/running-analysis-app)
+
+1. **上記ボタンをクリック**
+2. **GitHubと連携**
+3. **リポジトリを選択**
+4. **環境変数を設定**:
+   - `VITE_SUPABASE_URL`: Supabaseプロジェクトの URL
+   - `VITE_SUPABASE_ANON_KEY`: Supabase の anon キー
+5. **Deploy site** をクリック
+
+### 手動デプロイ
+
+#### 1. Netlify CLI のインストール
+
+```bash
+npm install -g netlify-cli
+```
+
+#### 2. Netlify にログイン
+
+```bash
+netlify login
+```
+
+#### 3. 初回デプロイ
+
+```bash
+# ビルド
+npm run build
+
+# デプロイ
+netlify deploy --prod
+```
+
+#### 4. 環境変数の設定
+
+Netlify Dashboard で以下を設定：
+
+- `VITE_SUPABASE_URL`: `https://fiertkuxlafeeqycywjh.supabase.co`
+- `VITE_SUPABASE_ANON_KEY`: [Supabase Dashboard から取得]
+
+**設定場所**: Site settings → Environment variables
+
+### デプロイ後の確認事項
+
+1. **Supabase の設定**
+   - Netlify のドメインを Supabase の許可リストに追加
+   - Authentication → URL Configuration
+   - Site URL と Redirect URLs を更新
+
+2. **動作確認**
+   - ログイン/ログアウト
+   - 動画アップロード
+   - 姿勢推定
+   - データ保存
+
+### トラブルシューティング
+
+#### ビルドエラー
+
+```bash
+# ローカルでビルドテスト
+npm run build
+
+# 依存関係の再インストール
+rm -rf node_modules package-lock.json
+npm install
+```
+
+#### 環境変数が反映されない
+
+- Netlify Dashboard で環境変数を確認
+- 再デプロイを実行: `Deploys → Trigger deploy → Deploy site`
+
+#### SPA ルーティングが動作しない
+
+- `netlify.toml` のリダイレクト設定を確認
+- すでに設定済み（`/* → /index.html`）
+
 ## 📄 ライセンス
 
 プライベートプロジェクト
