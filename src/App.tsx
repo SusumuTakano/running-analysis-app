@@ -6918,11 +6918,19 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
         realStepsForStride[i].stride = stepLength;
         realStepsForStride[i].fullStride = trueStride; // 2歩分は fullStride に保存
         
-        console.log(`  → UPDATED stride to ${trueStride.toFixed(3)}m`);
+        console.log(`  → UPDATED stride to ${stepLength.toFixed(3)}m (full: ${trueStride.toFixed(3)}m)`);
       } else {
-        console.log(`  → Last step, no next contact`);
-        realStepsForStride[i].stride = null;
-        realStepsForStride[i].fullStride = undefined;
+        // 最後のステップ: 前のステップの stride を使用
+        console.log(`  → Last step, using previous stride if available`);
+        if (i > 0 && realStepsForStride[i - 1].stride != null) {
+          realStepsForStride[i].stride = realStepsForStride[i - 1].stride;
+          realStepsForStride[i].fullStride = realStepsForStride[i - 1].fullStride;
+          console.log(`  → COPIED stride from previous step: ${realStepsForStride[i].stride!.toFixed(3)}m`);
+        } else {
+          realStepsForStride[i].stride = null;
+          realStepsForStride[i].fullStride = undefined;
+          console.log(`  → No previous stride available, set to null`);
+        }
       }
     }
     
