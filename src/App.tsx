@@ -629,13 +629,30 @@ useEffect(() => {
     const authUserId = sessionData.session.user.id;
     console.log('✅ ユーザーID:', authUserId);
 
-    const { data, error } = await supabase
+    // 一時的に weight_kg を除外（カラムが存在しない場合のフォールバック）
+    let { data, error } = await supabase
       .from("athletes")
       .select(
         "id, full_name, sex, birth_date, affiliation, height_cm, weight_kg, current_record_s, target_record_s"
       )
       .eq("owner_auth_user_id", authUserId)
       .order("created_at", { ascending: false });
+
+    // weight_kg カラムが存在しない場合、weight_kg なしで再試行
+    if (error && error.code === '42703' && error.message.includes('weight_kg')) {
+      console.warn('⚠️ weight_kg カラムが存在しません。weight_kg なしで取得します。');
+      const retry = await supabase
+        .from("athletes")
+        .select(
+          "id, full_name, sex, birth_date, affiliation, height_cm, current_record_s, target_record_s"
+        )
+        .eq("owner_auth_user_id", authUserId)
+        .order("created_at", { ascending: false });
+      
+      // weight_kg フィールドを null で追加
+      data = retry.data?.map((row: any) => ({ ...row, weight_kg: null })) ?? null;
+      error = retry.error;
+    }
 
     if (error) {
       console.error("❌ athletes の取得に失敗:", error);
