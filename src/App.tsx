@@ -9,6 +9,7 @@ import "./App.css";
 import { supabase } from "./lib/supabaseClient";
 import Chart from "chart.js/auto";
 import { generateRunningEvaluation, type RunningEvaluation } from "./runningEvaluation";
+import { calculateHFVP, type HFVPResult } from "./utils/hfvpCalculator";
 // New multi-camera components
 import { MultiCameraSetup } from './components/MultiCameraSetup';
 import { MultiCameraAnalysis } from './components/MultiCamera/MultiCameraAnalysis';
@@ -936,6 +937,9 @@ const [notesInput, setNotesInput] = useState<string>("");
   
   // ------------ 被検者の身長 ---------------
   const [subjectHeightInput, setSubjectHeightInput] = useState<string>("170");
+  
+  // ------------ 被検者の体重（H-FVP用） ---------------
+  const [bodyMassInput, setBodyMassInput] = useState<string>("70");
   
   // ------------ 100m目標記録 ---------------
   const [target100mInput, setTarget100mInput] = useState<string>("");

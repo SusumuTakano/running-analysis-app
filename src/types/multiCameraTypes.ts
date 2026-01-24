@@ -188,6 +188,28 @@ export interface RunAnalysisResult {
     contactTime: number[];
     flightTime: number[];
   };
+  // H-FVP (Horizontal Force-Velocity Profile) - optional
+  hfvp?: {
+    F0: number;           // Maximum horizontal force (N)
+    V0: number;           // Maximum velocity (m/s)
+    Pmax: number;         // Maximum power (W)
+    RFmax: number;        // Maximum ratio of force (%)
+    DRF: number;          // Decrease in ratio of force (%/m/s)
+    rSquared: number;     // Regression quality
+    dataPoints: {
+      velocity: number;
+      force: number;
+      power: number;
+      forceRatio: number;
+      distance: number;
+    }[];
+    summary: {
+      avgForce: number;
+      avgPower: number;
+      peakVelocity: number;
+      acceleration: number;
+    };
+  };
 }
 
 //
