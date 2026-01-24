@@ -10258,6 +10258,14 @@ case 6: {
                     </div>
 
                     {/* ⚡ H-FVP セクション */}
+                    {(() => {
+                      console.log('🎯 H-FVP RENDER CHECK:', {
+                        hfvpResult: hfvpResult ? 'EXISTS' : 'NULL',
+                        F0: hfvpResult?.F0,
+                        stepMetricsLength: stepMetrics.length
+                      });
+                      return null;
+                    })()}
                     {hfvpResult && (
                       <div style={{
                         background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
