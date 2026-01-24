@@ -216,7 +216,10 @@ export function calculateHFVP(
   
   // Linear regression: F_horizontal = F0 - (F0/V0) * velocity
   // This is the Samozino linear force-velocity relationship
-  const validDataPoints = dataPoints.filter(p => p.horizontalForce > 0);
+  // TEMPORARY: Allow negative forces for debugging 5m distances
+  const validDataPoints = dataPoints; // Use all data points
+  
+  console.log(`   🔍 DEBUG: Using ${validDataPoints.length} data points (including ${negativeForces} negative forces)`);
   
   if (validDataPoints.length < 3) {
     console.warn('⚠️ Not enough valid data points after filtering (minimum: 3)');
