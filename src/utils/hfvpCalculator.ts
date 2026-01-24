@@ -113,8 +113,8 @@ export function calculateHFVP(
             step.flightTimeS >= 0
   );
   
-  if (validSteps.length < 5) {
-    console.warn('⚠️ Not enough valid steps with complete data (minimum: 5)');
+  if (validSteps.length < 3) {
+    console.warn('⚠️ Not enough valid steps with complete data (minimum: 3)');
     return null;
   }
   
@@ -218,8 +218,8 @@ export function calculateHFVP(
   // This is the Samozino linear force-velocity relationship
   const validDataPoints = dataPoints.filter(p => p.horizontalForce > 0);
   
-  if (validDataPoints.length < 5) {
-    console.warn('⚠️ Not enough valid data points after filtering (minimum: 5)');
+  if (validDataPoints.length < 3) {
+    console.warn('⚠️ Not enough valid data points after filtering (minimum: 3)');
     return null;
   }
   
