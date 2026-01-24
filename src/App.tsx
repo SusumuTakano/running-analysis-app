@@ -611,14 +611,23 @@ const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null);
 // ログイン中ユーザーの選手一覧を読み込む
 useEffect(() => {
   const loadAthletes = async () => {
+    console.log('🔄 選手リスト読み込み開始...');
+    
     const { data: sessionData, error: sessionError } =
       await supabase.auth.getSession();
 
-    if (sessionError || !sessionData.session) {
+    if (sessionError) {
+      console.error('❌ セッションエラー:', sessionError);
+      return;
+    }
+
+    if (!sessionData.session) {
+      console.log('⚠️ セッションなし - ログインが必要');
       return;
     }
 
     const authUserId = sessionData.session.user.id;
+    console.log('✅ ユーザーID:', authUserId);
 
     const { data, error } = await supabase
       .from("athletes")
@@ -628,81 +637,82 @@ useEffect(() => {
       .eq("owner_auth_user_id", authUserId)
       .order("created_at", { ascending: false });
 
-
     if (error) {
-      console.error("athletes の取得に失敗しました", error);
+      console.error("❌ athletes の取得に失敗:", error);
+      console.error("エラー詳細:", JSON.stringify(error, null, 2));
       return;
     }
 
     const rows = data ?? [];
+    console.log(`📊 取得した選手数: ${rows.length}`, rows);
 
-  const options: AthleteOption[] = rows.map((row: any) => {
-  // ① 誕生日（birth_date など）から年齢を計算
-  const birthRaw: string | null =
-    row.birth_date ?? row.birthdate ?? row.date_of_birth ?? null;
+    const options: AthleteOption[] = rows.map((row: any) => {
+      // ① 誕生日（birth_date など）から年齢を計算
+      const birthRaw: string | null =
+        row.birth_date ?? row.birthdate ?? row.date_of_birth ?? null;
 
-  let computedAge: number | null = null;
-  if (birthRaw) {
-    const birth = new Date(birthRaw);
-    if (!isNaN(birth.getTime())) {
-      const today = new Date();
-      computedAge = today.getFullYear() - birth.getFullYear();
-      const m = today.getMonth() - birth.getMonth();
-      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-        computedAge--;
+      let computedAge: number | null = null;
+      if (birthRaw) {
+        const birth = new Date(birthRaw);
+        if (!isNaN(birth.getTime())) {
+          const today = new Date();
+          computedAge = today.getFullYear() - birth.getFullYear();
+          const m = today.getMonth() - birth.getMonth();
+          if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+            computedAge--;
+          }
+        }
       }
-    }
-  }
 
-  // テーブルに age カラムがあればそちらを優先。なければ計算結果
-  const age: number | null =
-    typeof row.age === "number" ? row.age : computedAge;
+      // テーブルに age カラムがあればそちらを優先。なければ計算結果
+      const age: number | null =
+        typeof row.age === "number" ? row.age : computedAge;
 
-  // ② gender / sex を統一（日本語 → male / female / other に変換）
-  const rawGender: string | null =
-    (row.gender as string | null) ?? (row.sex as string | null) ?? null;
+      // ② gender / sex を統一（日本語 → male / female / other に変換）
+      const rawGender: string | null =
+        (row.gender as string | null) ?? (row.sex as string | null) ?? null;
 
-  let genderValue: "male" | "female" | "other" | null = null;
-  if (rawGender) {
-    switch (rawGender) {
-      case "male":
-      case "男性":
-      case "男":
-        genderValue = "male";
-        break;
-      case "female":
-      case "女性":
-      case "女":
-        genderValue = "female";
-        break;
-      case "other":
-      case "その他":
-        genderValue = "other";
-        break;
-      default:
-        genderValue = "other";
-    }
-  }
+      let genderValue: "male" | "female" | "other" | null = null;
+      if (rawGender) {
+        switch (rawGender) {
+          case "male":
+          case "男性":
+          case "男":
+            genderValue = "male";
+            break;
+          case "female":
+          case "女性":
+          case "女":
+            genderValue = "female";
+            break;
+          case "other":
+          case "その他":
+            genderValue = "other";
+            break;
+          default:
+            genderValue = "other";
+        }
+      }
 
-  // ③ affiliation も候補カラムを全部見て拾う
-  const affiliationValue: string | null =
-    row.affiliation ?? row.team ?? null;
+      // ③ affiliation も候補カラムを全部見て拾う
+      const affiliationValue: string | null =
+        row.affiliation ?? row.team ?? null;
 
-  return {
-    id: row.id,
-    full_name: row.full_name ?? "",
-    gender: genderValue,
-    affiliation: affiliationValue,
-    height_cm: row.height_cm ?? null,
-    weight_kg: row.weight_kg ?? null,
-    current_record_s: row.current_record_s ?? null,
-    target_record_s: row.target_record_s ?? null,
-    birthdate: birthRaw,
-    age,
-  };
-});
+      return {
+        id: row.id,
+        full_name: row.full_name ?? "",
+        gender: genderValue,
+        affiliation: affiliationValue,
+        height_cm: row.height_cm ?? null,
+        weight_kg: row.weight_kg ?? null,
+        current_record_s: row.current_record_s ?? null,
+        target_record_s: row.target_record_s ?? null,
+        birthdate: birthRaw,
+        age,
+      };
+    });
 
-
+    console.log('✅ 選手オプション作成完了:', options);
     setAthleteOptions(options);
   };
 
