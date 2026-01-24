@@ -778,6 +778,9 @@ useEffect(() => {
   const framesRef = useRef<ImageData[]>([]);
   const [framesCount, setFramesCount] = useState(0);
   const [currentFrame, setCurrentFrame] = useState(0);
+  
+  // パーン撮影モード用スプリットタイム
+  const [panningSplits, setPanningSplits] = useState<Array<{ frame: number; time: number }>>([]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [videoWidth, setVideoWidth] = useState<number | null>(null);
@@ -939,6 +942,9 @@ const handleStartNewAnalysis = () => {
   setSectionStartFrame(null);
   setSectionMidFrame(null);
   setSectionEndFrame(null);
+  
+  // パーン撮影モード: スプリットタイムをリセット
+  setPanningSplits([]);
 
   // 必要ならラインオフセット類もリセット（あれば）
   // setStartLineOffset(0);
@@ -9726,7 +9732,7 @@ case 6: {
               </p>
             </div>
             
-            {/* パーン撮影モードの簡易結果表示 */}
+            {/* パーン撮影モード: クリック式スプリットタイマー */}
             {analysisMode === 'panning' && (
               <div style={{
                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -9744,67 +9750,161 @@ case 6: {
                   alignItems: 'center',
                   gap: '12px'
                 }}>
-                  🎥 パーン撮影モード結果
+                  ⏱️ パーン撮影 - スプリットタイマー
                 </h3>
+                
+                {/* 使い方説明 */}
                 <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                  gap: '16px'
-                }}>
-                  <div style={{
-                    background: 'rgba(255,255,255,0.2)',
-                    padding: '16px',
-                    borderRadius: '8px'
-                  }}>
-                    <div style={{ fontSize: '0.9rem', opacity: 0.9, marginBottom: '4px' }}>測定距離</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{distanceValue?.toFixed(1) ?? '---'}</div>
-                    <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>m</div>
-                  </div>
-                  <div style={{
-                    background: 'rgba(255,255,255,0.2)',
-                    padding: '16px',
-                    borderRadius: '8px'
-                  }}>
-                    <div style={{ fontSize: '0.9rem', opacity: 0.9, marginBottom: '4px' }}>フレーム数</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{framesRef.current.length}</div>
-                    <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>frames @ {usedTargetFps ?? '---'} fps</div>
-                  </div>
-                  <div style={{
-                    background: 'rgba(255,255,255,0.2)',
-                    padding: '16px',
-                    borderRadius: '8px'
-                  }}>
-                    <div style={{ fontSize: '0.9rem', opacity: 0.9, marginBottom: '4px' }}>タイム</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
-                      {sectionTimeSpeed.time != null ? sectionTimeSpeed.time.toFixed(3) : '---'}
-                    </div>
-                    <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>秒</div>
-                  </div>
-                  <div style={{
-                    background: 'rgba(255,255,255,0.2)',
-                    padding: '16px',
-                    borderRadius: '8px'
-                  }}>
-                    <div style={{ fontSize: '0.9rem', opacity: 0.9, marginBottom: '4px' }}>平均速度</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
-                      {sectionTimeSpeed.speed != null ? sectionTimeSpeed.speed.toFixed(2) : '---'}
-                    </div>
-                    <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>m/s</div>
-                  </div>
-                </div>
-                <div style={{
-                  marginTop: '16px',
+                  marginBottom: '16px',
                   padding: '12px',
                   background: 'rgba(255,255,255,0.15)',
                   borderRadius: '8px',
                   fontSize: '0.9rem',
                   lineHeight: '1.6'
                 }}>
-                  <div>📊 <strong>計算方法:</strong></div>
-                  <div>• タイム = フレーム数 ÷ FPS</div>
-                  <div>• 速度 = 測定距離 ÷ タイム</div>
-                  <div style={{ marginTop: '8px', fontSize: '0.85rem', opacity: 0.9 }}>
-                    💡 ステップ検出は不要です。フレームレートから直接算出しています。
+                  <div><strong>📌 使い方:</strong></div>
+                  <div>1. 下のビデオスライダーで測定したい地点に移動</div>
+                  <div>2. 「スプリット追加」ボタンをクリック</div>
+                  <div>3. 複数地点を計測して区間タイム・連続タイムを確認</div>
+                </div>
+                
+                {/* スプリットタイム追加ボタン */}
+                <div style={{ marginBottom: '16px' }}>
+                  <button
+                    onClick={() => {
+                      const frame = currentFrame;
+                      const time = usedTargetFps ? frame / usedTargetFps : 0;
+                      const newSplits = [...(panningSplits || []), { frame, time }];
+                      setPanningSplits(newSplits);
+                    }}
+                    style={{
+                      padding: '16px 32px',
+                      fontSize: '1.1rem',
+                      fontWeight: 'bold',
+                      background: 'rgba(255,255,255,0.3)',
+                      border: '2px solid rgba(255,255,255,0.5)',
+                      borderRadius: '12px',
+                      color: 'white',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      width: '100%'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.4)';
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.3)';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                    }}
+                  >
+                    ➕ スプリット追加 (フレーム {currentFrame})
+                  </button>
+                </div>
+                
+                {/* スプリットタイム一覧 */}
+                {panningSplits && panningSplits.length > 0 && (
+                  <div style={{
+                    background: 'rgba(255,255,255,0.2)',
+                    padding: '16px',
+                    borderRadius: '8px',
+                    marginBottom: '16px'
+                  }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: '12px', fontSize: '1.1rem' }}>
+                      📊 スプリットタイム ({panningSplits.length}地点)
+                    </div>
+                    <table style={{ 
+                      width: '100%', 
+                      borderCollapse: 'collapse',
+                      fontSize: '0.9rem'
+                    }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid rgba(255,255,255,0.3)' }}>
+                          <th style={{ padding: '8px', textAlign: 'left' }}>#</th>
+                          <th style={{ padding: '8px', textAlign: 'right' }}>フレーム</th>
+                          <th style={{ padding: '8px', textAlign: 'right' }}>連続タイム</th>
+                          <th style={{ padding: '8px', textAlign: 'right' }}>区間タイム</th>
+                          <th style={{ padding: '8px', textAlign: 'center' }}>削除</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {panningSplits.map((split, idx) => {
+                          const prevTime = idx > 0 ? panningSplits[idx - 1].time : 0;
+                          const lapTime = split.time - prevTime;
+                          return (
+                            <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.2)' }}>
+                              <td style={{ padding: '8px' }}>{idx + 1}</td>
+                              <td style={{ padding: '8px', textAlign: 'right' }}>{split.frame}</td>
+                              <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold' }}>
+                                {split.time.toFixed(3)}s
+                              </td>
+                              <td style={{ padding: '8px', textAlign: 'right', color: '#fde68a' }}>
+                                +{lapTime.toFixed(3)}s
+                              </td>
+                              <td style={{ padding: '8px', textAlign: 'center' }}>
+                                <button
+                                  onClick={() => {
+                                    const newSplits = panningSplits.filter((_, i) => i !== idx);
+                                    setPanningSplits(newSplits);
+                                  }}
+                                  style={{
+                                    padding: '4px 8px',
+                                    fontSize: '0.8rem',
+                                    background: 'rgba(239, 68, 68, 0.8)',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    color: 'white',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  ✕
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    
+                    {/* クリアボタン */}
+                    <button
+                      onClick={() => setPanningSplits([])}
+                      style={{
+                        marginTop: '12px',
+                        padding: '8px 16px',
+                        fontSize: '0.9rem',
+                        background: 'rgba(239, 68, 68, 0.8)',
+                        border: 'none',
+                        borderRadius: '6px',
+                        color: 'white',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      🗑️ すべてクリア
+                    </button>
+                  </div>
+                )}
+                
+                {/* 基本情報 */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                  gap: '12px',
+                  fontSize: '0.85rem'
+                }}>
+                  <div>
+                    <div style={{ opacity: 0.8 }}>動画情報</div>
+                    <div style={{ fontWeight: 'bold' }}>{framesRef.current.length} frames @ {usedTargetFps ?? '---'} fps</div>
+                  </div>
+                  <div>
+                    <div style={{ opacity: 0.8 }}>総時間</div>
+                    <div style={{ fontWeight: 'bold' }}>
+                      {usedTargetFps ? (framesRef.current.length / usedTargetFps).toFixed(3) : '---'}s
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ opacity: 0.8 }}>現在フレーム</div>
+                    <div style={{ fontWeight: 'bold' }}>{currentFrame} / {framesRef.current.length - 1}</div>
                   </div>
                 </div>
               </div>
