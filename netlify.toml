@@ -1,54 +1,11 @@
-# Netlify configuration for Running Analysis Studio
-
 [build]
-  # ビルドコマンド
   command = "npm run build"
-  
-  # ビルド成果物のディレクトリ
   publish = "dist"
-  
-  # Node.js バージョン指定
-  environment = { NODE_VERSION = "18" }
 
-# リダイレクト設定（SPA対応）
+[build.environment]
+  NODE_VERSION = "20"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
-
-# ヘッダー設定
-[[headers]]
-  for = "/*"
-  [headers.values]
-    # セキュリティヘッダー
-    X-Frame-Options = "DENY"
-    X-Content-Type-Options = "nosniff"
-    X-XSS-Protection = "1; mode=block"
-    Referrer-Policy = "strict-origin-when-cross-origin"
-    
-    # キャッシュ設定
-    Cache-Control = "public, max-age=0, must-revalidate"
-
-[[headers]]
-  for = "/assets/*"
-  [headers.values]
-    # 静的アセットは長期キャッシュ
-    Cache-Control = "public, max-age=31536000, immutable"
-
-# ビルド最適化
-[build.processing]
-  skip_processing = false
-
-[build.processing.css]
-  bundle = true
-  minify = true
-
-[build.processing.js]
-  bundle = true
-  minify = true
-
-[build.processing.html]
-  pretty_urls = true
-
-[build.processing.images]
-  compress = true
