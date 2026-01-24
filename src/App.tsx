@@ -10639,13 +10639,43 @@ case 6: {
                             💡 パフォーマンス評価とアドバイス
                           </h4>
                           
+                          {/* データ品質警告 */}
+                          {hfvpResult.summary.totalDistance < 20 && (
+                            <div style={{
+                              marginBottom: '16px',
+                              padding: '12px',
+                              background: 'rgba(255, 193, 7, 0.2)',
+                              border: '2px solid rgba(255, 193, 7, 0.5)',
+                              borderRadius: '8px'
+                            }}>
+                              <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>⚠️ データ品質に関する注意</div>
+                              <div style={{ fontSize: '0.9rem', lineHeight: '1.6' }}>
+                                測定距離が {hfvpResult.summary.totalDistance.toFixed(1)}m と短いため、H-FVP の精度が制限されます。
+                                科学的文献（Samozino et al. 2016）では、正確な測定のために <strong>30-60m</strong> の加速区間を推奨しています。
+                                現在の値は参考値として扱い、より長い距離での測定を推奨します。
+                              </div>
+                            </div>
+                          )}
+                          
                           {/* F0 評価 */}
                           <div style={{ marginBottom: '16px', padding: '12px', background: 'rgba(255,255,255,0.15)', borderRadius: '8px' }}>
                             <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>⚡ 最大理論推進力 (F0): {hfvpResult.F0.toFixed(1)} N</div>
                             <div style={{ fontSize: '0.9rem', lineHeight: '1.6' }}>
-                              {hfvpResult.F0 > 800 && '🌟 優れた推進力！スタートダッシュで有利です。'}
-                              {hfvpResult.F0 >= 600 && hfvpResult.F0 <= 800 && '✅ 良好な推進力。さらにウェイトトレーニングで向上が期待できます。'}
-                              {hfvpResult.F0 < 600 && '⚠️ 推進力の強化が必要です。スクワットやデッドリフトなど下半身の筋力トレーニングを推奨します。'}
+                              {(() => {
+                                const bodyMass = athleteInfo.weight_kg ?? 70;
+                                const f0PerKg = hfvpResult.F0 / bodyMass;
+                                return (
+                                  <>
+                                    <div>体重比F0: {f0PerKg.toFixed(1)} N/kg</div>
+                                    {f0PerKg > 9.5 && <div>🌟 優れた推進力！エリートスプリンターレベル（参考: Rabita et al. 2015）</div>}
+                                    {f0PerKg >= 7.5 && f0PerKg <= 9.5 && <div>✅ 良好な推進力。トレーニングでさらに向上が見込めます。</div>}
+                                    {f0PerKg < 7.5 && <div>⚠️ 推進力の強化が必要です。最大筋力トレーニング（スクワット、デッドリフト）を推奨。</div>}
+                                    <div style={{ marginTop: '8px', fontSize: '0.85rem', opacity: 0.9 }}>
+                                      📚 基準値（Rabita et al. 2015）: エリート男子 9-10 N/kg、エリート女子 8-9 N/kg
+                                    </div>
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
 
@@ -10653,9 +10683,25 @@ case 6: {
                           <div style={{ marginBottom: '16px', padding: '12px', background: 'rgba(255,255,255,0.15)', borderRadius: '8px' }}>
                             <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>🚀 最大理論速度 (V0): {hfvpResult.V0.toFixed(2)} m/s</div>
                             <div style={{ fontSize: '0.9rem', lineHeight: '1.6' }}>
-                              {hfvpResult.V0 > 11 && '🌟 卓越したスピード能力！トップスプリンターレベルです。'}
-                              {hfvpResult.V0 >= 9 && hfvpResult.V0 <= 11 && '✅ 優れた最高速度。プライオメトリクスでさらに向上が見込めます。'}
-                              {hfvpResult.V0 < 9 && '⚠️ 最高速度の向上が課題です。技術練習とスピードドリルを強化しましょう。'}
+                              {(() => {
+                                const gender = athleteInfo.gender;
+                                const isFemale = gender === 'female';
+                                
+                                // 基準値（Morin et al. 2012）
+                                const eliteThreshold = isFemale ? 10.5 : 11.5;
+                                const goodThreshold = isFemale ? 9.0 : 10.0;
+                                
+                                return (
+                                  <>
+                                    {hfvpResult.V0 > eliteThreshold && <div>🌟 卓越したスピード能力！トップスプリンターレベル（Morin et al. 2012）</div>}
+                                    {hfvpResult.V0 >= goodThreshold && hfvpResult.V0 <= eliteThreshold && <div>✅ 優れた最高速度。技術トレーニングとフライングスプリントで向上可能。</div>}
+                                    {hfvpResult.V0 < goodThreshold && <div>⚠️ 最高速度の向上が課題。スピードドリル、技術改善、神経系トレーニングを推奨。</div>}
+                                    <div style={{ marginTop: '8px', fontSize: '0.85rem', opacity: 0.9 }}>
+                                      📚 基準値（Morin et al. 2012）: エリート男子 11-13 m/s、エリート女子 10-11.5 m/s
+                                    </div>
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
 
@@ -10666,12 +10712,22 @@ case 6: {
                               {(() => {
                                 const bodyMass = athleteInfo.weight_kg ?? 70;
                                 const pmaxPerKg = hfvpResult.Pmax / bodyMass;
+                                const gender = athleteInfo.gender;
+                                const isFemale = gender === 'female';
+                                
+                                // 基準値（Samozino et al. 2016, Cross et al. 2017）
+                                const eliteThreshold = isFemale ? 20 : 25;
+                                const goodThreshold = isFemale ? 15 : 20;
+                                
                                 return (
                                   <>
                                     <div>体重比パワー: {pmaxPerKg.toFixed(1)} W/kg</div>
-                                    {pmaxPerKg > 25 && <div>🌟 非常に高いパワー出力！エリートレベルです。</div>}
-                                    {pmaxPerKg >= 20 && pmaxPerKg <= 25 && <div>✅ 良好なパワー出力。バランスの取れた能力です。</div>}
-                                    {pmaxPerKg < 20 && <div>⚠️ パワー出力の向上余地があります。爆発的トレーニングを取り入れましょう。</div>}
+                                    {pmaxPerKg > eliteThreshold && <div>🌟 非常に高いパワー出力！エリートレベル（Samozino et al. 2016）</div>}
+                                    {pmaxPerKg >= goodThreshold && pmaxPerKg <= eliteThreshold && <div>✅ 良好なパワー出力。バランスの取れた能力です。</div>}
+                                    {pmaxPerKg < goodThreshold && <div>⚠️ パワー出力の向上余地。爆発的トレーニング（ジャンプ、プライオメトリクス）推奨。</div>}
+                                    <div style={{ marginTop: '8px', fontSize: '0.85rem', opacity: 0.9 }}>
+                                      📚 基準値（Samozino et al. 2016）: エリート男子 25-30 W/kg、エリート女子 20-25 W/kg
+                                    </div>
                                   </>
                                 );
                               })()}
@@ -10682,9 +10738,20 @@ case 6: {
                           <div style={{ marginBottom: '16px', padding: '12px', background: 'rgba(255,255,255,0.15)', borderRadius: '8px' }}>
                             <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>📐 最大力比率 (RFmax): {hfvpResult.RFmax.toFixed(1)}%</div>
                             <div style={{ fontSize: '0.9rem', lineHeight: '1.6' }}>
-                              {hfvpResult.RFmax > 50 && '🌟 優れた力の方向性！効率的な推進力発揮ができています。'}
-                              {hfvpResult.RFmax >= 40 && hfvpResult.RFmax <= 50 && '✅ 標準的な力比率。技術改善で効率向上が見込めます。'}
-                              {hfvpResult.RFmax < 40 && '⚠️ 垂直方向への力が多い可能性。前傾姿勢と接地技術を見直しましょう。'}
+                              {(() => {
+                                // 基準値（Morin & Samozino 2016）
+                                // 加速初期: RFmax = 45-55%
+                                return (
+                                  <>
+                                    {hfvpResult.RFmax > 50 && <div>🌟 優れた力の方向性！効率的な水平推進力発揮（Morin & Samozino 2016）</div>}
+                                    {hfvpResult.RFmax >= 40 && hfvpResult.RFmax <= 50 && <div>✅ 標準的な力比率。技術改善で効率向上が見込めます。</div>}
+                                    {hfvpResult.RFmax < 40 && <div>⚠️ 垂直方向への力が多い可能性。前傾姿勢、接地位置、プッシュ角度を見直しましょう。</div>}
+                                    <div style={{ marginTop: '8px', fontSize: '0.85rem', opacity: 0.9 }}>
+                                      📚 基準値（Morin & Samozino 2016）: 加速初期 45-55%、最高速度時 20-25%
+                                    </div>
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
 
@@ -10692,9 +10759,22 @@ case 6: {
                           <div style={{ marginBottom: '16px', padding: '12px', background: 'rgba(255,255,255,0.15)', borderRadius: '8px' }}>
                             <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>📉 力減少率 (DRF): {hfvpResult.DRF.toFixed(2)} %/(m/s)</div>
                             <div style={{ fontSize: '0.9rem', lineHeight: '1.6' }}>
-                              {Math.abs(hfvpResult.DRF) < 8 && '🌟 優れた加速持続能力！スムーズな加速が実現できています。'}
-                              {Math.abs(hfvpResult.DRF) >= 8 && Math.abs(hfvpResult.DRF) <= 12 && '✅ 標準的な力減少。技術トレーニングで改善可能です。'}
-                              {Math.abs(hfvpResult.DRF) > 12 && '⚠️ 速度上昇時の力低下が大きいです。ランニング効率と技術に課題があります。'}
+                              {(() => {
+                                const drfAbs = Math.abs(hfvpResult.DRF);
+                                // 基準値（Morin et al. 2021）
+                                // 典型値: -8 to -12 %/(m/s)
+                                // 優秀: < -8, 課題あり: > -12
+                                return (
+                                  <>
+                                    {drfAbs < 8 && <div>🌟 優れた加速持続能力！効率的なストライド技術（Morin et al. 2021）</div>}
+                                    {drfAbs >= 8 && drfAbs <= 12 && <div>✅ 標準的な力減少率。技術トレーニングで改善の余地あり。</div>}
+                                    {drfAbs > 12 && <div>⚠️ 速度上昇時の力低下が大きい。ランニング効率、ストライド長/頻度の最適化が必要。</div>}
+                                    <div style={{ marginTop: '8px', fontSize: '0.85rem', opacity: 0.9 }}>
+                                      📚 基準値（Morin et al. 2021）: エリート -8 to -10 %/(m/s)、一般 -10 to -14 %/(m/s)
+                                    </div>
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
 
