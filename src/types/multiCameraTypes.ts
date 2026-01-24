@@ -188,6 +188,43 @@ export interface RunAnalysisResult {
     contactTime: number[];
     flightTime: number[];
   };
+  // H-FVP (Horizontal Force-Velocity Profile) - optional
+  hfvp?: {
+    F0: number;           // Maximum horizontal force (N)
+    V0: number;           // Maximum velocity (m/s)
+    Pmax: number;         // Maximum power (W)
+    RFmax: number;        // Maximum ratio of force (%)
+    DRF: number;          // Decrease in ratio of force (%/(m/s))
+    FVSlope: number;      // Force-velocity slope (N/(m/s))
+    mechanicalEffectiveness: number; // Ratio of actual vs optimal FV profile (%)
+    rSquared: number;     // Regression quality
+    dataPoints: {
+      velocity: number;
+      horizontalForce: number;
+      verticalForce: number;
+      resultantForce: number;
+      power: number;
+      forceRatio: number;
+      distance: number;
+      acceleration: number;
+      contactAngle: number;
+    }[];
+    summary: {
+      avgForce: number;
+      avgPower: number;
+      peakVelocity: number;
+      avgAcceleration: number;
+      peakAcceleration: number;
+      avgForceRatio: number;
+      totalDistance: number;
+      totalTime: number;
+    };
+    quality: {
+      isValid: boolean;
+      warnings: string[];
+      dataQuality: 'excellent' | 'good' | 'fair' | 'poor';
+    };
+  };
 }
 
 //

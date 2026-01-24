@@ -1,0 +1,94 @@
+From 784cd190ab7fb590da46a5875c74de2b214f31e4 Mon Sep 17 00:00:00 2001
+From: SusumuTakano <genspark_dev@genspark.ai>
+Date: Sun, 7 Dec 2025 06:34:59 +0000
+Subject: [PATCH 05/26] Add distance correction factor for accurate stride
+ calculation
+
+- Added manual distance correction factor in Step 5
+- Users can adjust the factor if distance is calculated incorrectly
+- Factor of 2.0 doubles the calculated distance (for when 10m shows as 5m)
+- Factor of 0.5 halves the distance (for when 10m shows as 20m)
+- Applied correction factor to distance calculation formula
+- Helps fix issues where only half of the actual distance is detected
+---
+ src/App.tsx | 50 ++++++++++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 48 insertions(+), 2 deletions(-)
+
+diff --git a/src/App.tsx b/src/App.tsx
+index a65becd..b6f2b53 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -919,6 +919,7 @@ const [notesInput, setNotesInput] = useState<string>("");
+   
+   // 旧変数（互換性のため残す）
+   const [calibrationType, setCalibrationType] = useState<1 | 2 | 3 | null>(null);
++  const [distanceCorrectionFactor, setDistanceCorrectionFactor] = useState<number>(1.0); // 距離補正係数
+   const [calibrationMode, setCalibrationMode] = useState<number>(0); // キャリブレーション進捗 (0-2: 接地1→離地1→完了)
+   const [calibrationData, setCalibrationData] = useState<{
+     contactFrame: number | null;
+@@ -1899,8 +1900,8 @@ const [notesInput, setNotesInput] = useState<string>("");
+       finishLineX = 1;
+     }
+     
+-    // ピクセル→メートル変換係数
+-    const distancePerNormalized = sectionLengthM / Math.abs(finishLineX - startLineX);
++    // ピクセル→メートル変換係数（補正係数を適用）
++    const distancePerNormalized = (sectionLengthM * (distanceCorrectionFactor || 1.0)) / Math.abs(finishLineX - startLineX);
+     const isLeftToRight = finishLineX > startLineX; // 走行方向
+     
+     // 各フレームでのスタートラインからの距離[m]を計算
+@@ -7486,6 +7487,51 @@ const [notesInput, setNotesInput] = useState<string>("");
+               </div>
+             </div>
+ 
++            {/* 距離補正オプション */}
++            <div style={{
++              background: '#fff3cd',
++              border: '2px solid #ffc107',
++              borderRadius: '8px',
++              padding: '16px',
++              margin: '20px 0',
++              textAlign: 'center'
++            }}>
++              <h4 style={{ color: '#856404', marginBottom: '12px', fontWeight: 'bold' }}>
++                ⚠️ 距離が正しく計算されない場合の補正
++              </h4>
++              <p style={{ color: '#856404', marginBottom: '12px' }}>
++                実際の距離と異なる場合は、補正係数を調整してください：
++              </p>
++              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
++                <span>補正係数:</span>
++                <input
++                  type="number"
++                  step="0.1"
++                  min="0.5"
++                  max="2.0"
++                  value={distanceCorrectionFactor || 1.0}
++                  onChange={(e) => {
++                    const factor = parseFloat(e.target.value);
++                    setDistanceCorrectionFactor(factor);
++                    console.log(`📐 距離補正係数を設定: ${factor}`);
++                  }}
++                  style={{
++                    width: '80px',
++                    padding: '5px',
++                    fontSize: '16px',
++                    textAlign: 'center'
++                  }}
++                />
++                <span style={{ fontSize: '12px', color: '#666' }}>
++                  (1.0 = 補正なし、2.0 = 2倍、0.5 = 半分)
++                </span>
++              </div>
++              <p style={{ fontSize: '12px', color: '#856404', marginTop: '10px' }}>
++                例: 10m区間なのに5mと表示される場合 → 2.0に設定<br/>
++                例: 10m区間なのに20mと表示される場合 → 0.5に設定
++              </p>
++            </div>
++
+             <div className="wizard-actions">
+               <button className="btn-ghost" onClick={() => setWizardStep(1)}>
+                 最初に戻る
+-- 
+2.39.5
+

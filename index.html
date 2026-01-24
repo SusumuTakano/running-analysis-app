@@ -39,6 +39,30 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1640029074/camera_utils.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils@0.6.1629159505/control_utils.min.js" crossorigin="anonymous"></script>
+  
+  <!-- CRITICAL: MediaPipe のロード完了を確認 -->
+  <script>
+    window.mediaPipeLoaded = false;
+    window.mediaPipeLoadPromise = new Promise((resolve, reject) => {
+      const checkInterval = setInterval(() => {
+        if (window.Pose) {
+          console.log('✅ MediaPipe Pose loaded successfully');
+          window.mediaPipeLoaded = true;
+          clearInterval(checkInterval);
+          resolve(true);
+        }
+      }, 100);
+      
+      // 30秒でタイムアウト
+      setTimeout(() => {
+        if (!window.mediaPipeLoaded) {
+          clearInterval(checkInterval);
+          console.error('❌ MediaPipe load timeout (30s)');
+          reject(new Error('MediaPipe load timeout'));
+        }
+      }, 30000);
+    });
+  </script>
 </head>
 <body>
   <div id="root"></div>

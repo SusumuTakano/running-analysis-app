@@ -1,0 +1,178 @@
+From a28717f799bd9d55eb41475b21678ad9bca3ea90 Mon Sep 17 00:00:00 2001
+From: SusumuTakano <genspark_dev@genspark.ai>
+Date: Sat, 20 Dec 2025 14:15:16 +0000
+Subject: [PATCH 22/26] fix: Add navigation back to Step 8 from Step 9 and
+ restore running icon
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Add '← 戻る: ステップ8（動画確認）' button in Step 9 to allow returning to Step 8
+- User can now view video anytime after reaching results screen
+- Restore running person icon (🏃‍♂️) in title with prominent styling
+- Icon uses gradient animation for visibility
+- Fixes navigation issue where users were stuck in Step 9
+---
+ src/App.tsx | 139 +++++++++++++++++++++++++++++++---------------------
+ 1 file changed, 82 insertions(+), 57 deletions(-)
+
+diff --git a/src/App.tsx b/src/App.tsx
+index 36f789d..71ad408 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -10785,58 +10785,71 @@ case 6: {
+                   🔄 検出モードをやり直す
+                 </button>
+               </div>
+-              <button
+-                className="wizard-btn danger"
+-                onClick={() => {
+-                  if (
+-                    window.confirm(
+-                      "最初からやり直しますか？現在のデータはリセットされます。"
+-                    )
+-                  ) {
+-                    // リセット処理
+-                    if (videoUrl) URL.revokeObjectURL(videoUrl);
+-                    setVideoUrl(null);
+-                    setVideoFile(null);
+-                    framesRef.current = [];
+-                    setFramesCount(0);
+-                    setCurrentFrame(0);
+-                    setExtractProgress(0);
+-                    setIsExtracting(false);
+-                    setUsedTargetFps(null);
+-                    setSectionStartFrame(null);
+-                    setSectionMidFrame(null);
+-                    setSectionEndFrame(null);
+-                    setStartLineOffset(0);
+-                    setMidLineOffset(0);
+-                    setEndLineOffset(0);
+-                    setSavedStartHipX(null);
+-                    setSavedMidHipX(null);
+-                    setSavedEndHipX(null);
+-                    setManualContactFrames([]);
+-                    setAutoToeOffFrames([]);
+-                    setCalibrationMode(0);
+-                    setToeOffThreshold(null);
+-                    setBaseThreshold(null);
+-                    setPoseResults([]);
+-                    setStatus("");
+-                    setWizardStep(0);
+-                    setDistanceInput("10");
+-                    setLabelInput("");
+-                    setNotesInput("");
+-                    setAthleteInfo({
+-                      name: '',
+-                      age: null,
+-                      gender: null,
+-                      affiliation: '',
+-                      height_cm: null,
+-                      current_record: '',
+-                      target_record: '',
+-                    });
+-                  }
+-                }}
+-              >
+-                最初からやり直す
+-              </button>
++              <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between', width: '100%' }}>
++                <button
++                  className="wizard-btn secondary"
++                  onClick={() => setWizardStep(7)}
++                  style={{
++                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
++                    border: 'none',
++                    boxShadow: '0 4px 12px rgba(59, 130, 246, 0.4)'
++                  }}
++                >
++                  ← 戻る: ステップ8（動画確認）
++                </button>
++                <button
++                  className="wizard-btn danger"
++                  onClick={() => {
++                    if (
++                      window.confirm(
++                        "最初からやり直しますか？現在のデータはリセットされます。"
++                      )
++                    ) {
++                      // リセット処理
++                      if (videoUrl) URL.revokeObjectURL(videoUrl);
++                      setVideoUrl(null);
++                      setVideoFile(null);
++                      framesRef.current = [];
++                      setFramesCount(0);
++                      setCurrentFrame(0);
++                      setExtractProgress(0);
++                      setIsExtracting(false);
++                      setUsedTargetFps(null);
++                      setSectionStartFrame(null);
++                      setSectionMidFrame(null);
++                      setSectionEndFrame(null);
++                      setStartLineOffset(0);
++                      setMidLineOffset(0);
++                      setEndLineOffset(0);
++                      setSavedStartHipX(null);
++                      setSavedMidHipX(null);
++                      setSavedEndHipX(null);
++                      setManualContactFrames([]);
++                      setAutoToeOffFrames([]);
++                      setCalibrationMode(0);
++                      setToeOffThreshold(null);
++                      setBaseThreshold(null);
++                      setPoseResults([]);
++                      setStatus("");
++                      setWizardStep(0);
++                      setDistanceInput("10");
++                      setLabelInput("");
++                      setNotesInput("");
++                      setAthleteInfo({
++                        name: '',
++                        age: null,
++                        gender: null,
++                        affiliation: '',
++                        height_cm: null,
++                        current_record: '',
++                        target_record: '',
++                      });
++                    }
++                  }}
++                >
++                  最初からやり直す
++                </button>
++              </div>
+             </div>
+           </div>
+         );
+@@ -11096,11 +11109,23 @@ case 6: {
+           }}
+         >
+           {/* 左側：タイトル */}
+-          <div>
+-            <h1 className="app-title-new">🏃 Running Analysis Studio</h1>
+-            <p className="app-subtitle-new">
+-              フレーム抽出・姿勢推定・関節角度とステップ指標を一括解析
+-            </p>
++          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
++            <div style={{
++              fontSize: '3rem',
++              background: 'linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%)',
++              WebkitBackgroundClip: 'text',
++              WebkitTextFillColor: 'transparent',
++              backgroundClip: 'text',
++              animation: 'pulse 2s ease-in-out infinite'
++            }}>
++              🏃‍♂️
++            </div>
++            <div>
++              <h1 className="app-title-new">Running Analysis Studio</h1>
++              <p className="app-subtitle-new">
++                フレーム抽出・姿勢推定・関節角度とステップ指標を一括解析
++              </p>
++            </div>
+           </div>
+ 
+           {/* 右側：チュートリアル＋新しい解析ボタン＋ユーザー名 */}
+-- 
+2.39.5
+

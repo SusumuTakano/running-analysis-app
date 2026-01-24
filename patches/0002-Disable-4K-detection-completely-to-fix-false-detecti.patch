@@ -1,0 +1,60 @@
+From a213f1a35199b031baf68522fb1e6ed863c3c7ea Mon Sep 17 00:00:00 2001
+From: SusumuTakano <genspark_dev@genspark.ai>
+Date: Sun, 7 Dec 2025 06:11:02 +0000
+Subject: [PATCH 02/26] Disable 4K detection completely to fix false detection
+
+- 4K detection is now completely disabled (always returns false)
+- All videos are processed as HD regardless of reported resolution
+- 3840x2160 false reports are automatically corrected to 1920x1080
+- Removed 4K confirmation dialog
+- This fixes the persistent 4K message issue
+---
+ src/App.tsx | 21 ++++++++-------------
+ 1 file changed, 8 insertions(+), 13 deletions(-)
+
+diff --git a/src/App.tsx b/src/App.tsx
+index 867cd87..ae446ef 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -3574,15 +3574,10 @@ const [notesInput, setNotesInput] = useState<string>("");
+             const fileSizeMB = videoFile.size / (1024 * 1024);
+             console.log(`📹 ファイルサイズ: ${fileSizeMB.toFixed(2)}MB`);
+             
+-            // 200MB以下は確実にHD動画（4K動画は最低でも300MB以上）
+-            if (fileSizeMB < 250) {
+-              console.log(`⚠️ ファイルサイズ ${fileSizeMB.toFixed(0)}MB から判定: HD動画として処理`);
+-              correctedWidth = 1920;
+-              correctedHeight = 1080;
+-            } else {
+-              // 本当の4K動画
+-              console.log(`✅ ファイルサイズ ${fileSizeMB.toFixed(0)}MB から判定: 真の4K動画`);
+-            }
++            // 常にHD動画として処理（4K誤検出を防ぐ）
++            console.log(`⚠️ 3840x2160報告を無視 → HD動画として処理`);
++            correctedWidth = 1920;
++            correctedHeight = 1080;
+           }
+           
+           // その他の誤認識パターンも修正
+@@ -3714,14 +3709,14 @@ const [notesInput, setNotesInput] = useState<string>("");
+     console.log(`🎬 HD判定: ${actualVideoWidth === 1920 && actualVideoHeight === 1080 ? 'HD (1920x1080)' : 
+                  actualVideoWidth === 1280 && actualVideoHeight === 720 ? 'HD (1280x720)' : 
+                  '他の解像度'}`);
+-    const is4K = actualVideoWidth >= 3840 && actualVideoHeight >= 2160;
+-    console.log(`🎬 4K判定結果: ${is4K ? '4K動画' : '非4K動画'}`);
++    const is4K = false; // 4K検出を無効化（誤検出が多いため）
++    console.log(`🎬 4K検出無効化: HD動画として処理`);
+     const is240Fps = targetFps >= 240;
+     
+     let scale = Math.min(1, MAX_WIDTH / actualVideoWidth);
+     
+-    // 4K動画または240fpsの場合のみ確認（120fps以下は自動処理）
+-    if (is4K && !isMobile) {
++    // 4K検出を無効化したため、このチェックはスキップ
++    if (false) { // 4K検出無効
+       const fullResMemoryMB = (actualVideoWidth * actualVideoHeight * totalFrames * 4) / (1024 * 1024);
+       const scaledMemoryMB = (MAX_WIDTH * (actualVideoHeight * MAX_WIDTH / actualVideoWidth) * totalFrames * 4) / (1024 * 1024);
+       
+-- 
+2.39.5
+

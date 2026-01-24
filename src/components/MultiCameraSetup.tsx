@@ -129,13 +129,15 @@ const CalibrationPanel: React.FC<{
       x1_far: points[3].px
     };
 
-    // World points: x-axis = lane width (0~1.22m), y-axis = running direction (0~15m)
-    // near = camera-side (x=0), far = opposite-side (x=laneWidthM)
+    // 🔧 FIX: World points coordinate system
+    // X-axis = running direction (distance: 0~15m)
+    // Y-axis = lane width (0~1.22m)
+    // near = camera-side (y=0), far = opposite-side (y=laneWidthM)
     const worldPoints = {
-      x0_near: [0, x0] as [number, number],          // (0, startDistanceM)
-      x0_far: [laneWidthM, x0] as [number, number],  // (1.22, startDistanceM)
-      x1_near: [0, x1] as [number, number],          // (0, endDistanceM)
-      x1_far: [laneWidthM, x1] as [number, number]   // (1.22, endDistanceM)
+      x0_near: [x0, 0] as [number, number],               // (startDistanceM, 0)
+      x0_far: [x0, laneWidthM] as [number, number],       // (startDistanceM, 1.22)
+      x1_near: [x1, 0] as [number, number],               // (endDistanceM, 0)
+      x1_far: [x1, laneWidthM] as [number, number]        // (endDistanceM, 1.22)
     };
 
     let H: SegmentCalibration['H_img_to_world'] | null = null;
@@ -256,7 +258,7 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
   const [config, setConfig] = useState<MultiCameraConfig>({
     segmentLengthM: 5,
     totalDistanceM: 15,
-    fps: 120,
+    fps: 30, // 🔧 FIX: 120 → 30 (メモリ節約のため強制的に 30 FPS)
     // @ts-ignore - 既に型に含めている前提（含まれていない場合は multiCameraTypes 側へ追加してください）
     laneWidthM: 1.22,
     // @ts-ignore
@@ -430,11 +432,15 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
                 <label className="block text-sm font-medium text-gray-700 mb-3">
                   マーカー間隔（コーン間隔）
                 </label>
-                <div className="grid grid-cols-2 gap-3">
-                  {[5, 10].map(length => (
+                <div className="grid grid-cols-3 gap-3">
+                  {[5, 7.5, 10].map(length => (
                     <button
                       key={length}
-                      onClick={() => setConfig(prev => ({ ...prev, segmentLengthM: length, totalDistanceM: length === 5 ? 15 : 30 }))}
+                      onClick={() => setConfig(prev => ({ 
+                        ...prev, 
+                        segmentLengthM: length, 
+                        totalDistanceM: length === 5 ? 15 : length === 7.5 ? 22.5 : 30 
+                      }))}
                       className={`p-4 border-2 rounded-lg transition ${
                         config.segmentLengthM === length
                           ? 'border-blue-500 bg-blue-50'
@@ -443,7 +449,7 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
                     >
                       <div className="text-xl font-bold">{length}m</div>
                       <div className="text-sm text-gray-500">
-                        {length === 5 ? '推奨（精度重視）' : '簡易（設置が楽）'}
+                        {length === 5 ? '推奨（精度重視）' : length === 7.5 ? '中間' : '簡易（設置が楽）'}
                       </div>
                     </button>
                   ))}
@@ -458,6 +464,8 @@ export const MultiCameraSetup: React.FC<MultiCameraSetupProps> = ({
                 <div className="grid grid-cols-3 gap-3">
                   {(config.segmentLengthM === 10
                     ? [20, 30, 40, 60, 80, 100]
+                    : config.segmentLengthM === 7.5
+                    ? [15, 22.5, 30, 45, 60, 75]
                     : [10, 15, 20, 30, 40, 50]
                   ).map(distance => (
                     <button
