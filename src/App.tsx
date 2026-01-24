@@ -928,9 +928,8 @@ const [labelInput, setLabelInput] = useState<string>("");
 const [notesInput, setNotesInput] = useState<string>("");
 
   
-  // ------------ 被検者の身長・体重 ---------------
-  const [subjectHeightInput, setSubjectHeightInput] = useState<string>("170");
-  const [bodyMassInput, setBodyMassInput] = useState<string>("70");
+  // ------------ 被検者の身長・体重（athleteInfo から取得） ---------------
+  // ※ ステップ1の入力欄は削除済み。ステップ0で登録した選手情報を使用
   
   // ------------ 100m目標記録 ---------------
   const [target100mInput, setTarget100mInput] = useState<string>("");
@@ -7907,51 +7906,7 @@ if (analysisMode === 'multi' && isMultiCameraSetup) {
         </label>
       </div>
 
-      {/* 2. 体重と身長（H-FVP 計算用） */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '12px',
-        marginBottom: '12px'
-      }}>
-        <div className="input-group">
-          <label className="input-label">
-            <span className="label-text">
-              体重 (kg)
-            </span>
-            <input
-              type="number"
-              min={30}
-              max={200}
-              step={0.1}
-              value={bodyMassInput}
-              onChange={(e) => setBodyMassInput(e.target.value)}
-              className="input-field"
-              placeholder="例: 70"
-            />
-          </label>
-        </div>
-        
-        <div className="input-group">
-          <label className="input-label">
-            <span className="label-text">
-              身長 (cm)
-            </span>
-            <input
-              type="number"
-              min={100}
-              max={250}
-              step={1}
-              value={subjectHeightInput}
-              onChange={(e) => setSubjectHeightInput(e.target.value)}
-              className="input-field"
-              placeholder="例: 170"
-            />
-          </label>
-        </div>
-      </div>
-
-      {/* 3. 読み込みFPS（コンパクト版） */}
+      {/* 2. 読み込みFPS（コンパクト版） */}
       <div
         style={{
           background: "#f0f9ff",
