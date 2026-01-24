@@ -2405,8 +2405,11 @@ const clearMarksByButton = () => {
 
   // ⚡ H-FVP 計算（Horizontal Force-Velocity Profile）
   const hfvpResult = useMemo((): HFVPResult | null => {
+    console.log(`🔍 H-FVP check: stepMetrics.length=${stepMetrics.length}, bodyMass=${bodyMassInput}, height=${subjectHeightInput}`);
+    
     // 最低5ステップ必要
     if (stepMetrics.length < 5) {
+      console.log(`⚠️ H-FVP: Not enough steps (${stepMetrics.length} < 5)`);
       return null;
     }
     
@@ -2440,6 +2443,13 @@ const clearMarksByButton = () => {
         contactTimeS: step.contactTime!,
         flightTimeS: step.flightTime!,
       }));
+    
+    console.log(`🔍 H-FVP: Valid steps after filter: ${hfvpSteps.length}/${stepMetrics.length}`);
+    
+    if (hfvpSteps.length < 5) {
+      console.log(`⚠️ H-FVP: Not enough valid steps after filtering (${hfvpSteps.length} < 5)`);
+      return null;
+    }
     
     const result = calculateHFVP(hfvpSteps, bodyMass, athleteHeight);
     
