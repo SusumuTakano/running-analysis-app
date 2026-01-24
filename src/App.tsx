@@ -946,6 +946,133 @@ const [notesInput, setNotesInput] = useState<string>("");
       ? distanceValue / sectionTime
       : null;
 
+  // ------------ 選手情報の保存 ------------
+  const handleSaveAthlete = async () => {
+    // バリデーション
+    if (!athleteInfo.name || !athleteInfo.age || !athleteInfo.gender || !athleteInfo.height_cm || !athleteInfo.weight_kg) {
+      alert('選手情報を保存するには、氏名・年齢・性別・身長・体重が必須です。');
+      return;
+    }
+
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData?.session) {
+        alert('ログインが必要です。');
+        return;
+      }
+
+      const authUserId = sessionData.session.user.id;
+
+      // 現在の記録と目標記録を数値に変換
+      const currentRecordValue = athleteInfo.current_record 
+        ? parseFloat(athleteInfo.current_record) 
+        : null;
+      const targetRecordValue = athleteInfo.target_record 
+        ? parseFloat(athleteInfo.target_record) 
+        : null;
+
+      const payload = {
+        owner_auth_user_id: authUserId,
+        full_name: athleteInfo.name,
+        sex: athleteInfo.gender,
+        birth_date: athleteInfo.age 
+          ? new Date(new Date().getFullYear() - athleteInfo.age, 0, 1).toISOString().split('T')[0]
+          : null,
+        affiliation: athleteInfo.affiliation || null,
+        height_cm: athleteInfo.height_cm,
+        weight_kg: athleteInfo.weight_kg,
+        current_record_s: currentRecordValue,
+        target_record_s: targetRecordValue,
+      };
+
+      const { data, error } = await supabase
+        .from('athletes')
+        .insert(payload)
+        .select();
+
+      if (error) {
+        console.error('選手情報の保存に失敗しました:', error);
+        alert('選手情報の保存に失敗しました。');
+        return;
+      }
+
+      alert('選手情報を保存しました！');
+      
+      // 選手リストを再読み込み
+      const { data: athletesData } = await supabase
+        .from("athletes")
+        .select("id, full_name, sex, birth_date, affiliation, height_cm, weight_kg, current_record_s, target_record_s")
+        .eq("owner_auth_user_id", authUserId)
+        .order("created_at", { ascending: false });
+
+      if (athletesData) {
+        const options: AthleteOption[] = athletesData.map((row: any) => {
+          const birthRaw: string | null = row.birth_date ?? null;
+          let computedAge: number | null = null;
+          if (birthRaw) {
+            const birth = new Date(birthRaw);
+            if (!isNaN(birth.getTime())) {
+              const today = new Date();
+              computedAge = today.getFullYear() - birth.getFullYear();
+              const m = today.getMonth() - birth.getMonth();
+              if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+                computedAge--;
+              }
+            }
+          }
+
+          const age: number | null = typeof row.age === "number" ? row.age : computedAge;
+          const rawGender: string | null = (row.sex as string | null) ?? null;
+
+          let genderValue: "male" | "female" | "other" | null = null;
+          if (rawGender) {
+            switch (rawGender) {
+              case "male":
+              case "男性":
+              case "男":
+                genderValue = "male";
+                break;
+              case "female":
+              case "女性":
+              case "女":
+                genderValue = "female";
+                break;
+              case "other":
+              case "その他":
+                genderValue = "other";
+                break;
+              default:
+                genderValue = "other";
+            }
+          }
+
+          return {
+            id: row.id,
+            full_name: row.full_name ?? "",
+            gender: genderValue,
+            affiliation: row.affiliation ?? null,
+            height_cm: row.height_cm ?? null,
+            weight_kg: row.weight_kg ?? null,
+            current_record_s: row.current_record_s ?? null,
+            target_record_s: row.target_record_s ?? null,
+            birthdate: birthRaw,
+            age,
+          };
+        });
+
+        setAthleteOptions(options);
+        
+        // 保存した選手を自動選択
+        if (data && data[0]) {
+          setSelectedAthleteId(data[0].id);
+        }
+      }
+    } catch (err) {
+      console.error('選手情報の保存エラー:', err);
+      alert('選手情報の保存中にエラーが発生しました。');
+    }
+  };
+
   // ------------ 区間設定クリックモード ------------
   const [sectionClickMode, setSectionClickMode] = useState<'start' | 'mid' | 'end' | null>(null);
 
@@ -7548,6 +7675,55 @@ if (analysisMode === 'multi' && isMultiCameraSetup) {
                   </p>
                 </div>
               </div>
+
+              {/* 選手情報を保存ボタン */}
+              {!selectedAthleteId && (
+                <div style={{ 
+                  marginTop: '24px',
+                  padding: '16px',
+                  background: '#f0f9ff',
+                  border: '1px solid #bae6fd',
+                  borderRadius: '8px'
+                }}>
+                  <p style={{ 
+                    fontSize: '0.9rem', 
+                    color: '#0369a1',
+                    marginBottom: '12px',
+                    fontWeight: '600'
+                  }}>
+                    💾 この選手情報を保存しますか？
+                  </p>
+                  <p style={{ 
+                    fontSize: '0.85rem', 
+                    color: '#0c4a6e',
+                    marginBottom: '12px'
+                  }}>
+                    保存すると、次回から選手を選択するだけで身長・体重が自動入力されます。
+                  </p>
+                  <button
+                    onClick={handleSaveAthlete}
+                    style={{
+                      padding: '10px 20px',
+                      fontSize: '0.95rem',
+                      fontWeight: 'bold',
+                      color: 'white',
+                      background: '#0ea5e9',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#0284c7';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#0ea5e9';
+                    }}
+                  >
+                    💾 選手情報を保存
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
