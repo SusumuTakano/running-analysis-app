@@ -56,6 +56,7 @@ type AthleteOption = {
   birthdate: string | null;
   age: number | null;
   height_cm: number | null;
+  weight_kg: number | null;
   current_record_s: number | null;
   target_record_s: number | null;
 };
@@ -622,7 +623,7 @@ useEffect(() => {
     const { data, error } = await supabase
       .from("athletes")
       .select(
-        "id, full_name, sex, birth_date, affiliation, height_cm, current_record_s, target_record_s"
+        "id, full_name, sex, birth_date, affiliation, height_cm, weight_kg, current_record_s, target_record_s"
       )
       .eq("owner_auth_user_id", authUserId)
       .order("created_at", { ascending: false });
@@ -693,6 +694,7 @@ useEffect(() => {
     gender: genderValue,
     affiliation: affiliationValue,
     height_cm: row.height_cm ?? null,
+    weight_kg: row.weight_kg ?? null,
     current_record_s: row.current_record_s ?? null,
     target_record_s: row.target_record_s ?? null,
     birthdate: birthRaw,
@@ -725,6 +727,7 @@ useEffect(() => {
       ...prev,
       name: selected.full_name,
       height_cm: selected.height_cm,
+      weight_kg: selected.weight_kg,
       current_record:
         selected.current_record_s != null
           ? String(selected.current_record_s)
@@ -7359,51 +7362,107 @@ if (analysisMode === 'multi' && isMultiCameraSetup) {
                 />
               </div>
 
-              {/* 身長 */}
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontWeight: "bold",
-                    marginBottom: "8px",
-                    color: "#374151",
-                  }}
-                >
-                  身長（cm） <span style={{ color: "#ef4444" }}>*</span>
-                </label>
-                <input
-                  type="number"
-                  value={athleteInfo.height_cm ?? ""}
-                  onChange={(e) =>
-                    setAthleteInfo({
-                      ...athleteInfo,
-                      height_cm: e.target.value
-                        ? Number(e.target.value)
-                        : null,
-                    })
-                  }
-                  placeholder="170"
-                  min="100"
-                  max="250"
-                  step="0.1"
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    fontSize: "1rem",
-                    border: "1px solid #d1d5db",
-                    borderRadius: "8px",
-                    outline: "none",
-                  }}
-                />
-                <p
-                  style={{
-                    fontSize: "0.85rem",
-                    color: "#6b7280",
-                    marginTop: "4px",
-                  }}
-                >
-                  ※ ストライド比の計算に使用されます
-                </p>
+              {/* 身長と体重 */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "16px",
+                }}
+              >
+                {/* 身長 */}
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      fontWeight: "bold",
+                      marginBottom: "8px",
+                      color: "#374151",
+                    }}
+                  >
+                    身長（cm） <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={athleteInfo.height_cm ?? ""}
+                    onChange={(e) =>
+                      setAthleteInfo({
+                        ...athleteInfo,
+                        height_cm: e.target.value
+                          ? Number(e.target.value)
+                          : null,
+                      })
+                    }
+                    placeholder="170"
+                    min="100"
+                    max="250"
+                    step="0.1"
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      fontSize: "1rem",
+                      border: "1px solid #d1d5db",
+                      borderRadius: "8px",
+                      outline: "none",
+                    }}
+                  />
+                  <p
+                    style={{
+                      fontSize: "0.85rem",
+                      color: "#6b7280",
+                      marginTop: "4px",
+                    }}
+                  >
+                    ※ ストライド比の計算に使用されます
+                  </p>
+                </div>
+
+                {/* 体重 */}
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      fontWeight: "bold",
+                      marginBottom: "8px",
+                      color: "#374151",
+                    }}
+                  >
+                    体重（kg） <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={athleteInfo.weight_kg ?? ""}
+                    onChange={(e) =>
+                      setAthleteInfo({
+                        ...athleteInfo,
+                        weight_kg: e.target.value
+                          ? Number(e.target.value)
+                          : null,
+                      })
+                    }
+                    placeholder="48"
+                    min="20"
+                    max="200"
+                    step="0.1"
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      fontSize: "1rem",
+                      border: "1px solid #d1d5db",
+                      borderRadius: "8px",
+                      outline: "none",
+                    }}
+                  />
+                  <p
+                    style={{
+                      fontSize: "0.85rem",
+                      color: "#6b7280",
+                      marginTop: "4px",
+                    }}
+                  >
+                    ※ H-FVP計算に使用されます
+                  </p>
+                </div>
               </div>
 
               {/* 現在の記録と目標記録 */}
@@ -7574,7 +7633,8 @@ if (analysisMode === 'multi' && isMultiCameraSetup) {
                 !athleteInfo.name ||
                 !athleteInfo.age ||
                 !athleteInfo.gender ||
-                !athleteInfo.height_cm
+                !athleteInfo.height_cm ||
+                !athleteInfo.weight_kg
               }
             >
               次へ：動画アップロード
