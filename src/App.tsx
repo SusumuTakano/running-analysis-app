@@ -5315,6 +5315,37 @@ setUsedTargetFps(targetFps);
     }, runType);
   }, [stepMetrics, threePhaseAngles, stepSummary, athleteInfo.height_cm, athleteInfo.gender, runType]);
 
+  // H-FVP (Horizontal Force-Velocity Profile) calculation
+  const hfvpResult: HFVPResult | null = useMemo(() => {
+    if (wizardStep !== 7 || stepMetrics.length < 5) {
+      return null;
+    }
+    
+    const bodyMass = parseFloat(bodyMassInput);
+    const athleteHeight = parseFloat(subjectHeightInput) / 100; // cm to m
+    
+    if (isNaN(bodyMass) || bodyMass <= 0 || bodyMass > 200) {
+      console.warn('⚠️ Invalid body mass for H-FVP:', bodyMassInput);
+      return null;
+    }
+    
+    if (isNaN(athleteHeight) || athleteHeight <= 0 || athleteHeight > 2.5) {
+      console.warn('⚠️ Invalid height for H-FVP:', subjectHeightInput);
+      return null;
+    }
+    
+    // Convert stepMetrics to H-FVP format
+    const hfvpSteps = stepMetrics.map(step => ({
+      distanceAtContactM: step.distanceAtContact ?? 0,
+      speedMps: step.speedMps,
+      strideM: step.stride,
+      contactTimeS: step.contactTime ?? 0,
+      flightTimeS: step.flightTime ?? 0,
+    }));
+    
+    return calculateHFVP(hfvpSteps, bodyMass, athleteHeight);
+  }, [wizardStep, stepMetrics, bodyMassInput, subjectHeightInput]);
+
   // 研究データベース（目標記録に対する最適なピッチとストライド）
   // 出典: これまでの研究報告「身体の大きさ、四肢の長さがピッチに大きく影響し、体型によって至適ピッチが選択され、
   //        そのときのストライド長によってパフォーマンスが決まる」
@@ -7784,6 +7815,50 @@ if (analysisMode === 'multi' && isNewMultiCameraAnalysis && newMultiCameraRun &&
         </label>
       </div>
 
+      {/* 身長・体重入力（H-FVP用） */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: '1fr 1fr', 
+        gap: '12px',
+        marginTop: '12px'
+      }}>
+        <div className="input-group">
+          <label className="input-label">
+            <span className="label-text">
+              身長 (cm)
+            </span>
+            <input
+              type="number"
+              min={100}
+              max={250}
+              step={1}
+              value={subjectHeightInput}
+              onChange={(e) => setSubjectHeightInput(e.target.value)}
+              className="input-field"
+              placeholder="例: 170"
+            />
+          </label>
+        </div>
+
+        <div className="input-group">
+          <label className="input-label">
+            <span className="label-text">
+              体重 (kg)
+            </span>
+            <input
+              type="number"
+              min={30}
+              max={200}
+              step={0.1}
+              value={bodyMassInput}
+              onChange={(e) => setBodyMassInput(e.target.value)}
+              className="input-field"
+              placeholder="例: 70"
+            />
+          </label>
+        </div>
+      </div>
+
       {/* 2. 読み込みFPS（コンパクト版） */}
       <div
         style={{
@@ -9743,6 +9818,174 @@ case 6: {
             </div>
 
             <div className="results-layout">
+              {/* H-FVP セクション */}
+              {hfvpResult && (
+                <div className="result-card" style={{
+                  background: 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)',
+                  color: 'white'
+                }}>
+                  <h3 className="result-card-title" style={{ color: 'white', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    ⚡ H-FVP 分析
+                    <span style={{ 
+                      fontSize: '0.75rem', 
+                      padding: '2px 8px', 
+                      background: 'rgba(255,255,255,0.2)', 
+                      borderRadius: '4px' 
+                    }}>
+                      Horizontal Force-Velocity Profile
+                    </span>
+                  </h3>
+                  
+                  {/* データ品質インジケーター */}
+                  <div style={{
+                    padding: '12px',
+                    background: 'rgba(255,255,255,0.15)',
+                    borderRadius: '8px',
+                    marginBottom: '16px',
+                    fontSize: '0.9rem'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>データ品質:</span>
+                      <span style={{ fontWeight: 'bold' }}>
+                        {hfvpResult.quality.dataQuality === 'excellent' && '🌟 Excellent'}
+                        {hfvpResult.quality.dataQuality === 'good' && '✅ Good'}
+                        {hfvpResult.quality.dataQuality === 'fair' && '⚠️ Fair'}
+                        {hfvpResult.quality.dataQuality === 'poor' && '❌ Poor'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                      <span>R² (回帰精度):</span>
+                      <span style={{ fontWeight: 'bold' }}>{hfvpResult.rSquared.toFixed(3)}</span>
+                    </div>
+                  </div>
+
+                  {/* コアパラメータ */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                    gap: '12px',
+                    marginBottom: '20px'
+                  }}>
+                    <div style={{
+                      padding: '16px',
+                      background: 'rgba(255,255,255,0.15)',
+                      borderRadius: '8px',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>F0</div>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{hfvpResult.F0.toFixed(1)}</div>
+                      <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>N</div>
+                    </div>
+                    <div style={{
+                      padding: '16px',
+                      background: 'rgba(255,255,255,0.15)',
+                      borderRadius: '8px',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>V0</div>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{hfvpResult.V0.toFixed(2)}</div>
+                      <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>m/s</div>
+                    </div>
+                    <div style={{
+                      padding: '16px',
+                      background: 'rgba(255,255,255,0.15)',
+                      borderRadius: '8px',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>Pmax</div>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{hfvpResult.Pmax.toFixed(0)}</div>
+                      <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>W</div>
+                    </div>
+                    <div style={{
+                      padding: '16px',
+                      background: 'rgba(255,255,255,0.15)',
+                      borderRadius: '8px',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>RFmax</div>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{hfvpResult.RFmax.toFixed(1)}</div>
+                      <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>%</div>
+                    </div>
+                    <div style={{
+                      padding: '16px',
+                      background: 'rgba(255,255,255,0.15)',
+                      borderRadius: '8px',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>DRF</div>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{hfvpResult.DRF.toFixed(2)}</div>
+                      <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>%/(m/s)</div>
+                    </div>
+                  </div>
+
+                  {/* 機械的効率性 */}
+                  <div style={{
+                    padding: '16px',
+                    background: 'rgba(255,255,255,0.15)',
+                    borderRadius: '8px',
+                    marginBottom: '16px'
+                  }}>
+                    <div style={{ fontSize: '0.9rem', marginBottom: '8px' }}>機械的効率性</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ 
+                        flex: 1, 
+                        height: '24px', 
+                        background: 'rgba(0,0,0,0.2)', 
+                        borderRadius: '12px',
+                        overflow: 'hidden'
+                      }}>
+                        <div style={{
+                          height: '100%',
+                          width: `${hfvpResult.mechanicalEffectiveness}%`,
+                          background: hfvpResult.mechanicalEffectiveness > 80 ? '#10b981' : 
+                                     hfvpResult.mechanicalEffectiveness > 60 ? '#f59e0b' : '#ef4444',
+                          transition: 'width 0.3s ease'
+                        }} />
+                      </div>
+                      <div style={{ fontWeight: 'bold', fontSize: '1.2rem' }}>
+                        {hfvpResult.mechanicalEffectiveness.toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 警告メッセージ */}
+                  {hfvpResult.quality.warnings.length > 0 && (
+                    <div style={{
+                      padding: '12px',
+                      background: 'rgba(0,0,0,0.2)',
+                      borderRadius: '8px',
+                      fontSize: '0.85rem',
+                      marginTop: '16px'
+                    }}>
+                      <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>⚠️ 注意事項:</div>
+                      <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                        {hfvpResult.quality.warnings.map((warning, idx) => (
+                          <li key={idx} style={{ marginBottom: '4px' }}>{warning}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* パラメータ説明 */}
+                  <div style={{
+                    marginTop: '20px',
+                    padding: '12px',
+                    background: 'rgba(0,0,0,0.2)',
+                    borderRadius: '8px',
+                    fontSize: '0.8rem'
+                  }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>📊 パラメータ説明:</div>
+                    <div style={{ lineHeight: 1.6 }}>
+                      • <strong>F0</strong>: 最大水平力（速度0の時の力）<br/>
+                      • <strong>V0</strong>: 理論的最大速度（力0の時の速度）<br/>
+                      • <strong>Pmax</strong>: 最大パワー (F0 × V0 / 4)<br/>
+                      • <strong>RFmax</strong>: 最大力比率（水平力 / 結果力）<br/>
+                      • <strong>DRF</strong>: 力減衰率（速度増加による力の低下率）
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* AI評価セクション */}
               {runningEvaluation && (
                 <div className="result-card" style={{
