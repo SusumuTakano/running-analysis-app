@@ -9808,7 +9808,8 @@ case 6: {
                           <th style={{ padding: '8px', textAlign: 'left' }}>#</th>
                           <th style={{ padding: '8px', textAlign: 'right' }}>距離(m)</th>
                           <th style={{ padding: '8px', textAlign: 'right' }}>フレーム</th>
-                          <th style={{ padding: '8px', textAlign: 'right' }}>タイム(s)</th>
+                          <th style={{ padding: '8px', textAlign: 'right' }}>積算<br/>タイム(s)</th>
+                          <th style={{ padding: '8px', textAlign: 'right' }}>区間<br/>タイム(s)</th>
                           <th style={{ padding: '8px', textAlign: 'center' }}>測定点</th>
                           <th style={{ padding: '8px', textAlign: 'center' }}>削除</th>
                         </tr>
@@ -9817,6 +9818,8 @@ case 6: {
                         {panningSplits.map((split, idx) => {
                           const isStartPoint = panningStartIndex === idx;
                           const isEndPoint = panningEndIndex === idx;
+                          const prevTime = idx > 0 ? panningSplits[idx - 1].time : 0;
+                          const lapTime = split.time - prevTime;
                           return (
                             <tr key={idx} style={{ 
                               borderBottom: '1px solid rgba(255,255,255,0.2)',
@@ -9829,6 +9832,9 @@ case 6: {
                               <td style={{ padding: '8px', textAlign: 'right' }}>{split.frame}</td>
                               <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold' }}>
                                 {split.time.toFixed(3)}
+                              </td>
+                              <td style={{ padding: '8px', textAlign: 'right', color: '#fde68a', fontWeight: 'bold' }}>
+                                {idx === 0 ? '−' : `+${lapTime.toFixed(3)}`}
                               </td>
                               <td style={{ padding: '8px', textAlign: 'center' }}>
                                 <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
