@@ -7141,6 +7141,7 @@ if (analysisMode === 'multi' && isMultiCameraSetup) {
                         gender: null,
                         affiliation: "",
                         height_cm: null,
+                        weight_kg: null,
                         current_record: "",
                         target_record: "",
                       });
@@ -7162,6 +7163,7 @@ if (analysisMode === 'multi' && isMultiCameraSetup) {
                             | null) ?? null,
                         affiliation: selected.affiliation ?? "",
                         height_cm: selected.height_cm ?? null,
+                        weight_kg: selected.weight_kg ?? null,
                         current_record:
                           selected.current_record_s != null
                             ? String(selected.current_record_s)
