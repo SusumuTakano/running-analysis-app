@@ -2407,9 +2407,9 @@ const clearMarksByButton = () => {
   const hfvpResult = useMemo((): HFVPResult | null => {
     console.log(`🔍 H-FVP check: stepMetrics.length=${stepMetrics.length}, bodyMass=${bodyMassInput}, height=${subjectHeightInput}`);
     
-    // 最低5ステップ必要
-    if (stepMetrics.length < 5) {
-      console.log(`⚠️ H-FVP: Not enough steps (${stepMetrics.length} < 5)`);
+    // 最低3ステップ必要
+    if (stepMetrics.length < 3) {
+      console.log(`⚠️ H-FVP: Not enough steps (${stepMetrics.length} < 3)`);
       return null;
     }
     
@@ -2446,8 +2446,8 @@ const clearMarksByButton = () => {
     
     console.log(`🔍 H-FVP: Valid steps after filter: ${hfvpSteps.length}/${stepMetrics.length}`);
     
-    if (hfvpSteps.length < 5) {
-      console.log(`⚠️ H-FVP: Not enough valid steps after filtering (${hfvpSteps.length} < 5)`);
+    if (hfvpSteps.length < 3) {
+      console.log(`⚠️ H-FVP: Not enough valid steps after filtering (${hfvpSteps.length} < 3)`);
       return null;
     }
     

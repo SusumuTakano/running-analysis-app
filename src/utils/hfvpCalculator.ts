@@ -85,8 +85,8 @@ export function calculateHFVP(
   console.log(`   Total steps: ${steps.length}`);
   
   // Validation
-  if (steps.length < 5) {
-    console.warn('⚠️ Not enough steps for H-FVP calculation (minimum: 5)');
+  if (steps.length < 3) {
+    console.warn('⚠️ Not enough steps for H-FVP calculation (minimum: 3)');
     return null;
   }
   
