@@ -34,7 +34,7 @@ import { calculateHFVP, type HFVPResult, type StepDataForHFVP } from './utils/hf
 type WizardStep = 0 | 1 | 2 | 3 | 3.5 | 4 | 5 | 5.5 | 6 | 6.5 | 7 | 8 | 9;
 
 /** 解析モード */
-type AnalysisMode = 'single' | 'multi' | 'panning'; // panningは非表示だが保持
+type AnalysisMode = 'single' | 'panning';
 
 /** 測定者情報 */
 type AthleteInfo = {
@@ -557,7 +557,7 @@ const [wizardStep, setWizardStep] = useState<WizardStep>(0);
   // ✅ multi/単一どちらでも「今使うべき動画ファイル」を返す
 const getActiveVideoFile = (): File | null => {
   // single は従来通り
-  if (analysisMode !== "multi") return videoFile ?? null;
+  if (true /* single mode */) return videoFile ?? null;
 
   // 1) 同期Refがあれば最優先
   if (videoFileRef.current) return videoFileRef.current;
@@ -2214,7 +2214,7 @@ const clearMarksByButton = () => {
   // ------------ ステップメトリクス ------------
   const stepMetrics: StepMetric[] = useMemo(() => {
     // マルチカメラモードで結合データがある場合は、それを返す
-    if (analysisMode === 'multi' && mergedStepMetrics.length > 0) {
+    if (false /* multi mode disabled */ && mergedStepMetrics.length > 0) {
       console.log(`📊 Using merged step metrics: ${mergedStepMetrics.length} steps`);
       return mergedStepMetrics;
     }
@@ -6742,10 +6742,10 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
     setVideoUrl(newUrl);
   }
 
-  // マルチカメラ解析フローへ
-  setCurrentRun(run);
-  setRunSegments(availableSegments);
-  setAnalysisMode("multi");
+  // Multi-camera flow disabled
+  // setCurrentRun(run);
+  // setRunSegments(availableSegments);
+  // setAnalysisMode("multi");
   setIsMultiCameraSetup(false);
   setMultiCameraSummary(null);
   setMultiCameraData(nextState);
@@ -7236,7 +7236,7 @@ const handleNewMultiCameraStart = (run: Run, segments: RunSegment[]) => {
 
   const renderStepContent = () => {
     // マルチカメラモードの専用画面（isMultiCameraSetupがtrueの場合のみ）
-if (analysisMode === 'multi' && isMultiCameraSetup) {
+if (false /* multi mode disabled */ && isMultiCameraSetup) {
   return (
     <MultiCameraSetup
       athleteId={selectedAthleteId || undefined}
@@ -7835,8 +7835,8 @@ if (analysisMode === 'multi' && isMultiCameraSetup) {
                 alignItems: 'center',
                 gap: '8px',
                 padding: '12px 20px',
-                background: analysisMode === 'multi' ? '#3b82f6' : '#f3f4f6',
-                color: analysisMode === 'multi' ? 'white' : '#374151',
+                background: analysisMode === 'panning' ? '#3b82f6' : '#f3f4f6',
+                color: analysisMode === 'panning' ? 'white' : '#374151',
                 borderRadius: '8px',
                 cursor: 'pointer',
                 fontWeight: 'bold'
@@ -7844,12 +7844,12 @@ if (analysisMode === 'multi' && isMultiCameraSetup) {
                 <input
                   type="radio"
                   name="analysisMode"
-                  value="multi"
-                  checked={analysisMode === 'multi'}
-                  onChange={() => setAnalysisMode('multi')}
+                  value="panning"
+                  checked={analysisMode === 'panning'}
+                  onChange={() => setAnalysisMode('panning')}
                   style={{ display: 'none' }}
                 />
-                📹📹 マルチ固定カメラ
+                🎥 パーン撮影（30-40m推奨）
               </label>
             </div>
           </div>
@@ -7860,7 +7860,7 @@ if (analysisMode === 'multi' && isMultiCameraSetup) {
             <button
               className="btn-primary-large"
               onClick={() => {
-                if (analysisMode === 'multi') {
+                if (false /* multi mode disabled */) {
                   // マルチカメラモードの場合は専用UIへ
                   setIsMultiCameraSetup(true);
                 } else {
@@ -7897,6 +7897,19 @@ if (analysisMode === 'multi' && isMultiCameraSetup) {
         <p className="wizard-step-desc">
           解析したいランニング動画を選択し、走行距離とラベルを入力してください。
         </p>
+        {analysisMode === 'panning' && (
+          <div style={{
+            marginTop: '12px',
+            padding: '12px 16px',
+            background: '#fef3c7',
+            border: '2px solid #f59e0b',
+            borderRadius: '8px',
+            fontSize: '0.9rem',
+            color: '#92400e'
+          }}>
+            <strong>🎥 パーン撮影モード:</strong> カメラを横に振りながら撮影した30m〜40m程度の動画に最適です。より多くのステップデータからH-FVPを正確に算出します。
+          </div>
+        )}
       </div>
 
       {/* 登録済み選手から選択 */}
@@ -8183,7 +8196,7 @@ if (analysisMode === 'multi' && isMultiCameraSetup) {
           className="btn-primary-large"
           onClick={() => {
            // ✅ multi の時は multiCameraData から videoFile を復元してみる
-if (!videoFile && analysisMode === "multi" && multiCameraData) {
+if (!videoFile && false /* multi mode disabled */ && multiCameraData) {
   const idx = (multiCameraData as any).currentIndex ?? 0;
   const seg = (multiCameraData as any).segments?.[idx];
   const segAny = seg as any;
@@ -8214,13 +8227,13 @@ if (!videoFile && analysisMode === "multi" && multiCameraData) {
   }
 }
 
-if (analysisMode !== "multi" && !videoFile) {
+if (true /* single mode */ && !videoFile) {
   alert("動画ファイルを選択してください。");
   return;
 }
 
             if (
-              analysisMode !== "multi" &&
+              true /* single mode */ &&
               (!distanceValue || distanceValue <= 0)
             ) {
               alert("有効な距離を入力してください。");
@@ -8234,7 +8247,7 @@ if (analysisMode !== "multi" && !videoFile) {
           }}
           disabled={
             !videoFile ||
-            (analysisMode !== "multi" &&
+            (true /* single mode */ &&
               (!distanceValue || distanceValue <= 0))
           }
         >
@@ -8529,7 +8542,7 @@ if (analysisMode !== "multi" && !videoFile) {
       case 5:
 
         // マルチカメラモードの場合は区間設定をスキップ
-        if (analysisMode === "multi") {
+        if (false /* multi mode disabled */) {
           // マルチカメラモードでは区間はすでに設定済みなのでスキップ
           setSectionStartFrame(0);
           setSectionEndFrame(framesRef.current.length - 1);
@@ -9582,7 +9595,7 @@ case 6: {
                 <button className="btn-ghost" onClick={() => setWizardStep(5)}>
                   前へ
                 </button>
-                {analysisMode === "multi" && multiCameraData ? (
+                {false /* multi mode disabled */ && multiCameraData ? (
                   <button 
                     className="btn-primary-large" 
                     onClick={handleMultiSegmentNext} 
@@ -9618,7 +9631,7 @@ case 6: {
 
 
       case 7: {
-        const isMultiModeActive = analysisMode === "multi" && multiCameraData;
+        const isMultiModeActive = false /* multi mode disabled */ && multiCameraData;
         const currentMultiSegment = isMultiModeActive
           ? multiCameraData.segments[multiCameraData.currentIndex]
           : null;
@@ -10410,7 +10423,7 @@ case 6: {
                   <h3 className="result-card-title" style={{ margin: 0 }}>ステップメトリクス</h3>
                   
                   {/* マルチカメラモードで補間ステップがある場合のみトグル表示 */}
-                  {analysisMode === 'multi' && stepMetrics.some(s => s.quality === 'warning') && (
+                  {false /* multi mode disabled */ && stepMetrics.some(s => s.quality === 'warning') && (
                     <label style={{ 
                       display: 'flex', 
                       alignItems: 'center', 
