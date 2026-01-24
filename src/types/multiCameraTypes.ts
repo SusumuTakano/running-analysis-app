@@ -194,20 +194,35 @@ export interface RunAnalysisResult {
     V0: number;           // Maximum velocity (m/s)
     Pmax: number;         // Maximum power (W)
     RFmax: number;        // Maximum ratio of force (%)
-    DRF: number;          // Decrease in ratio of force (%/m/s)
+    DRF: number;          // Decrease in ratio of force (%/(m/s))
+    FVSlope: number;      // Force-velocity slope (N/(m/s))
+    mechanicalEffectiveness: number; // Ratio of actual vs optimal FV profile (%)
     rSquared: number;     // Regression quality
     dataPoints: {
       velocity: number;
-      force: number;
+      horizontalForce: number;
+      verticalForce: number;
+      resultantForce: number;
       power: number;
       forceRatio: number;
       distance: number;
+      acceleration: number;
+      contactAngle: number;
     }[];
     summary: {
       avgForce: number;
       avgPower: number;
       peakVelocity: number;
-      acceleration: number;
+      avgAcceleration: number;
+      peakAcceleration: number;
+      avgForceRatio: number;
+      totalDistance: number;
+      totalTime: number;
+    };
+    quality: {
+      isValid: boolean;
+      warnings: string[];
+      dataQuality: 'excellent' | 'good' | 'fair' | 'poor';
     };
   };
 }
