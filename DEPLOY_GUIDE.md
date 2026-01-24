@@ -3,9 +3,10 @@
 ## ✅ 準備完了状態
 
 - ✅ GitHub リポジトリ: https://github.com/SusumuTakano/running-analysis-app
-- ✅ 最新コミット: `adf88b7` (パーン撮影スプリットタイマー)
+- ✅ 最新コミット: `576d93b` (パーン撮影 H-FVP計算 + Netlify設定)
 - ✅ ビルド成功確認済み
 - ✅ netlify.toml 設定済み
+- ✅ パーン撮影モード完成（距離入力・開始/終了点・H-FVP計算）
 
 ---
 
