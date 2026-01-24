@@ -4652,9 +4652,18 @@ setUsedTargetFps(targetFps);
             return;
           }
           
-          // シングルカメラモードの場合は従来通り
+          // シングルカメラモード
           setTimeout(async () => {
-            console.log('📹 Single camera mode: Starting pose estimation...');
+            // パーン撮影モードの場合は姿勢推定をスキップしてスプリットタイマーへ
+            if (analysisMode === 'panning') {
+              console.log('📹 Panning mode: Skipping pose estimation, going to split timer...');
+              setWizardStep(7);
+              resolveExtraction();
+              return;
+            }
+            
+            // 固定カメラモードの場合は姿勢推定を実行
+            console.log('📹 Fixed camera mode: Starting pose estimation...');
             setWizardStep(4);
             await runPoseEstimation();
             resolveExtraction(); // フレーム抽出完了を通知
@@ -7953,19 +7962,22 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
       <div className="wizard-step-header">
         <h2 className="wizard-step-title">ステップ 1: 動画をアップロード</h2>
         <p className="wizard-step-desc">
-          解析したいランニング動画を選択し、走行距離とラベルを入力してください。
+          {analysisMode === 'panning' 
+            ? 'パーン撮影した動画をアップロードしてください。距離は後でスプリット地点ごとに入力します。'
+            : '解析したいランニング動画を選択し、走行距離とラベルを入力してください。'
+          }
         </p>
         {analysisMode === 'panning' && (
           <div style={{
             marginTop: '12px',
             padding: '12px 16px',
-            background: '#fef3c7',
-            border: '2px solid #f59e0b',
+            background: '#dbeafe',
+            border: '2px solid #3b82f6',
             borderRadius: '8px',
             fontSize: '0.9rem',
-            color: '#92400e'
+            color: '#1e40af'
           }}>
-            <strong>🎥 パーン撮影モード:</strong> カメラを横に振りながら撮影した30m〜40m程度の動画に最適です。より多くのステップデータからH-FVPを正確に算出します。
+            <strong>⏱️ パーン撮影モード:</strong> シンプルなタイム測定モードです。動画内でスプリット地点を選択し、区間タイムと距離からH-FVPを算出します。姿勢推定は行いません。
           </div>
         )}
       </div>
@@ -8083,49 +8095,41 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
         </div>
       )}
 
-      {/* 1. 走行距離 */}
-      <div className="input-group">
-        <label className="input-label">
-          <span className="label-text">
-            走行距離 (m) <span style={{ color: "red" }}>*</span>
-            {analysisMode === 'panning' && (
-              <span style={{ 
-                fontSize: '0.85rem', 
-                color: '#f59e0b', 
-                marginLeft: '8px',
-                fontWeight: 'normal'
-              }}>
-                （パーン撮影: 30-40m推奨）
+      {/* 1. 走行距離（固定カメラのみ） */}
+      {analysisMode !== 'panning' && (
+        <div className="input-group">
+          <label className="input-label">
+            <span className="label-text">
+              走行距離 (m) <span style={{ color: "red" }}>*</span>
+            </span>
+            <input
+              type="number"
+              min={0.1}
+              step={0.1}
+              value={distanceInput}
+              onChange={(e) => setDistanceInput(e.target.value)}
+              className="input-field"
+              placeholder="例: 10"
+              style={{
+                borderColor:
+                  distanceValue && distanceValue > 0
+                    ? "var(--success)"
+                    : "var(--gray-300)",
+              }}
+            />
+            {distanceValue && distanceValue > 0 && (
+              <span
+                style={{
+                  fontSize: "0.8rem",
+                  color: "var(--success)",
+                }}
+              >
+                ✓ 入力済み
               </span>
             )}
-          </span>
-          <input
-            type="number"
-            min={0.1}
-            step={0.1}
-            value={distanceInput}
-            onChange={(e) => setDistanceInput(e.target.value)}
-            className="input-field"
-            placeholder={analysisMode === 'panning' ? "例: 30" : "例: 10"}
-            style={{
-              borderColor:
-                distanceValue && distanceValue > 0
-                  ? "var(--success)"
-                  : "var(--gray-300)",
-            }}
-          />
-          {distanceValue && distanceValue > 0 && (
-            <span
-              style={{
-                fontSize: "0.8rem",
-                color: "var(--success)",
-              }}
-            >
-              ✓ 入力済み
-            </span>
-          )}
-        </label>
-      </div>
+          </label>
+        </div>
+      )}
 
       {/* 2. 読み込みFPS（コンパクト版） */}
       <div
@@ -8300,8 +8304,9 @@ if (true /* single mode */ && !videoFile) {
   return;
 }
 
+            // パーン撮影モードは距離チェック不要
             if (
-              true /* single mode */ &&
+              analysisMode !== 'panning' &&
               (!distanceValue || distanceValue <= 0)
             ) {
               alert("有効な距離を入力してください。");
@@ -8315,7 +8320,7 @@ if (true /* single mode */ && !videoFile) {
           }}
           disabled={
             !videoFile ||
-            (true /* single mode */ &&
+            (analysisMode !== 'panning' &&
               (!distanceValue || distanceValue <= 0))
           }
         >
