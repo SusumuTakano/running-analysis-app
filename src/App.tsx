@@ -10106,6 +10106,76 @@ case 6: {
                     )}
                   </div>
                 )}
+                
+                {/* パーン撮影モード: 保存ボタン */}
+                {analysisMode === 'panning' && panningSplits.length > 0 && (
+                  <div className="result-card" style={{ 
+                    background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                    border: '3px solid #f59e0b',
+                    boxShadow: '0 8px 24px rgba(245, 158, 11, 0.3)',
+                    marginTop: '24px'
+                  }}>
+                    <h3 className="result-card-title" style={{ 
+                      fontSize: '1.5rem',
+                      color: '#92400e',
+                      marginBottom: '20px'
+                    }}>
+                      💾 保存とエクスポート
+                    </h3>
+
+                    <div style={{ display: 'flex', gap: '16px', flexDirection: 'column' }}>
+                      <button
+                        onClick={handleSaveSession}
+                        disabled={saving}
+                        style={{
+                          padding: '20px 32px',
+                          fontSize: '1.3rem',
+                          fontWeight: 'bold',
+                          borderRadius: '12px',
+                          border: '3px solid #10b981',
+                          background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                          color: 'white',
+                          cursor: saving ? 'not-allowed' : 'pointer',
+                          transition: 'all 0.2s',
+                          boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '12px',
+                          opacity: saving ? 0.6 : 1
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!saving) {
+                            (e.target as HTMLButtonElement).style.transform = 'translateY(-4px)';
+                            (e.target as HTMLButtonElement).style.boxShadow = '0 8px 20px rgba(16, 185, 129, 0.5)';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          (e.target as HTMLButtonElement).style.transform = 'translateY(0)';
+                          (e.target as HTMLButtonElement).style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.4)';
+                        }}
+                      >
+                        <span style={{ fontSize: '1.5rem' }}>💾</span>
+                        <span>{saving ? '保存中...' : 'サーバーに保存する'}</span>
+                      </button>
+                    </div>
+
+                    {saveResult && (
+                      <div style={{ 
+                        marginTop: '16px',
+                        padding: '12px 16px',
+                        background: saveResult.includes('成功') ? '#d1fae5' : '#fee2e2',
+                        color: saveResult.includes('成功') ? '#065f46' : '#991b1b',
+                        borderRadius: '8px',
+                        fontWeight: 'bold',
+                        fontSize: '1.05rem',
+                        textAlign: 'center'
+                      }}>
+                        {saveResult}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
