@@ -7872,6 +7872,119 @@ if (analysisMode === 'multi' && isMultiCameraSetup) {
         </p>
       </div>
 
+      {/* 登録済み選手から選択 */}
+      {athleteOptions.length > 0 && (
+        <div
+          style={{
+            marginBottom: "24px",
+            padding: "16px",
+            borderRadius: "12px",
+            background: "#f8fafc",
+            border: "2px solid #e2e8f0",
+          }}
+        >
+          <label
+            style={{
+              display: "block",
+              fontSize: "0.95rem",
+              marginBottom: "8px",
+              color: "#1e293b",
+              fontWeight: 600,
+            }}
+          >
+            👤 測定する選手を選択
+          </label>
+          <select
+            value={selectedAthleteId ?? ""}
+            onChange={(e) => {
+              const id = e.target.value || null;
+              setSelectedAthleteId(id);
+
+              if (!id) {
+                setAthleteInfo({
+                  name: "",
+                  age: null,
+                  gender: null,
+                  affiliation: "",
+                  height_cm: null,
+                  weight_kg: null,
+                  current_record: "",
+                  target_record: "",
+                });
+                return;
+              }
+
+              const selected = athleteOptions.find((ath) => ath.id === id);
+              if (selected) {
+                setAthleteInfo({
+                  name: selected.full_name ?? "",
+                  age: selected.age ?? null,
+                  gender:
+                    (selected.gender as "male" | "female" | "other" | null) ??
+                    null,
+                  affiliation: selected.affiliation ?? "",
+                  height_cm: selected.height_cm ?? null,
+                  weight_kg: selected.weight_kg ?? null,
+                  current_record:
+                    selected.current_record_s != null
+                      ? String(selected.current_record_s)
+                      : "",
+                  target_record:
+                    selected.target_record_s != null
+                      ? String(selected.target_record_s)
+                      : "",
+                });
+              }
+            }}
+            style={{
+              width: "100%",
+              padding: "12px",
+              fontSize: "1rem",
+              borderRadius: "8px",
+              border: "2px solid #cbd5e1",
+              backgroundColor: "white",
+              cursor: "pointer",
+            }}
+          >
+            <option value="">選手を選択してください</option>
+            {athleteOptions.map((ath) => (
+              <option key={ath.id} value={ath.id}>
+                {ath.full_name}
+                {ath.height_cm && ` (${ath.height_cm}cm)`}
+                {ath.weight_kg && ` ${ath.weight_kg}kg`}
+                {ath.current_record_s != null &&
+                  ` - 記録: ${ath.current_record_s.toFixed(2)}秒`}
+              </option>
+            ))}
+          </select>
+          {selectedAthleteId && athleteInfo.name && (
+            <div
+              style={{
+                marginTop: "12px",
+                padding: "12px",
+                background: "#e0f2fe",
+                borderRadius: "8px",
+                fontSize: "0.9rem",
+                color: "#0c4a6e",
+              }}
+            >
+              ✅ 選択中: <strong>{athleteInfo.name}</strong>
+              {athleteInfo.height_cm && ` | 身長: ${athleteInfo.height_cm}cm`}
+              {athleteInfo.weight_kg && ` | 体重: ${athleteInfo.weight_kg}kg`}
+            </div>
+          )}
+          <p
+            style={{
+              fontSize: "0.85rem",
+              color: "#64748b",
+              marginTop: "8px",
+            }}
+          >
+            💡 H-FVP計算に選手の身長・体重が自動的に使用されます
+          </p>
+        </div>
+      )}
+
       {/* 1. 走行距離 */}
       <div className="input-group">
         <label className="input-label">
