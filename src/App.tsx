@@ -10324,6 +10324,189 @@ case 6: {
                         <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>%</div>
                       </div>
                     </div>
+                    
+                    {/* H-FVP評価とトレーニング推奨 */}
+                    {(() => {
+                      // 目標タイムの取得（文字列 "MM:SS.SSS" から秒数に変換）
+                      const parseTimeToSeconds = (timeStr: string): number | null => {
+                        if (!timeStr) return null;
+                        const parts = timeStr.split(':');
+                        if (parts.length === 2) {
+                          const minutes = parseFloat(parts[0]);
+                          const seconds = parseFloat(parts[1]);
+                          return minutes * 60 + seconds;
+                        } else if (parts.length === 1) {
+                          return parseFloat(parts[0]);
+                        }
+                        return null;
+                      };
+                      
+                      const targetTime = parseTimeToSeconds(athleteInfo.target_record);
+                      const distance = panningEndIndex !== null && panningStartIndex !== null 
+                        ? panningSplits[panningEndIndex].distance - panningSplits[panningStartIndex].distance 
+                        : 30; // デフォルト30m
+                      
+                      // 基準値（スプリント専門家の平均的な値）
+                      const referenceF0 = athleteInfo.weight_kg ? athleteInfo.weight_kg * 8.5 : 70 * 8.5; // 体重×8.5 N/kg
+                      const referenceV0 = 10.5; // m/s (100m 10秒台の選手の平均)
+                      
+                      // 現在のF0とV0の評価
+                      const f0Ratio = hfvpResult.F0 / referenceF0;
+                      const v0Ratio = hfvpResult.V0 / referenceV0;
+                      
+                      // F0評価
+                      let f0Status = '';
+                      let f0Color = '';
+                      if (f0Ratio >= 1.1) {
+                        f0Status = '✅ 優位';
+                        f0Color = '#10b981';
+                      } else if (f0Ratio >= 0.9) {
+                        f0Status = '🔵 標準';
+                        f0Color = '#3b82f6';
+                      } else {
+                        f0Status = '⚠️ 改善推奨';
+                        f0Color = '#f59e0b';
+                      }
+                      
+                      // V0評価
+                      let v0Status = '';
+                      let v0Color = '';
+                      if (v0Ratio >= 1.1) {
+                        v0Status = '✅ 優位';
+                        v0Color = '#10b981';
+                      } else if (v0Ratio >= 0.9) {
+                        v0Status = '🔵 標準';
+                        v0Color = '#3b82f6';
+                      } else {
+                        v0Status = '⚠️ 改善推奨';
+                        v0Color = '#f59e0b';
+                      }
+                      
+                      // バランス評価
+                      const balanceRatio = f0Ratio / v0Ratio;
+                      let balanceStatus = '';
+                      let trainingRecommendation = '';
+                      
+                      if (balanceRatio > 1.2) {
+                        balanceStatus = '💪 力（F）優位型';
+                        trainingRecommendation = '最大速度トレーニングを重点的に実施してください。\n• 最大速度走（30-60m）\n• フライングスプリント\n• 技術改善（ストライド長の向上）';
+                      } else if (balanceRatio < 0.8) {
+                        balanceStatus = '⚡ 速度（V）優位型';
+                        trainingRecommendation = 'パワー・筋力トレーニングを重点的に実施してください。\n• ウエイトトレーニング（スクワット、デッドリフト）\n• プライオメトリクス（ジャンプ系）\n• 加速トレーニング（0-30m）';
+                      } else {
+                        balanceStatus = '⚖️ バランス型';
+                        trainingRecommendation = 'バランスの取れたプロフィールです。\n• F0とV0の両方を維持しながら総合的に向上\n• 定期的なスピードとパワーの統合トレーニング';
+                      }
+                      
+                      // 目標達成のための分析
+                      let targetAnalysis = '';
+                      if (targetTime && targetTime > 0) {
+                        const requiredSpeed = distance / targetTime;
+                        const currentMaxSpeed = hfvpResult.V0;
+                        const speedGap = requiredSpeed - currentMaxSpeed;
+                        
+                        if (speedGap > 0) {
+                          targetAnalysis = `目標記録 ${targetTime.toFixed(2)}秒を達成するには、最高速度を ${requiredSpeed.toFixed(2)}m/s まで向上させる必要があります（現在: ${currentMaxSpeed.toFixed(2)}m/s、不足: ${speedGap.toFixed(2)}m/s）。`;
+                        } else {
+                          targetAnalysis = `現在の最高速度（${currentMaxSpeed.toFixed(2)}m/s）は目標記録達成に十分です。加速能力（F0）とスピード維持を重点的に強化しましょう。`;
+                        }
+                      }
+                      
+                      return (
+                        <div style={{
+                          marginTop: '20px',
+                          padding: '20px',
+                          background: 'rgba(255,255,255,0.1)',
+                          borderRadius: '12px',
+                          border: '2px solid rgba(255,255,255,0.2)'
+                        }}>
+                          <h4 style={{ 
+                            margin: '0 0 16px 0',
+                            fontSize: '1.1rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                          }}>
+                            📊 H-FVPプロフィール評価
+                          </h4>
+                          
+                          {/* F0とV0の評価 */}
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                            gap: '12px',
+                            marginBottom: '16px'
+                          }}>
+                            <div style={{
+                              padding: '12px',
+                              background: 'rgba(255,255,255,0.08)',
+                              borderRadius: '8px',
+                              borderLeft: `4px solid ${f0Color}`
+                            }}>
+                              <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>
+                                力（F0）評価
+                              </div>
+                              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: f0Color }}>
+                                {f0Status}
+                              </div>
+                              <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>
+                                基準値の {(f0Ratio * 100).toFixed(0)}%
+                              </div>
+                            </div>
+                            
+                            <div style={{
+                              padding: '12px',
+                              background: 'rgba(255,255,255,0.08)',
+                              borderRadius: '8px',
+                              borderLeft: `4px solid ${v0Color}`
+                            }}>
+                              <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>
+                                速度（V0）評価
+                              </div>
+                              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: v0Color }}>
+                                {v0Status}
+                              </div>
+                              <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>
+                                基準値の {(v0Ratio * 100).toFixed(0)}%
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* バランス評価 */}
+                          <div style={{
+                            padding: '16px',
+                            background: 'rgba(139, 92, 246, 0.2)',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(139, 92, 246, 0.3)',
+                            marginBottom: '16px'
+                          }}>
+                            <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '1rem' }}>
+                              {balanceStatus}
+                            </div>
+                            <div style={{ fontSize: '0.9rem', whiteSpace: 'pre-line', lineHeight: '1.6' }}>
+                              {trainingRecommendation}
+                            </div>
+                          </div>
+                          
+                          {/* 目標達成分析 */}
+                          {targetAnalysis && (
+                            <div style={{
+                              padding: '16px',
+                              background: 'rgba(251, 191, 36, 0.2)',
+                              borderRadius: '8px',
+                              border: '1px solid rgba(251, 191, 36, 0.3)'
+                            }}>
+                              <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '1rem' }}>
+                                🎯 目標達成のための分析
+                              </div>
+                              <div style={{ fontSize: '0.9rem', lineHeight: '1.6' }}>
+                                {targetAnalysis}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
                 
