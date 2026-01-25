@@ -7878,8 +7878,7 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
             </div>
           </div>
 
-          {/* 解析モード選択 - モバイルでは非表示 */}
-          {!isMobile && (
+          {/* 解析モード選択 */}
           <div style={{
             maxWidth: "600px",
             margin: "24px auto",
@@ -7937,7 +7936,6 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
               </label>
             </div>
           </div>
-          )}
 
           <div className="wizard-nav">
             <div></div>
