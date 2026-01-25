@@ -10113,6 +10113,134 @@ case 6: {
                   </div>
                 )}
                 
+                {/* パーン撮影モード: H-FVP分析結果 */}
+                {analysisMode === 'panning' && hfvpResult && (
+                  <div style={{
+                    background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                    borderRadius: '16px',
+                    padding: '24px',
+                    marginTop: '24px',
+                    marginBottom: '24px',
+                    color: 'white',
+                    boxShadow: '0 10px 30px rgba(139, 92, 246, 0.3)'
+                  }}>
+                    <h3 style={{ 
+                      margin: '0 0 20px 0', 
+                      fontSize: '1.3rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px'
+                    }}>
+                      ⚡ H-FVP 分析
+                      <span style={{ 
+                        fontSize: '0.75rem', 
+                        padding: '2px 8px', 
+                        background: 'rgba(255,255,255,0.2)', 
+                        borderRadius: '4px' 
+                      }}>
+                        Horizontal Force-Velocity Profile
+                      </span>
+                    </h3>
+                    
+                    {/* データ品質インジケーター */}
+                    <div style={{
+                      padding: '12px',
+                      background: 'rgba(255,255,255,0.15)',
+                      borderRadius: '8px',
+                      marginBottom: '16px',
+                      fontSize: '0.9rem'
+                    }}>
+                      {/* 測定モード表示 */}
+                      <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        marginBottom: '8px',
+                        paddingBottom: '8px',
+                        borderBottom: '1px solid rgba(255,255,255,0.2)'
+                      }}>
+                        <span>測定モード:</span>
+                        <span style={{ 
+                          fontWeight: 'bold',
+                          padding: '4px 12px',
+                          borderRadius: '12px',
+                          background: 'rgba(34, 197, 94, 0.3)',
+                          border: '1px solid rgba(34, 197, 94, 0.5)'
+                        }}>
+                          🎥 パーン撮影
+                          {hfvpResult.isPanningHighQuality && ' (高品質)'}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>データ品質:</span>
+                        <span style={{ fontWeight: 'bold' }}>
+                          {hfvpResult.quality.dataQuality === 'excellent' && '🌟 Excellent'}
+                          {hfvpResult.quality.dataQuality === 'good' && '✅ Good'}
+                          {hfvpResult.quality.dataQuality === 'fair' && '⚠️ Fair'}
+                          {hfvpResult.quality.dataQuality === 'poor' && '❌ Poor'}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                        <span>R² (回帰精度):</span>
+                        <span style={{ fontWeight: 'bold' }}>{hfvpResult.rSquared.toFixed(3)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                        <span>データ点数:</span>
+                        <span style={{ fontWeight: 'bold' }}>{hfvpResult.dataPoints.length} 区間</span>
+                      </div>
+                    </div>
+
+                    {/* コアパラメータ */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                      gap: '12px',
+                      marginBottom: '20px'
+                    }}>
+                      <div style={{
+                        padding: '16px',
+                        background: 'rgba(255,255,255,0.15)',
+                        borderRadius: '8px',
+                        textAlign: 'center'
+                      }}>
+                        <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>F0</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{hfvpResult.F0.toFixed(1)}</div>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>N</div>
+                      </div>
+                      <div style={{
+                        padding: '16px',
+                        background: 'rgba(255,255,255,0.15)',
+                        borderRadius: '8px',
+                        textAlign: 'center'
+                      }}>
+                        <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>V0</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{hfvpResult.V0.toFixed(2)}</div>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>m/s</div>
+                      </div>
+                      <div style={{
+                        padding: '16px',
+                        background: 'rgba(255,255,255,0.15)',
+                        borderRadius: '8px',
+                        textAlign: 'center'
+                      }}>
+                        <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>Pmax</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{hfvpResult.Pmax.toFixed(0)}</div>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>W</div>
+                      </div>
+                      <div style={{
+                        padding: '16px',
+                        background: 'rgba(255,255,255,0.15)',
+                        borderRadius: '8px',
+                        textAlign: 'center'
+                      }}>
+                        <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>RFmax</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{hfvpResult.RFmax.toFixed(1)}</div>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>%</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 {/* パーン撮影モード: 保存ボタン */}
                 {analysisMode === 'panning' && panningSplits.length > 0 && (
                   <div className="result-card" style={{ 
