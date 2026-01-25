@@ -8767,7 +8767,7 @@ if (true /* single mode */ && !videoFile) {
                 className="video-layer"
                 style={{
                   width: '100%',
-                  maxWidth: '800px',
+                  maxWidth: '1400px',
                   height: 'auto',
                   aspectRatio: '16 / 9',
                   display: 'block',

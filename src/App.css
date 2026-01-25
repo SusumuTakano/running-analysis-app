@@ -399,7 +399,7 @@ body {
 .video-wrapper {
   position: relative;
   width: 100%;
-  max-width: 980px;
+  max-width: 1400px;
   margin: 0 auto 14px auto;
   aspect-ratio: 16 / 9;
   overflow: hidden;
@@ -1101,6 +1101,8 @@ body {
 /* 6) キャンバス領域：常に中央・100% */
 .wizard-content.step-6 .step6-canvas-area {
   width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
   display: flex;
   justify-content: center;
 }
@@ -1116,6 +1118,7 @@ body {
 .wizard-content.step-6 canvas.preview-canvas {
   display: block;
   width: 100%;
+  max-width: 1400px;
   height: auto;
   aspect-ratio: 16 / 9;
   object-fit: contain;
