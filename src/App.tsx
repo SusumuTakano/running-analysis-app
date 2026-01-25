@@ -1466,6 +1466,17 @@ const [notesInput, setNotesInput] = useState<string>("");
       
       const frame = framesRef.current[currentFrame];
       
+      // デバッグ情報を出力
+      console.log('🎨 Canvas Debug:', {
+        frameWidth: frame.width,
+        frameHeight: frame.height,
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height,
+        canvasStyleWidth: canvas.style.width,
+        canvasClientWidth: canvas.clientWidth,
+        canvasClientHeight: canvas.clientHeight
+      });
+      
       // canvasサイズを元のフレームサイズに設定
       canvas.width = frame.width;
       canvas.height = frame.height;
