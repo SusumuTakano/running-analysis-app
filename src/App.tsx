@@ -2626,7 +2626,14 @@ const clearMarksByButton = () => {
   // ⚡ H-FVP 計算（Horizontal Force-Velocity Profile）
   const hfvpResult = useMemo((): HFVPResult | null => {
     const mode = analysisMode === 'panning' ? 'PANNING' : 'FIXED';
-    console.log(`🔍 H-FVP check [${mode}]: stepMetrics.length=${stepMetrics.length}, athleteInfo.weight_kg=${athleteInfo.weight_kg}, athleteInfo.height_cm=${athleteInfo.height_cm}`);
+    console.log(`🔍 H-FVP check [${mode}]:`, {
+      analysisMode,
+      panningSplitsLength: panningSplits.length,
+      panningStartIndex,
+      panningEndIndex,
+      athleteWeight: athleteInfo.weight_kg,
+      athleteHeight: athleteInfo.height_cm
+    });
     
     // 固定カメラモード: H-FVP計算を無効化
     if (analysisMode !== 'panning') {
@@ -2636,13 +2643,23 @@ const clearMarksByButton = () => {
     
     // パーン撮影モード: スプリットから測定区間を取得
     if (panningStartIndex === null || panningEndIndex === null || panningStartIndex >= panningEndIndex) {
-      console.log(`⚠️ H-FVP [PANNING]: No valid measurement interval selected`);
+      console.log(`⚠️ H-FVP [PANNING]: No valid measurement interval selected`, {
+        panningStartIndex,
+        panningEndIndex
+      });
       return null;
     }
     
     const startSplit = panningSplits[panningStartIndex];
     const endSplit = panningSplits[panningEndIndex];
     const intervalSplits = panningSplits.slice(panningStartIndex, panningEndIndex + 1);
+    
+    console.log(`📊 H-FVP [PANNING]: Interval splits:`, {
+      start: startSplit,
+      end: endSplit,
+      intervalLength: intervalSplits.length,
+      allSplits: intervalSplits
+    });
     
     if (intervalSplits.length < 3) {
       console.log(`⚠️ H-FVP [PANNING]: Need at least 3 splits for H-FVP calculation (found ${intervalSplits.length})`);
@@ -9798,8 +9815,10 @@ case 6: {
                     <div style={{ fontWeight: 'bold', marginBottom: '12px', fontSize: '1.1rem' }}>
                       📊 スプリットタイム ({panningSplits.length}地点)
                     </div>
+                    <div style={{ overflowX: 'auto', maxWidth: '100%' }}>
                     <table style={{ 
                       width: '100%', 
+                      minWidth: '700px',
                       borderCollapse: 'collapse',
                       fontSize: '0.9rem'
                     }}>
@@ -9899,6 +9918,7 @@ case 6: {
                         })}
                       </tbody>
                     </table>
+                    </div>
                     
                     {/* 測定区間情報 */}
                     {panningStartIndex !== null && panningEndIndex !== null && panningStartIndex < panningEndIndex && (
@@ -10108,6 +10128,32 @@ case 6: {
                         textAlign: 'center'
                       }}>
                         💡 まずスタート地点（0m）を登録してください
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {/* パーン撮影モード: H-FVP分析結果 デバッグ情報 */}
+                {analysisMode === 'panning' && (
+                  <div style={{
+                    marginTop: '16px',
+                    padding: '12px',
+                    background: '#f3f4f6',
+                    borderRadius: '8px',
+                    fontSize: '0.85rem',
+                    color: '#1f2937'
+                  }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>🔍 H-FVP デバッグ情報:</div>
+                    <div>analysisMode: {analysisMode}</div>
+                    <div>hfvpResult: {hfvpResult ? '✅ 計算済み' : '❌ null'}</div>
+                    <div>panningSplits数: {panningSplits.length}</div>
+                    <div>開始点Index: {panningStartIndex !== null ? panningStartIndex : 'null'}</div>
+                    <div>終了点Index: {panningEndIndex !== null ? panningEndIndex : 'null'}</div>
+                    <div>体重: {athleteInfo.weight_kg ?? 'null'} kg</div>
+                    <div>身長: {athleteInfo.height_cm ?? 'null'} cm</div>
+                    {hfvpResult && (
+                      <div style={{ marginTop: '8px', color: '#10b981', fontWeight: 'bold' }}>
+                        ✅ H-FVP計算成功: F0={hfvpResult.F0.toFixed(1)}N, V0={hfvpResult.V0.toFixed(2)}m/s
                       </div>
                     )}
                   </div>
