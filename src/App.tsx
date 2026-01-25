@@ -1465,9 +1465,31 @@ const [notesInput, setNotesInput] = useState<string>("");
       if (!ctx) return;
       
       const frame = framesRef.current[currentFrame];
-      canvas.width = frame.width;
-      canvas.height = frame.height;
-      ctx.putImageData(frame, 0, 0);
+      
+      // 16:9のアスペクト比を保ちながらcanvasサイズを設定
+      const targetAspect = 16 / 9;
+      const frameAspect = frame.width / frame.height;
+      
+      if (frameAspect > targetAspect) {
+        // フレームが横長すぎる場合、高さを基準にする
+        canvas.height = frame.height;
+        canvas.width = frame.height * targetAspect;
+      } else {
+        // フレームが縦長または16:9に近い場合、元のサイズを使用
+        canvas.width = frame.width;
+        canvas.height = frame.height;
+      }
+      
+      // フレームを中央に描画
+      const offsetX = (canvas.width - frame.width) / 2;
+      const offsetY = (canvas.height - frame.height) / 2;
+      
+      // 背景を黒で塗りつぶし
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // フレームを描画
+      ctx.putImageData(frame, offsetX, offsetY);
       
       // スタート/フィニッシュラインを描画
       if (currentFrame === sectionStartFrame) {
@@ -8699,9 +8721,25 @@ if (true /* single mode */ && !videoFile) {
             const ctx = canvas.getContext('2d');
             if (ctx) {
               const frame = framesRef.current[currentFrame];
-              canvas.width = frame.width;
-              canvas.height = frame.height;
-              ctx.putImageData(frame, 0, 0);
+              
+              // 16:9のアスペクト比を保ちながらcanvasサイズを設定
+              const targetAspect = 16 / 9;
+              const frameAspect = frame.width / frame.height;
+              
+              if (frameAspect > targetAspect) {
+                canvas.height = frame.height;
+                canvas.width = frame.height * targetAspect;
+              } else {
+                canvas.width = frame.width;
+                canvas.height = frame.height;
+              }
+              
+              const offsetX = (canvas.width - frame.width) / 2;
+              const offsetY = (canvas.height - frame.height) / 2;
+              
+              ctx.fillStyle = '#000';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              ctx.putImageData(frame, offsetX, offsetY);
             }
           }
         }, 100);
@@ -8731,10 +8769,13 @@ if (true /* single mode */ && !videoFile) {
                   width: '100%',
                   maxWidth: '800px',
                   height: 'auto',
+                  aspectRatio: '16 / 9',
                   display: 'block',
                   margin: '0 auto',
                   border: '2px solid #e5e7eb',
-                  borderRadius: '8px'
+                  borderRadius: '8px',
+                  objectFit: 'contain',
+                  backgroundColor: '#000'
                 }}
               />
               <div style={{ textAlign: 'center', marginTop: '10px', color: '#6b7280' }}>

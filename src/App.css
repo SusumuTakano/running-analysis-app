@@ -390,6 +390,9 @@ body {
   display: block;
   width: 100%;
   height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #000;
 }
 
 /* 2画面問題対策の video-wrapper（1本化） */
@@ -1114,6 +1117,9 @@ body {
   display: block;
   width: 100%;
   height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #000;
 }
 
 /* スマホでは max-width を外して、左右の余白を均等に */
