@@ -9829,7 +9829,6 @@ case 6: {
                           <th style={{ padding: '8px', textAlign: 'right' }}>フレーム</th>
                           <th style={{ padding: '8px', textAlign: 'right' }}>積算<br/>タイム(s)</th>
                           <th style={{ padding: '8px', textAlign: 'right' }}>区間<br/>タイム(s)</th>
-                          <th style={{ padding: '8px', textAlign: 'center' }}>測定点</th>
                           <th style={{ padding: '8px', textAlign: 'center' }}>削除</th>
                         </tr>
                       </thead>
@@ -9854,40 +9853,6 @@ case 6: {
                               </td>
                               <td style={{ padding: '8px', textAlign: 'right', color: '#fde68a', fontWeight: 'bold' }}>
                                 {idx === 0 ? '−' : `+${lapTime.toFixed(3)}`}
-                              </td>
-                              <td style={{ padding: '8px', textAlign: 'center' }}>
-                                <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                                  <button
-                                    onClick={() => setPanningStartIndex(idx)}
-                                    style={{
-                                      padding: '4px 8px',
-                                      fontSize: '0.75rem',
-                                      background: isStartPoint ? 'rgba(34, 197, 94, 0.9)' : 'rgba(34, 197, 94, 0.5)',
-                                      border: 'none',
-                                      borderRadius: '4px',
-                                      color: 'white',
-                                      cursor: 'pointer',
-                                      fontWeight: isStartPoint ? 'bold' : 'normal'
-                                    }}
-                                  >
-                                    {isStartPoint ? '🟢開始' : '開始'}
-                                  </button>
-                                  <button
-                                    onClick={() => setPanningEndIndex(idx)}
-                                    style={{
-                                      padding: '4px 8px',
-                                      fontSize: '0.75rem',
-                                      background: isEndPoint ? 'rgba(239, 68, 68, 0.9)' : 'rgba(239, 68, 68, 0.5)',
-                                      border: 'none',
-                                      borderRadius: '4px',
-                                      color: 'white',
-                                      cursor: 'pointer',
-                                      fontWeight: isEndPoint ? 'bold' : 'normal'
-                                    }}
-                                  >
-                                    {isEndPoint ? '🔴終了' : '終了'}
-                                  </button>
-                                </div>
                               </td>
                               <td style={{ padding: '8px', textAlign: 'center' }}>
                                 <button
@@ -9919,6 +9884,81 @@ case 6: {
                       </tbody>
                     </table>
                     </div>
+                    
+                    {/* 開始点・終了点を選択 */}
+                    {panningSplits.length >= 2 && (
+                      <div style={{
+                        marginTop: '16px',
+                        padding: '16px',
+                        background: 'rgba(139, 92, 246, 0.2)',
+                        borderRadius: '8px',
+                        border: '2px solid rgba(139, 92, 246, 0.5)'
+                      }}>
+                        <div style={{ fontWeight: 'bold', marginBottom: '12px', fontSize: '1rem' }}>
+                          📍 測定区間を選択
+                        </div>
+                        
+                        {/* 開始点選択 */}
+                        <div style={{ marginBottom: '12px' }}>
+                          <div style={{ fontSize: '0.85rem', marginBottom: '6px', opacity: 0.9 }}>
+                            🟢 開始点を選択:
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            {panningSplits.map((split, idx) => (
+                              <button
+                                key={`start-${idx}`}
+                                onClick={() => setPanningStartIndex(idx)}
+                                style={{
+                                  padding: '8px 16px',
+                                  fontSize: '0.9rem',
+                                  background: panningStartIndex === idx 
+                                    ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' 
+                                    : 'rgba(34, 197, 94, 0.3)',
+                                  border: panningStartIndex === idx ? '2px solid #22c55e' : '1px solid rgba(34, 197, 94, 0.5)',
+                                  borderRadius: '8px',
+                                  color: 'white',
+                                  cursor: 'pointer',
+                                  fontWeight: panningStartIndex === idx ? 'bold' : 'normal',
+                                  transition: 'all 0.2s'
+                                }}
+                              >
+                                {panningStartIndex === idx ? '✓ ' : ''}{split.distance.toFixed(1)}m
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        {/* 終了点選択 */}
+                        <div>
+                          <div style={{ fontSize: '0.85rem', marginBottom: '6px', opacity: 0.9 }}>
+                            🔴 終了点を選択:
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            {panningSplits.map((split, idx) => (
+                              <button
+                                key={`end-${idx}`}
+                                onClick={() => setPanningEndIndex(idx)}
+                                style={{
+                                  padding: '8px 16px',
+                                  fontSize: '0.9rem',
+                                  background: panningEndIndex === idx 
+                                    ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' 
+                                    : 'rgba(239, 68, 68, 0.3)',
+                                  border: panningEndIndex === idx ? '2px solid #ef4444' : '1px solid rgba(239, 68, 68, 0.5)',
+                                  borderRadius: '8px',
+                                  color: 'white',
+                                  cursor: 'pointer',
+                                  fontWeight: panningEndIndex === idx ? 'bold' : 'normal',
+                                  transition: 'all 0.2s'
+                                }}
+                              >
+                                {panningEndIndex === idx ? '✓ ' : ''}{split.distance.toFixed(1)}m
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     
                     {/* 測定区間情報 */}
                     {panningStartIndex !== null && panningEndIndex !== null && panningStartIndex < panningEndIndex && (
