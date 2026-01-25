@@ -8731,16 +8731,13 @@ if (true /* single mode */ && !videoFile) {
               </p>
             </div>
             {/* ビデオプレビュー - フレームを直接表示 */}
-            <div className="video-wrapper" style={{ marginBottom: '2rem' }}>
+            <div style={{ marginBottom: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
               <canvas 
-                ref={displayCanvasRef} 
-                className="video-layer"
+                ref={displayCanvasRef}
                 style={{
                   width: '100%',
-                  maxWidth: '1400px',
                   height: 'auto',
                   display: 'block',
-                  margin: '0 auto',
                   border: '2px solid #e5e7eb',
                   borderRadius: '8px',
                   backgroundColor: '#000'
