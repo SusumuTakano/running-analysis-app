@@ -8739,12 +8739,10 @@ if (true /* single mode */ && !videoFile) {
                   width: '100%',
                   maxWidth: '1400px',
                   height: 'auto',
-                  aspectRatio: '16 / 9',
                   display: 'block',
                   margin: '0 auto',
                   border: '2px solid #e5e7eb',
                   borderRadius: '8px',
-                  objectFit: 'contain',
                   backgroundColor: '#000'
                 }}
               />
