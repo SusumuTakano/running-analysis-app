@@ -1130,3 +1130,19 @@ body {
 }
 
 /* ===== Step6 Sticky FIX END ===== */
+
+/* パーン撮影モードでフレームビューアーを非表示 */
+.wizard-step-7 .result-viewer-card {
+  display: none !important;
+}
+
+/* パーン撮影モードでスクロールボタンを非表示 */
+.wizard-step-7 [title="フレームビューアーへ"],
+.wizard-step-7 [title="ページ下部へ"] {
+  display: none !important;
+}
+
+/* パーン撮影モードで results-layout を非表示 */
+.wizard-step-7 .results-layout {
+  display: none !important;
+}
