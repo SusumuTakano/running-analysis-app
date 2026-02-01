@@ -619,32 +619,29 @@ export function calculateHFVPFromPanningSplits(
       v_end = a_avg * deltaT;
     } else {
       // 中間の区間：前の区間の v_end を v_start として使用
-      // dataPoints[i-2] に保存されている v_end を取得
-      if (dataPoints.length > 0) {
-        const prevPoint = dataPoints[dataPoints.length - 1];
-        v_start = prevPoint.acceleration > 0 
-          ? prevPoint.velocity + Math.sqrt(prevPoint.velocity * prevPoint.velocity + 2 * prevPoint.acceleration * (currSplit.distance - prevSplit.distance))
-          : prevPoint.velocity;
+      if (i > 1 && dataPoints.length > 0) {
+        // 前の区間の終了速度を取得
+        v_start = dataPoints[dataPoints.length - 1].velocity * 2 - 
+                  (i >= 2 && dataPoints.length >= 2 
+                    ? dataPoints[dataPoints.length - 2].velocity 
+                    : dataPoints[dataPoints.length - 1].velocity * 0.8);
       } else {
-        v_start = v_avg * 0.5; // フォールバック
+        v_start = v_avg * 0.8; // 最初の区間の終了速度から推定
       }
       
-      // a = 2 * (d - v_start * t) / t^2
-      a_avg = (2 * (deltaD - v_start * deltaT)) / (deltaT * deltaT);
+      // v_avg = (v_start + v_end) / 2 より
+      // v_end = 2 * v_avg - v_start
+      v_end = 2 * v_avg - v_start;
       
       // 異常値チェック
-      if (a_avg < 0) {
-        console.warn(`⚠️ Negative acceleration in interval ${i}, using simplified method`);
-        // 簡略化: v_avg = (v_start + v_end) / 2
-        v_end = 2 * v_avg - v_start;
-        if (v_end <= v_start) {
-          v_end = v_start + 0.1; // 最小増加
-        }
-        a_avg = (v_end - v_start) / deltaT;
-      } else {
-        // v_end = v_start + a * t
-        v_end = v_start + a_avg * deltaT;
+      if (v_end <= v_start || v_end < 0) {
+        console.warn(`⚠️ Invalid v_end in interval ${i}, using fallback`);
+        v_start = v_avg * 0.8;
+        v_end = v_avg * 1.2;
       }
+      
+      // 平均加速度
+      a_avg = (v_end - v_start) / deltaT;
     }
     
     // 区間の中点での速度（線形回帰用）
@@ -671,8 +668,9 @@ export function calculateHFVPFromPanningSplits(
     const contactAngleRad = (contactAngleDeg * Math.PI) / 180;
     
     // 垂直力を接地角度から推定
+    // F_v / F_h = tan(θ) より F_v = F_h × tan(θ)
     const tanAngle = Math.tan(contactAngleRad);
-    const verticalForce = tanAngle > 0 ? horizontalForce / tanAngle : bodyMassKg * g;
+    const verticalForce = horizontalForce * tanAngle;
     
     // 合成力
     const resultantForce = Math.sqrt(
