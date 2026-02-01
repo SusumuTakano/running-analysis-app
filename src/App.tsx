@@ -791,6 +791,12 @@ useEffect(() => {
   const [panningStartIndex, setPanningStartIndex] = useState<number | null>(null);
   const [panningEndIndex, setPanningEndIndex] = useState<number | null>(null);
   const [panningZoomLevel, setPanningZoomLevel] = useState<number>(1); // ズームレベル (1=100%, 2=200%, etc.)
+  
+  // ドラッグ用のstate
+  const panningViewportRef = useRef<HTMLDivElement | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [scrollStart, setScrollStart] = useState({ left: 0, top: 0 });
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [videoWidth, setVideoWidth] = useState<number | null>(null);
@@ -9930,14 +9936,63 @@ case 6: {
                       </button>
                     </div>
 
-                    <div style={{ 
-                      overflow: 'auto',
-                      maxHeight: '80vh',
-                      WebkitOverflowScrolling: 'touch',
-                      border: '2px solid rgba(255,255,255,0.3)',
-                      borderRadius: '8px',
-                      backgroundColor: '#000'
-                    }}>
+                    <div 
+                      ref={panningViewportRef}
+                      style={{ 
+                        overflow: 'auto',
+                        maxHeight: '80vh',
+                        WebkitOverflowScrolling: 'touch',
+                        border: '2px solid rgba(255,255,255,0.3)',
+                        borderRadius: '8px',
+                        backgroundColor: '#000',
+                        cursor: panningZoomLevel > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
+                        userSelect: 'none'
+                      }}
+                      onMouseDown={(e) => {
+                        if (panningZoomLevel <= 1) return;
+                        setIsDragging(true);
+                        setDragStart({ x: e.clientX, y: e.clientY });
+                        const viewport = panningViewportRef.current;
+                        if (viewport) {
+                          setScrollStart({ left: viewport.scrollLeft, top: viewport.scrollTop });
+                        }
+                      }}
+                      onMouseMove={(e) => {
+                        if (!isDragging || panningZoomLevel <= 1) return;
+                        e.preventDefault();
+                        const viewport = panningViewportRef.current;
+                        if (viewport) {
+                          const dx = e.clientX - dragStart.x;
+                          const dy = e.clientY - dragStart.y;
+                          viewport.scrollLeft = scrollStart.left - dx;
+                          viewport.scrollTop = scrollStart.top - dy;
+                        }
+                      }}
+                      onMouseUp={() => setIsDragging(false)}
+                      onMouseLeave={() => setIsDragging(false)}
+                      onTouchStart={(e) => {
+                        if (panningZoomLevel <= 1 || e.touches.length !== 1) return;
+                        setIsDragging(true);
+                        const touch = e.touches[0];
+                        setDragStart({ x: touch.clientX, y: touch.clientY });
+                        const viewport = panningViewportRef.current;
+                        if (viewport) {
+                          setScrollStart({ left: viewport.scrollLeft, top: viewport.scrollTop });
+                        }
+                      }}
+                      onTouchMove={(e) => {
+                        if (!isDragging || panningZoomLevel <= 1 || e.touches.length !== 1) return;
+                        const touch = e.touches[0];
+                        const viewport = panningViewportRef.current;
+                        if (viewport) {
+                          const dx = touch.clientX - dragStart.x;
+                          const dy = touch.clientY - dragStart.y;
+                          viewport.scrollLeft = scrollStart.left - dx;
+                          viewport.scrollTop = scrollStart.top - dy;
+                        }
+                      }}
+                      onTouchEnd={() => setIsDragging(false)}
+                    >
                       <canvas 
                         ref={panningCanvasRef}
                         style={{
@@ -9946,7 +10001,7 @@ case 6: {
                           height: 'auto',
                           display: 'block',
                           margin: '0',
-                          cursor: panningZoomLevel > 1 ? 'move' : 'default'
+                          pointerEvents: 'none'
                         }}
                       />
                     </div>
@@ -9959,7 +10014,7 @@ case 6: {
                       textAlign: 'center',
                       borderRadius: '8px'
                     }}>
-                      📱 右上のボタンで拡大・縮小、スワイプで移動できます
+                      📱 右上のボタンで拡大・縮小、ドラッグ（またはスワイプ）で画像を移動できます
                     </div>
                   </div>
 
