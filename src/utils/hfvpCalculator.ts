@@ -572,60 +572,33 @@ export function calculateHFVPFromPanningSplits(
   for (let i = 0; i < splits.length; i++) {
     const split = splits[i];
     
-    // Calculate instantaneous velocity at this split point
-    // using central difference method (average of forward and backward slopes)
-    let velocity = 0;
+    // Use the velocity from split data (already calculated in App.tsx)
+    const velocity = split.velocity;
+    velocities.push(velocity);
+    
+    // Calculate acceleration from velocity changes
     let acceleration = 0;
     
-    if (i === 0) {
-      // First split: use forward difference
+    if (i === 0 && i < splits.length - 1) {
+      // First split: forward difference
       const nextSplit = splits[i + 1];
-      const deltaD = nextSplit.distance - split.distance;
+      const deltaV = nextSplit.velocity - velocity;
       const deltaT = nextSplit.time - split.time;
-      velocity = deltaT > 0 ? deltaD / deltaT : 0;
-      
-      // Acceleration: forward difference
-      if (i < splits.length - 1) {
-        const nextSplit = splits[i + 1];
-        const nextNextSplit = i < splits.length - 2 ? splits[i + 2] : null;
-        const v1 = velocity;
-        const v2 = nextNextSplit 
-          ? (nextNextSplit.distance - nextSplit.distance) / (nextNextSplit.time - nextSplit.time)
-          : velocity;
-        const dt = nextSplit.time - split.time;
-        acceleration = dt > 0 ? (v2 - v1) / dt : 0;
-      }
-    } else if (i === splits.length - 1) {
-      // Last split: use backward difference
+      acceleration = deltaT > 0 ? deltaV / deltaT : 0;
+    } else if (i === splits.length - 1 && i > 0) {
+      // Last split: backward difference
       const prevSplit = splits[i - 1];
-      const deltaD = split.distance - prevSplit.distance;
+      const deltaV = velocity - prevSplit.velocity;
       const deltaT = split.time - prevSplit.time;
-      velocity = deltaT > 0 ? deltaD / deltaT : 0;
-      
-      // Acceleration: backward difference
-      const prevPrevSplit = i > 1 ? splits[i - 2] : null;
-      const v0 = prevPrevSplit
-        ? (prevSplit.distance - prevPrevSplit.distance) / (prevSplit.time - prevPrevSplit.time)
-        : velocity;
-      const v1 = velocity;
-      const dt = split.time - prevSplit.time;
-      acceleration = dt > 0 ? (v1 - v0) / dt : 0;
-    } else {
-      // Middle splits: use central difference for velocity
+      acceleration = deltaT > 0 ? deltaV / deltaT : 0;
+    } else if (i > 0 && i < splits.length - 1) {
+      // Middle splits: central difference
       const prevSplit = splits[i - 1];
       const nextSplit = splits[i + 1];
-      const deltaD = nextSplit.distance - prevSplit.distance;
+      const deltaV = nextSplit.velocity - prevSplit.velocity;
       const deltaT = nextSplit.time - prevSplit.time;
-      velocity = deltaT > 0 ? deltaD / deltaT : 0;
-      
-      // Acceleration: central difference
-      const v_prev = (split.distance - prevSplit.distance) / (split.time - prevSplit.time);
-      const v_next = (nextSplit.distance - split.distance) / (nextSplit.time - split.time);
-      const dt = (nextSplit.time - prevSplit.time) / 2;
-      acceleration = dt > 0 ? (v_next - v_prev) / dt : 0;
+      acceleration = deltaT > 0 ? deltaV / deltaT : 0;
     }
-    
-    velocities.push(velocity);
     
     // Air resistance (drag force)
     const rho = 1.225; // kg/m³

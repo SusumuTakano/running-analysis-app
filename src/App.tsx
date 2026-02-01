@@ -2707,28 +2707,39 @@ const clearMarksByButton = () => {
       return null;
     }
     
-    // スプリットからパンモード用データを生成
+    // スプリットからパンモード用データを生成（各スプリット地点のデータ）
     const panningSplitData: PanningSplitDataForHFVP[] = [];
-    for (let i = 1; i < intervalSplits.length; i++) {
-      const prevSplit = intervalSplits[i - 1];
-      const currSplit = intervalSplits[i];
-      const distanceDelta = currSplit.distance - prevSplit.distance;
-      const timeDelta = currSplit.time - prevSplit.time;
-      const velocity = distanceDelta / timeDelta;
+    for (let i = 0; i < intervalSplits.length; i++) {
+      const split = intervalSplits[i];
+      
+      // 各スプリット地点での瞬間速度を計算
+      // （hfvpCalculator.ts で中心差分法を使って再計算されるが、ここでは区間平均速度を渡す）
+      let velocity = 0;
+      if (i === 0 && i < intervalSplits.length - 1) {
+        // 最初の地点: 次の区間の平均速度を使用
+        const nextSplit = intervalSplits[i + 1];
+        velocity = (nextSplit.distance - split.distance) / (nextSplit.time - split.time);
+      } else if (i === intervalSplits.length - 1 && i > 0) {
+        // 最後の地点: 前の区間の平均速度を使用
+        const prevSplit = intervalSplits[i - 1];
+        velocity = (split.distance - prevSplit.distance) / (split.time - prevSplit.time);
+      } else if (i > 0 && i < intervalSplits.length - 1) {
+        // 中間の地点: 前後の区間の平均速度を使用
+        const prevSplit = intervalSplits[i - 1];
+        const nextSplit = intervalSplits[i + 1];
+        velocity = (nextSplit.distance - prevSplit.distance) / (nextSplit.time - prevSplit.time);
+      }
       
       console.log(`🔍 H-FVP [PANNING] Split ${i}:`, {
-        prevFrame: prevSplit.frame,
-        currFrame: currSplit.frame,
-        prevTime: prevSplit.time.toFixed(4),
-        currTime: currSplit.time.toFixed(4),
-        timeDelta: timeDelta.toFixed(4),
-        distanceDelta: distanceDelta.toFixed(2),
+        frame: split.frame,
+        distance: split.distance.toFixed(2),
+        time: split.time.toFixed(4),
         velocity: velocity.toFixed(4)
       });
       
       panningSplitData.push({
-        distance: currSplit.distance,
-        time: currSplit.time - intervalSplits[0].time, // Relative to start
+        distance: split.distance,
+        time: split.time - intervalSplits[0].time, // Relative to start
         velocity: velocity,
       });
     }
