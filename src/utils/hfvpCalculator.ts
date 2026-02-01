@@ -610,13 +610,20 @@ export function calculateHFVPFromPanningSplits(
     const horizontalForce = bodyMassKg * acceleration + dragForce;
     horizontalForces.push(horizontalForce);
     
-    // Estimate contact angle
-    const maxVelocity = Math.max(...velocities);
-    const velocityRatio = maxVelocity > 0 ? velocity / maxVelocity : 0;
-    const contactAngle = 60 - 15 * velocityRatio; // degrees (60° → 45°)
+    // Estimate contact angle based on velocity
+    // Low velocity (start): ~65°, High velocity (max): ~48°
+    const maxVelocity = Math.max(...velocities.filter(v => v > 0));
+    const minVelocity = Math.min(...velocities.filter(v => v > 0));
+    const velocityRange = maxVelocity - minVelocity;
+    const velocityRatio = velocityRange > 0 ? (velocity - minVelocity) / velocityRange : 0;
+    const contactAngleDeg = 65 - 17 * velocityRatio; // 65° → 48°
+    const contactAngleRad = (contactAngleDeg * Math.PI) / 180;
     
-    // Vertical force (constant body weight support)
-    const verticalForce = bodyMassKg * g;
+    // Estimate vertical force from contact angle
+    // F_v = F_h / tan(θ) where θ is contact angle
+    // For panning mode, we estimate vertical force based on horizontal force
+    const tanAngle = Math.tan(contactAngleRad);
+    const verticalForce = tanAngle > 0 ? horizontalForce / tanAngle : bodyMassKg * g;
     
     // Resultant force
     const resultantForce = Math.sqrt(
@@ -632,7 +639,7 @@ export function calculateHFVPFromPanningSplits(
       ? (horizontalForce / resultantForce) * 100 
       : 0;
     
-    console.log(`   Split ${i}: v=${velocity.toFixed(2)} m/s, a=${acceleration.toFixed(2)} m/s², F_h=${horizontalForce.toFixed(1)} N, RF=${forceRatio.toFixed(1)}%`);
+    console.log(`   Split ${i}: v=${velocity.toFixed(2)} m/s, a=${acceleration.toFixed(2)} m/s², F_h=${horizontalForce.toFixed(1)} N, F_v=${verticalForce.toFixed(1)} N, angle=${contactAngleDeg.toFixed(1)}°, RF=${forceRatio.toFixed(1)}%`);
     
     dataPoints.push({
       velocity,
@@ -643,7 +650,7 @@ export function calculateHFVPFromPanningSplits(
       forceRatio,
       distance: split.distance,
       acceleration,
-      contactAngle,
+      contactAngle: contactAngleDeg,
     });
   }
   
