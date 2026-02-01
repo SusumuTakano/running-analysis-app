@@ -7382,6 +7382,9 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
 
     // 通常のシングルカメラモードのステップ処理
     console.log('🔍 [CRITICAL] wizardStep =', wizardStep, 'analysisMode =', analysisMode);
+    console.log('🔍 [CRITICAL] typeof wizardStep =', typeof wizardStep);
+    console.log('🔍 [CRITICAL] wizardStep === 8 ?', wizardStep === 8);
+    console.log('🔍 [CRITICAL] wizardStep === 7 ?', wizardStep === 7);
     switch (wizardStep) {
       case 0:
       return (
@@ -11257,6 +11260,9 @@ case 6: {
 
       case 8:
         console.log('✅ [STEP 8] Rendering Step 8! stepMetrics.length =', stepMetrics.length);
+        console.log('✅ [STEP 8] analysisMode =', analysisMode);
+        console.log('✅ [STEP 8] contactFrames.length =', contactFrames.length);
+        console.log('✅ [STEP 8] stepMetrics =', stepMetrics);
         return (
           <div className="wizard-content">
             <div className="wizard-step-header">
@@ -12620,7 +12626,20 @@ case 6: {
         );
 
       default:
-        return null;
+        console.error('❌ [DEFAULT CASE] Unexpected wizardStep:', wizardStep, 'analysisMode:', analysisMode);
+        return (
+          <div className="wizard-content">
+            <div className="wizard-step-header">
+              <h2 className="wizard-step-title" style={{ color: 'red' }}>エラー: 不明なステップ</h2>
+              <p className="wizard-step-desc">
+                wizardStep = {wizardStep}, analysisMode = {analysisMode}
+              </p>
+              <button className="btn-primary" onClick={() => setWizardStep(0)}>
+                最初に戻る
+              </button>
+            </div>
+          </div>
+        );
     }
   };
 
