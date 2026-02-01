@@ -10569,8 +10569,10 @@ case 6: {
                         textAlign: 'center'
                       }}>
                         <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>F0</div>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{hfvpResult.F0.toFixed(1)}</div>
-                        <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>N</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
+                          {(hfvpResult.F0 / (athleteInfo.weight_kg || 70)).toFixed(2)}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>N/kg</div>
                       </div>
                       <div style={{
                         padding: '16px',
@@ -12286,8 +12288,10 @@ case 6: {
                             textAlign: 'center'
                           }}>
                             <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>F0</div>
-                            <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{hfvpResult.F0.toFixed(1)}</div>
-                            <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>N</div>
+                            <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
+                              {(hfvpResult.F0 / (athleteInfo.weight_kg || 70)).toFixed(2)}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>N/kg</div>
                           </div>
                           <div style={{
                             padding: '16px',

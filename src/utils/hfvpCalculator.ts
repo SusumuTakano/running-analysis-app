@@ -253,9 +253,11 @@ export function calculateHFVP(
   
   // RFmax: Maximum ratio of force (at start, lowest velocity)
   // RF = F_horizontal / F_resultant
-  // At start: F_horizontal = F0, F_resultant ≈ √(F0² + (m*g)²)
-  const startResultantForce = Math.sqrt(F0 * F0 + (bodyMassKg * g) * (bodyMassKg * g));
-  const RFmax = startResultantForce > 0 ? (F0 / startResultantForce) * 100 : 0;
+  // Use the first data point (lowest velocity) for RFmax calculation
+  const firstDataPoint = validDataPoints[0];
+  const RFmax = firstDataPoint.resultantForce > 0 
+    ? (firstDataPoint.horizontalForce / firstDataPoint.resultantForce) * 100 
+    : 0;
   
   // DRF: Decrease in ratio of force per unit velocity
   // DRF = -100 * d(RF)/dv
