@@ -7381,6 +7381,7 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
     */
 
     // 通常のシングルカメラモードのステップ処理
+    console.log('🔍 [CRITICAL] wizardStep =', wizardStep, 'analysisMode =', analysisMode);
     switch (wizardStep) {
       case 0:
       return (
@@ -11255,10 +11256,11 @@ case 6: {
       }
 
       case 8:
+        console.log('✅ [STEP 8] Rendering Step 8! stepMetrics.length =', stepMetrics.length);
         return (
           <div className="wizard-content">
             <div className="wizard-step-header">
-              <h2 className="wizard-step-title">ステップ 9: データ詳細（プロ版）</h2>
+              <h2 className="wizard-step-title">ステップ 8: 解析結果</h2>
               <p className="wizard-step-desc">
                 詳細なステップメトリクス、グラフ、関節角度データを確認できます。
               </p>
