@@ -8203,9 +8203,10 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
             display: "flex",
             flexWrap: "wrap",
             gap: "8px",
+            alignItems: "center"
           }}
         >
-          {[60, 120, 240].map((fps) => (
+          {[30, 60, 120, 240].map((fps) => (
             <label
               key={fps}
               style={{
@@ -8238,6 +8239,43 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
               {fps} fps
             </label>
           ))}
+          
+          {/* カスタムFPS入力 */}
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "6px 10px",
+            border: "1px solid #e5e7eb",
+            borderRadius: "8px",
+            background: "#f9fafb"
+          }}>
+            <label style={{ fontSize: "0.85rem", color: "#6b7280" }}>
+              カスタム:
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="1000"
+              step="1"
+              placeholder="FPS"
+              onChange={(e) => {
+                const value = parseInt(e.target.value);
+                if (!isNaN(value) && value > 0) {
+                  setSelectedFps(value);
+                }
+              }}
+              style={{
+                width: "70px",
+                padding: "4px 8px",
+                border: "1px solid #d1d5db",
+                borderRadius: "6px",
+                fontSize: "0.9rem",
+                textAlign: "center"
+              }}
+            />
+            <span style={{ fontSize: "0.85rem", color: "#6b7280" }}>fps</span>
+          </div>
         </div>
       </div>
 
