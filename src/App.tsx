@@ -10135,7 +10135,7 @@ case 6: {
                           }];
                           setPanningSplits(newSplits);
                           setPanningStartIndex(0); // 自動的に開始点に設定
-                          setDistanceInput(''); // 入力欄をクリア
+                          setDistanceInput('10'); // 次の推奨距離（10m）を自動入力
                           return;
                         }
                         
@@ -10168,8 +10168,9 @@ case 6: {
                         }];
                         setPanningSplits(newSplits);
                         
-                        // 入力欄をクリア（次の入力のため）
-                        setDistanceInput('');
+                        // 次の推奨距離を自動入力（10m間隔）
+                        const nextDistance = distance + 10;
+                        setDistanceInput(nextDistance.toString());
                       }}
                       style={{
                         width: '100%',
