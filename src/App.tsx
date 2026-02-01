@@ -10677,6 +10677,171 @@ case 6: {
                         </div>
                       </div>
                     )}
+
+                    {/* 100m目標記録アドバイス */}
+                    <div style={{
+                      marginTop: '20px',
+                      padding: '20px',
+                      background: '#ffffff',
+                      borderRadius: '12px',
+                      border: '2px solid #e5e7eb'
+                    }}>
+                      <h4 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', fontWeight: 'bold', color: '#1f2937', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        🎯 100m 目標記録達成アドバイス
+                      </h4>
+                      
+                      {athleteInfo.target_record && (
+                        <div style={{
+                          padding: '12px 16px',
+                          background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                          borderRadius: '8px',
+                          marginBottom: '16px',
+                          border: '1px solid #7dd3fc'
+                        }}>
+                          <div style={{ fontSize: '0.85rem', color: '#0369a1', marginBottom: '4px' }}>
+                            📋 設定された目標記録
+                          </div>
+                          <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#0c4a6e' }}>
+                            {athleteInfo.target_record}
+                          </div>
+                        </div>
+                      )}
+
+                      {athleteInfo.target_record && (() => {
+                        const targetTime = parseFloat(athleteInfo.target_record.replace(/[^0-9.]/g, ''));
+                        if (!isNaN(targetTime) && targetTime > 0) {
+                          const currentAnalysisType: 'acceleration' | 'topSpeed' = runType === 'dash' ? 'acceleration' : 'topSpeed';
+                          const advice = generateTargetAdvice(targetTime, currentAnalysisType);
+                          return (
+                            <div style={{
+                              padding: '20px',
+                              background: '#f9fafb',
+                              borderRadius: '8px',
+                              fontSize: '0.9rem',
+                              lineHeight: '1.8',
+                              maxHeight: '500px',
+                              overflowY: 'auto',
+                              color: '#1f2937'
+                            }}>
+                              {advice.split('\n').map((line, i) => {
+                                if (line.startsWith('### ')) {
+                                  return (
+                                    <h3 key={i} style={{
+                                      fontSize: '1.2rem',
+                                      fontWeight: 'bold',
+                                      marginTop: i === 0 ? '0' : '20px',
+                                      marginBottom: '10px',
+                                      color: '#1f2937',
+                                      borderBottom: '2px solid #667eea',
+                                      paddingBottom: '6px'
+                                    }}>
+                                      {line.replace('### ', '')}
+                                    </h3>
+                                  );
+                                }
+                                if (line.startsWith('#### ')) {
+                                  return (
+                                    <h4 key={i} style={{
+                                      fontSize: '1.05rem',
+                                      fontWeight: 'bold',
+                                      marginTop: '14px',
+                                      marginBottom: '8px',
+                                      color: '#374151'
+                                    }}>
+                                      {line.replace('#### ', '')}
+                                    </h4>
+                                  );
+                                }
+                                if (line.startsWith('## ')) {
+                                  return (
+                                    <h2 key={i} style={{
+                                      fontSize: '1.4rem',
+                                      fontWeight: 'bold',
+                                      marginTop: i === 0 ? '0' : '24px',
+                                      marginBottom: '12px',
+                                      color: '#111827',
+                                      borderBottom: '3px solid #764ba2',
+                                      paddingBottom: '8px'
+                                    }}>
+                                      {line.replace('## ', '')}
+                                    </h2>
+                                  );
+                                }
+                                if (line.trim().startsWith('- ')) {
+                                  return (
+                                    <div key={i} style={{
+                                      marginLeft: '16px',
+                                      marginBottom: '4px',
+                                      display: 'flex',
+                                      gap: '6px'
+                                    }}>
+                                      <span style={{ color: '#667eea', fontWeight: 'bold' }}>•</span>
+                                      <span>{line.trim().replace('- ', '')}</span>
+                                    </div>
+                                  );
+                                }
+                                if (/^\d+\./.test(line.trim())) {
+                                  return (
+                                    <div key={i} style={{
+                                      marginLeft: '16px',
+                                      marginBottom: '4px',
+                                      display: 'flex',
+                                      gap: '6px'
+                                    }}>
+                                      <span style={{ 
+                                        color: '#764ba2', 
+                                        fontWeight: 'bold',
+                                        minWidth: '20px'
+                                      }}>
+                                        {line.trim().match(/^\d+\./)?.[0]}
+                                      </span>
+                                      <span>{line.trim().replace(/^\d+\.\s*/, '')}</span>
+                                    </div>
+                                  );
+                                }
+                                if (line.trim().startsWith('> ')) {
+                                  return (
+                                    <div key={i} style={{
+                                      background: '#eff6ff',
+                                      borderLeft: '4px solid #667eea',
+                                      padding: '10px 14px',
+                                      marginTop: '10px',
+                                      marginBottom: '10px',
+                                      borderRadius: '0 6px 6px 0',
+                                      fontStyle: 'italic',
+                                      color: '#4b5563'
+                                    }}>
+                                      {line.replace('> ', '')}
+                                    </div>
+                                  );
+                                }
+                                if (line.trim() === '---') {
+                                  return (
+                                    <hr key={i} style={{
+                                      border: 'none',
+                                      borderTop: '2px solid #e5e7eb',
+                                      margin: '20px 0'
+                                    }} />
+                                  );
+                                }
+                                if (line.includes('**')) {
+                                  const parts = line.split('**');
+                                  return (
+                                    <p key={i} style={{ marginBottom: '6px', color: '#374151' }}>
+                                      {parts.map((part, j) => 
+                                        j % 2 === 1 ? <strong key={j} style={{ color: '#1f2937', fontWeight: 'bold' }}>{part}</strong> : part
+                                      )}
+                                    </p>
+                                  );
+                                }
+                                return line ? <p key={i} style={{ marginBottom: '6px', color: '#374151' }}>{line}</p> : <br key={i} />;
+                              })}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
                   </>
                 ) : (
                   <p>ステップメトリクスが計算されていません。Step 6 でマーカーを設定してください。</p>
