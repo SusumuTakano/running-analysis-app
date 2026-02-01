@@ -9994,8 +9994,8 @@ case 6: {
                       onTouchEnd={() => setIsDragging(false)}
                     >
                       <div style={{
-                        width: `${panningZoomLevel * 100}%`,
-                        display: 'inline-block'
+                        display: 'inline-block',
+                        position: 'relative'
                       }}>
                         <canvas 
                           ref={panningCanvasRef}
@@ -10003,9 +10003,20 @@ case 6: {
                             width: '100%',
                             height: 'auto',
                             display: 'block',
-                            pointerEvents: 'none'
+                            pointerEvents: 'none',
+                            transform: `scale(${panningZoomLevel})`,
+                            transformOrigin: 'top left'
                           }}
                         />
+                        {/* スクロール領域を確保するための透明なスペーサー */}
+                        <div style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: `${panningZoomLevel * 100}%`,
+                          height: `${panningZoomLevel * 100}%`,
+                          pointerEvents: 'none'
+                        }} />
                       </div>
                     </div>
                     <div style={{
