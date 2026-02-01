@@ -9938,7 +9938,7 @@ case 6: {
                           type="number"
                           value={distanceInput}
                           onChange={(e) => setDistanceInput(e.target.value)}
-                          placeholder={`例: ${parseFloat(distanceInput) || 10}`}
+                          placeholder={`推奨: ${panningSplits[panningSplits.length - 1].distance + 10}m`}
                           step="0.1"
                           min="0.1"
                           style={{
@@ -9951,6 +9951,13 @@ case 6: {
                             color: 'white'
                           }}
                         />
+                        <div style={{
+                          marginTop: '6px',
+                          fontSize: '0.75rem',
+                          opacity: 0.8
+                        }}>
+                          💡 前回: {panningSplits[panningSplits.length - 1].distance.toFixed(1)}m
+                        </div>
                       </div>
                     )}
                     
@@ -9969,7 +9976,7 @@ case 6: {
                           }];
                           setPanningSplits(newSplits);
                           setPanningStartIndex(0); // 自動的に開始点に設定
-                          setDistanceInput('10'); // 次は10m提案
+                          setDistanceInput(''); // 入力欄をクリア
                           return;
                         }
                         
@@ -10002,8 +10009,8 @@ case 6: {
                         }];
                         setPanningSplits(newSplits);
                         
-                        // 次の距離提案
-                        setDistanceInput(String(distance + 10));
+                        // 入力欄をクリア（次の入力のため）
+                        setDistanceInput('');
                       }}
                       style={{
                         width: '100%',
