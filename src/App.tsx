@@ -2650,116 +2650,77 @@ const clearMarksByButton = () => {
   }, [analysisMode, mergedStepMetrics, contactFrames, manualContactFrames, usedTargetFps, poseResults, distanceValue, isPanMode, calibrationType, runType, savedStartHipX, savedEndHipX, sectionStartFrame, sectionEndFrame]);
 
   // ⚡ H-FVP 計算（Horizontal Force-Velocity Profile）
+  // ※パンモードではH-FVPは計算しない（地面接触データが必要）
   const hfvpResult = useMemo((): HFVPResult | null => {
-    const mode = analysisMode === 'panning' ? 'PANNING' : 'FIXED';
-    console.log(`🔍 H-FVP check [${mode}]:`, {
-      analysisMode,
-      panningSplitsLength: panningSplits.length,
-      panningStartIndex,
-      panningEndIndex,
-      athleteWeight: athleteInfo.weight_kg,
-      athleteHeight: athleteInfo.height_cm
-    });
-    
-    // 固定カメラモード: H-FVP計算を無効化
+    console.log(`🚫 H-FVP: Disabled for panning mode (ground contact data required)`);
+    return null;
+  }, []);
+  
+  // 🏃 パンモード用簡易スプリント分析
+  const panningSprintAnalysis = useMemo(() => {
     if (analysisMode !== 'panning') {
-      console.log(`⚠️ H-FVP [FIXED]: H-FVP calculation is disabled for fixed camera mode`);
       return null;
     }
     
-    // パーン撮影モード: スプリットから測定区間を取得
     if (panningStartIndex === null || panningEndIndex === null || panningStartIndex >= panningEndIndex) {
-      console.log(`⚠️ H-FVP [PANNING]: No valid measurement interval selected`, {
-        panningStartIndex,
-        panningEndIndex
-      });
       return null;
     }
     
-    const startSplit = panningSplits[panningStartIndex];
-    const endSplit = panningSplits[panningEndIndex];
     const intervalSplits = panningSplits.slice(panningStartIndex, panningEndIndex + 1);
     
-    console.log(`📊 H-FVP [PANNING]: Interval splits:`, {
-      start: startSplit,
-      end: endSplit,
-      intervalLength: intervalSplits.length,
-      allSplits: intervalSplits
+    if (intervalSplits.length < 2) {
+      return null;
+    }
+    
+    // 区間データを計算
+    const intervals = [];
+    for (let i = 1; i < intervalSplits.length; i++) {
+      const prevSplit = intervalSplits[i - 1];
+      const currSplit = intervalSplits[i];
+      const distance = currSplit.distance - prevSplit.distance;
+      const time = currSplit.time - prevSplit.time;
+      const speed = distance / time;
+      const acceleration = i === 1 ? 0 : (speed - intervals[i - 2].speed) / time;
+      
+      intervals.push({
+        startDistance: prevSplit.distance,
+        endDistance: currSplit.distance,
+        distance,
+        time,
+        speed,
+        acceleration
+      });
+    }
+    
+    const totalDistance = intervalSplits[intervalSplits.length - 1].distance - intervalSplits[0].distance;
+    const totalTime = intervalSplits[intervalSplits.length - 1].time - intervalSplits[0].time;
+    const averageSpeed = totalDistance / totalTime;
+    const maxSpeed = Math.max(...intervals.map(i => i.speed));
+    const avgAcceleration = intervals.reduce((sum, i) => sum + i.acceleration, 0) / intervals.length;
+    
+    // 100m推定タイム（最大速度を維持すると仮定）
+    const estimated100mTime = totalTime + (100 - totalDistance) / maxSpeed;
+    
+    console.log(`📊 Panning Sprint Analysis:`, {
+      totalDistance,
+      totalTime,
+      averageSpeed,
+      maxSpeed,
+      avgAcceleration,
+      estimated100mTime,
+      intervals
     });
     
-    if (intervalSplits.length < 3) {
-      console.log(`⚠️ H-FVP [PANNING]: Need at least 3 splits for H-FVP calculation (found ${intervalSplits.length})`);
-      return null;
-    }
-    
-    // 選手情報から体重と身長を取得
-    const bodyMass = athleteInfo.weight_kg ?? 70; // デフォルト70kg
-    const athleteHeight = (athleteInfo.height_cm ?? 170) / 100; // cm → m、デフォルト170cm
-    
-    // バリデーション
-    if (isNaN(bodyMass) || bodyMass <= 0 || bodyMass > 200) {
-      console.warn('⚠️ Invalid body mass for H-FVP calculation');
-      return null;
-    }
-    
-    if (isNaN(athleteHeight) || athleteHeight <= 0 || athleteHeight > 2.5) {
-      console.warn('⚠️ Invalid height for H-FVP calculation');
-      return null;
-    }
-    
-    // スプリットからパンモード用データを生成（各スプリット地点のデータ）
-    const panningSplitData: PanningSplitDataForHFVP[] = [];
-    for (let i = 0; i < intervalSplits.length; i++) {
-      const split = intervalSplits[i];
-      
-      // 各スプリット地点での瞬間速度を計算
-      // （hfvpCalculator.ts で中心差分法を使って再計算されるが、ここでは区間平均速度を渡す）
-      let velocity = 0;
-      if (i === 0 && i < intervalSplits.length - 1) {
-        // 最初の地点: 次の区間の平均速度を使用
-        const nextSplit = intervalSplits[i + 1];
-        velocity = (nextSplit.distance - split.distance) / (nextSplit.time - split.time);
-      } else if (i === intervalSplits.length - 1 && i > 0) {
-        // 最後の地点: 前の区間の平均速度を使用
-        const prevSplit = intervalSplits[i - 1];
-        velocity = (split.distance - prevSplit.distance) / (split.time - prevSplit.time);
-      } else if (i > 0 && i < intervalSplits.length - 1) {
-        // 中間の地点: 前後の区間の平均速度を使用
-        const prevSplit = intervalSplits[i - 1];
-        const nextSplit = intervalSplits[i + 1];
-        velocity = (nextSplit.distance - prevSplit.distance) / (nextSplit.time - prevSplit.time);
-      }
-      
-      console.log(`🔍 H-FVP [PANNING] Split ${i}:`, {
-        frame: split.frame,
-        distance: split.distance.toFixed(2),
-        time: split.time.toFixed(4),
-        velocity: velocity.toFixed(4)
-      });
-      
-      panningSplitData.push({
-        distance: split.distance,
-        time: split.time - intervalSplits[0].time, // Relative to start
-        velocity: velocity,
-      });
-    }
-    
-    console.log(`🔍 H-FVP [PANNING]: Generated ${panningSplitData.length} split data points`);
-    console.log(`📊 H-FVP [PANNING]: Split data:`, panningSplitData);
-    console.log(`⚖️ H-FVP [PANNING]: Body mass: ${bodyMass}kg, Height: ${athleteHeight}m`);
-    
-    const result = calculateHFVPFromPanningSplits(panningSplitData, bodyMass, athleteHeight);
-    
-    if (result) {
-      console.log(`✅ H-FVP [PANNING] calculated: ${result.quality.isValid ? 'SUCCESS' : 'FAILED'}`, result);
-      
-      // パーン撮影モードの品質情報は既に設定済み（calculateHFVPFromPanningSplitsで設定）
-    } else {
-      console.error(`❌ H-FVP [PANNING] calculation returned null. Check calculateHFVP function.`);
-    }
-    
-    return result;
-  }, [analysisMode, panningSplits, panningStartIndex, panningEndIndex, athleteInfo.weight_kg, athleteInfo.height_cm]);
+    return {
+      intervals,
+      totalDistance,
+      totalTime,
+      averageSpeed,
+      maxSpeed,
+      avgAcceleration,
+      estimated100mTime
+    };
+  }, [analysisMode, panningSplits, panningStartIndex, panningEndIndex]);
 
   // 🎯 タイム・スピード計算
   const sectionTimeSpeed = useMemo(() => {
