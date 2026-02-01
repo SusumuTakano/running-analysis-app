@@ -2726,6 +2726,8 @@ const clearMarksByButton = () => {
     }
     
     console.log(`🔍 H-FVP [PANNING]: Generated ${hfvpSteps.length} speed data points from splits`);
+    console.log(`📊 H-FVP [PANNING]: Speed data:`, hfvpSteps);
+    console.log(`⚖️ H-FVP [PANNING]: Body mass: ${bodyMass}kg, Height: ${athleteHeight}m`);
     
     const result = calculateHFVP(hfvpSteps, bodyMass, athleteHeight);
     
@@ -2735,6 +2737,8 @@ const clearMarksByButton = () => {
       // パーン撮影モードの品質情報を追加
       result.measurementMode = 'panning';
       result.isPanningHighQuality = hfvpSteps.length >= 8;
+    } else {
+      console.error(`❌ H-FVP [PANNING] calculation returned null. Check calculateHFVP function.`);
     }
     
     return result;
