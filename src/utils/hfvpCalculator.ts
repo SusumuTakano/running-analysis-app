@@ -601,33 +601,51 @@ export function calculateHFVPFromPanningSplits(
     // a_avg = (v_end^2 - v_start^2) / (2 * d)
     // または簡略版： a_avg = v_avg / t_avg（等加速度運動と仮定）
     
-    // v_start と v_end を推定
+    // 等加速度運動を仮定した計算
+    // d = v_start * t + 0.5 * a * t^2
+    // v_end = v_start + a * t
+    // v_avg = (v_start + v_end) / 2
+    
     let v_start = 0;
     let v_end = 0;
+    let a_avg = 0;
     
     if (i === 1) {
-      // 最初の区間：0m地点の速度は0と仮定
+      // 最初の区間：静止スタート
       v_start = 0;
-      // v_end = 2 * v_avg - v_start = 2 * v_avg
-      v_end = 2 * v_avg;
+      // a = 2 * d / t^2 (静止スタートの場合)
+      a_avg = (2 * deltaD) / (deltaT * deltaT);
+      // v_end = a * t
+      v_end = a_avg * deltaT;
     } else {
-      // 中間の区間：前の区間の v_end を使用
-      const prevInterval = dataPoints[i - 2]; // i-1 のデータポイント
-      v_start = prevInterval ? prevInterval.velocity : 0;
-      // v_avg = (v_start + v_end) / 2 => v_end = 2 * v_avg - v_start
-      v_end = 2 * v_avg - v_start;
+      // 中間の区間：前の区間の v_end を v_start として使用
+      // dataPoints[i-2] に保存されている v_end を取得
+      if (dataPoints.length > 0) {
+        const prevPoint = dataPoints[dataPoints.length - 1];
+        v_start = prevPoint.acceleration > 0 
+          ? prevPoint.velocity + Math.sqrt(prevPoint.velocity * prevPoint.velocity + 2 * prevPoint.acceleration * (currSplit.distance - prevSplit.distance))
+          : prevPoint.velocity;
+      } else {
+        v_start = v_avg * 0.5; // フォールバック
+      }
+      
+      // a = 2 * (d - v_start * t) / t^2
+      a_avg = (2 * (deltaD - v_start * deltaT)) / (deltaT * deltaT);
+      
+      // 異常値チェック
+      if (a_avg < 0) {
+        console.warn(`⚠️ Negative acceleration in interval ${i}, using simplified method`);
+        // 簡略化: v_avg = (v_start + v_end) / 2
+        v_end = 2 * v_avg - v_start;
+        if (v_end <= v_start) {
+          v_end = v_start + 0.1; // 最小増加
+        }
+        a_avg = (v_end - v_start) / deltaT;
+      } else {
+        // v_end = v_start + a * t
+        v_end = v_start + a_avg * deltaT;
+      }
     }
-    
-    // 異常値チェック
-    if (v_end < v_start || v_end < 0) {
-      console.warn(`⚠️ Abnormal velocities in interval ${i}: v_start=${v_start.toFixed(2)}, v_end=${v_end.toFixed(2)}`);
-      // 修正：v_end = v_avg
-      v_end = v_avg;
-      v_start = v_avg * 0.5;
-    }
-    
-    // 平均加速度（運動方程式から）
-    const a_avg = (v_end * v_end - v_start * v_start) / (2 * deltaD);
     
     // 区間の中点での速度（線形回帰用）
     const velocity = v_avg;
@@ -670,7 +688,7 @@ export function calculateHFVPFromPanningSplits(
       ? (horizontalForce / resultantForce) * 100 
       : 0;
     
-    console.log(`   Interval ${i} (${prevSplit.distance.toFixed(0)}-${currSplit.distance.toFixed(0)}m): v_avg=${v_avg.toFixed(2)} m/s, a=${a_avg.toFixed(2)} m/s², F_h=${horizontalForce.toFixed(1)} N, RF=${forceRatio.toFixed(1)}%`);
+    console.log(`   Interval ${i} (${prevSplit.distance.toFixed(0)}-${currSplit.distance.toFixed(0)}m): v_start=${v_start.toFixed(2)}, v_end=${v_end.toFixed(2)}, v_avg=${v_avg.toFixed(2)} m/s, a=${a_avg.toFixed(2)} m/s², F_h=${horizontalForce.toFixed(1)} N`);
     
     dataPoints.push({
       velocity: v_avg,  // 線形回帰用に平均速度を使用
