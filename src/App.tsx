@@ -2716,6 +2716,16 @@ const clearMarksByButton = () => {
       const timeDelta = currSplit.time - prevSplit.time;
       const speed = distanceDelta / timeDelta;
       
+      console.log(`🔍 H-FVP [PANNING] Split ${i}:`, {
+        prevFrame: prevSplit.frame,
+        currFrame: currSplit.frame,
+        prevTime: prevSplit.time.toFixed(4),
+        currTime: currSplit.time.toFixed(4),
+        timeDelta: timeDelta.toFixed(4),
+        distanceDelta: distanceDelta.toFixed(2),
+        speed: speed.toFixed(4)
+      });
+      
       hfvpSteps.push({
         distanceAtContactM: currSplit.distance,
         speedMps: speed,
@@ -10208,6 +10218,13 @@ case 6: {
                           time, 
                           distance 
                         }];
+                        console.log(`✅ Split registered:`, {
+                          frame,
+                          time,
+                          distance,
+                          fps: usedTargetFps,
+                          previousSplits: panningSplits.map(s => ({ frame: s.frame, time: s.time, dist: s.distance }))
+                        });
                         setPanningSplits(newSplits);
                         
                         // 次の推奨距離を自動入力（10m間隔）
