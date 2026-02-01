@@ -535,12 +535,23 @@ export function generateTrainingRecommendations(hfvp: HFVPResult): string[] {
  * @param athleteHeightM - Athlete's height (m)
  * @returns HFVPResult or null if insufficient data
  */
+/**
+ * パンモード用 H-FVP 計算
+ * 
+ * Samozino et al. (2016) の手法に基づき、距離-時間データから H-FVP を計算
+ * 
+ * 主要な式:
+ * 1. 各地点での速度: v = d / t
+ * 2. 加速度: a = (v_next² - v_prev²) / (2 × d)
+ * 3. 水平力: F_h = m × a + F_air
+ * 4. 線形回帰: F_h = F0 - (F0/V0) × v
+ */
 export function calculateHFVPFromPanningSplits(
   splits: PanningSplitDataForHFVP[],
   bodyMassKg: number,
   athleteHeightM: number = 1.75
 ): HFVPResult | null {
-  console.log(`\n📊 === H-FVP Calculation (Panning Mode) ===`);
+  console.log(`\n📊 === H-FVP Calculation (Panning Mode - Samozino Method) ===`);
   console.log(`   Body mass: ${bodyMassKg.toFixed(1)} kg`);
   console.log(`   Height: ${athleteHeightM.toFixed(2)} m`);
   console.log(`   Total splits: ${splits.length}`);
@@ -572,30 +583,62 @@ export function calculateHFVPFromPanningSplits(
   for (let i = 0; i < splits.length; i++) {
     const split = splits[i];
     
-    // Use the velocity from split data (already calculated in App.tsx)
-    const velocity = split.velocity;
+    // 速度を計算（Samozino法：各地点での瞬間速度）
+    let velocity = 0;
+    
+    if (i === 0) {
+      // 最初の地点：0m地点での速度 = 0 （静止スタートと仮定）
+      // または、最初の区間速度を使用
+      if (i < splits.length - 1) {
+        const nextSplit = splits[i + 1];
+        const deltaD = nextSplit.distance - split.distance;
+        const deltaT = nextSplit.time - split.time;
+        velocity = deltaT > 0 ? deltaD / deltaT : 0;
+      }
+    } else if (i === splits.length - 1) {
+      // 最後の地点：前の区間速度を使用
+      const prevSplit = splits[i - 1];
+      const deltaD = split.distance - prevSplit.distance;
+      const deltaT = split.time - prevSplit.time;
+      velocity = deltaT > 0 ? deltaD / deltaT : 0;
+    } else {
+      // 中間の地点：中心差分法（前後の区間の平均）
+      const prevSplit = splits[i - 1];
+      const nextSplit = splits[i + 1];
+      const deltaD = nextSplit.distance - prevSplit.distance;
+      const deltaT = nextSplit.time - prevSplit.time;
+      velocity = deltaT > 0 ? deltaD / deltaT : 0;
+    }
+    
     velocities.push(velocity);
     
-    // Calculate acceleration from velocity changes
+    // 加速度を計算（速度の変化から）
     let acceleration = 0;
     
     if (i === 0 && i < splits.length - 1) {
-      // First split: forward difference
+      // 最初の地点：前方差分
       const nextSplit = splits[i + 1];
-      const deltaV = nextSplit.velocity - velocity;
+      const v_next = velocities.length > 1 ? velocities[i + 1] : velocity;
+      const deltaV = v_next - velocity;
       const deltaT = nextSplit.time - split.time;
       acceleration = deltaT > 0 ? deltaV / deltaT : 0;
     } else if (i === splits.length - 1 && i > 0) {
-      // Last split: backward difference
+      // 最後の地点：後方差分
       const prevSplit = splits[i - 1];
-      const deltaV = velocity - prevSplit.velocity;
+      const v_prev = velocities[i - 1];
+      const deltaV = velocity - v_prev;
       const deltaT = split.time - prevSplit.time;
       acceleration = deltaT > 0 ? deltaV / deltaT : 0;
     } else if (i > 0 && i < splits.length - 1) {
-      // Middle splits: central difference
+      // 中間の地点：中心差分
       const prevSplit = splits[i - 1];
       const nextSplit = splits[i + 1];
-      const deltaV = nextSplit.velocity - prevSplit.velocity;
+      // 次の速度を計算
+      const deltaD_next = nextSplit.distance - split.distance;
+      const deltaT_next = nextSplit.time - split.time;
+      const v_next = deltaT_next > 0 ? deltaD_next / deltaT_next : velocity;
+      
+      const deltaV = v_next - velocities[i - 1];
       const deltaT = nextSplit.time - prevSplit.time;
       acceleration = deltaT > 0 ? deltaV / deltaT : 0;
     }

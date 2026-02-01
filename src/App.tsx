@@ -2650,11 +2650,52 @@ const clearMarksByButton = () => {
   }, [analysisMode, mergedStepMetrics, contactFrames, manualContactFrames, usedTargetFps, poseResults, distanceValue, isPanMode, calibrationType, runType, savedStartHipX, savedEndHipX, sectionStartFrame, sectionEndFrame]);
 
   // ⚡ H-FVP 計算（Horizontal Force-Velocity Profile）
-  // ※パンモードではH-FVPは計算しない（地面接触データが必要）
+  // パンモードでは10mスプリットデータからH-FVPを計算
   const hfvpResult = useMemo((): HFVPResult | null => {
-    console.log(`🚫 H-FVP: Disabled for panning mode (ground contact data required)`);
-    return null;
-  }, []);
+    // 固定カメラモードでは無効
+    if (analysisMode !== 'panning') {
+      return null;
+    }
+    
+    // 測定区間が選択されていない
+    if (panningStartIndex === null || panningEndIndex === null || panningStartIndex >= panningEndIndex) {
+      return null;
+    }
+    
+    const intervalSplits = panningSplits.slice(panningStartIndex, panningEndIndex + 1);
+    
+    if (intervalSplits.length < 3) {
+      return null;
+    }
+    
+    // 体重と身長を取得
+    const bodyMass = athleteInfo.weight_kg ?? 70;
+    const athleteHeight = (athleteInfo.height_cm ?? 170) / 100;
+    
+    if (bodyMass <= 0 || bodyMass > 200 || athleteHeight <= 0 || athleteHeight > 2.5) {
+      return null;
+    }
+    
+    // スプリットデータを準備（velocityは後で計算）
+    const splitData: PanningSplitDataForHFVP[] = intervalSplits.map((split, i) => ({
+      distance: split.distance,
+      time: split.time - intervalSplits[0].time,
+      velocity: 0 // プレースホルダー、hfvpCalculatorで再計算
+    }));
+    
+    console.log(`📊 H-FVP Input Data:`, splitData);
+    
+    // H-FVP計算を実行
+    const result = calculateHFVPFromPanningSplits(splitData, bodyMass, athleteHeight);
+    
+    if (result) {
+      console.log(`✅ H-FVP Result:`, result);
+    } else {
+      console.error(`❌ H-FVP calculation failed`);
+    }
+    
+    return result;
+  }, [analysisMode, panningSplits, panningStartIndex, panningEndIndex, athleteInfo.weight_kg, athleteInfo.height_cm]);
   
   // 🏃 パンモード用簡易スプリント分析
   const panningSprintAnalysis = useMemo(() => {
