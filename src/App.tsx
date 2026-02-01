@@ -28,7 +28,7 @@ import MobileSimplifier from './components/MobileSimplifier';
 import MobileHeader from './components/MobileHeader';
 import MultiCameraAnalyzer from "./components/MultiCameraAnalyzer";
 import { parseMedia } from "@remotion/media-parser";
-import { calculateHFVP, type HFVPResult, type StepDataForHFVP } from './utils/hfvpCalculator';
+import { calculateHFVP, calculateHFVPFromPanningSplits, type HFVPResult, type StepDataForHFVP, type PanningSplitDataForHFVP } from './utils/hfvpCalculator';
 
 /** ウィザードのステップ */
 type WizardStep = 0 | 1 | 2 | 3 | 3.5 | 4 | 5 | 5.5 | 6 | 6.5 | 7 | 8 | 9;
@@ -2707,14 +2707,14 @@ const clearMarksByButton = () => {
       return null;
     }
     
-    // スプリットから速度データを生成
-    const hfvpSteps: StepDataForHFVP[] = [];
+    // スプリットからパンモード用データを生成
+    const panningSplitData: PanningSplitDataForHFVP[] = [];
     for (let i = 1; i < intervalSplits.length; i++) {
       const prevSplit = intervalSplits[i - 1];
       const currSplit = intervalSplits[i];
       const distanceDelta = currSplit.distance - prevSplit.distance;
       const timeDelta = currSplit.time - prevSplit.time;
-      const speed = distanceDelta / timeDelta;
+      const velocity = distanceDelta / timeDelta;
       
       console.log(`🔍 H-FVP [PANNING] Split ${i}:`, {
         prevFrame: prevSplit.frame,
@@ -2723,30 +2723,26 @@ const clearMarksByButton = () => {
         currTime: currSplit.time.toFixed(4),
         timeDelta: timeDelta.toFixed(4),
         distanceDelta: distanceDelta.toFixed(2),
-        speed: speed.toFixed(4)
+        velocity: velocity.toFixed(4)
       });
       
-      hfvpSteps.push({
-        distanceAtContactM: currSplit.distance,
-        speedMps: speed,
-        strideM: distanceDelta, // 近似値
-        contactTimeS: timeDelta * 0.5, // 近似値（接地時間を区間時間の半分と仮定）
-        flightTimeS: timeDelta * 0.5, // 近似値（滞空時間を区間時間の半分と仮定）
+      panningSplitData.push({
+        distance: currSplit.distance,
+        time: currSplit.time - intervalSplits[0].time, // Relative to start
+        velocity: velocity,
       });
     }
     
-    console.log(`🔍 H-FVP [PANNING]: Generated ${hfvpSteps.length} speed data points from splits`);
-    console.log(`📊 H-FVP [PANNING]: Speed data:`, hfvpSteps);
+    console.log(`🔍 H-FVP [PANNING]: Generated ${panningSplitData.length} split data points`);
+    console.log(`📊 H-FVP [PANNING]: Split data:`, panningSplitData);
     console.log(`⚖️ H-FVP [PANNING]: Body mass: ${bodyMass}kg, Height: ${athleteHeight}m`);
     
-    const result = calculateHFVP(hfvpSteps, bodyMass, athleteHeight);
+    const result = calculateHFVPFromPanningSplits(panningSplitData, bodyMass, athleteHeight);
     
     if (result) {
       console.log(`✅ H-FVP [PANNING] calculated: ${result.quality.isValid ? 'SUCCESS' : 'FAILED'}`, result);
       
-      // パーン撮影モードの品質情報を追加
-      result.measurementMode = 'panning';
-      result.isPanningHighQuality = hfvpSteps.length >= 8;
+      // パーン撮影モードの品質情報は既に設定済み（calculateHFVPFromPanningSplitsで設定）
     } else {
       console.error(`❌ H-FVP [PANNING] calculation returned null. Check calculateHFVP function.`);
     }
