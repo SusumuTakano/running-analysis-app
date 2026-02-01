@@ -9946,10 +9946,7 @@ case 6: {
                         borderRadius: '8px',
                         backgroundColor: '#000',
                         cursor: panningZoomLevel > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
-                        userSelect: 'none',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
+                        userSelect: 'none'
                       }}
                       onMouseDown={(e) => {
                         if (panningZoomLevel <= 1) return;
@@ -9996,19 +9993,25 @@ case 6: {
                       }}
                       onTouchEnd={() => setIsDragging(false)}
                     >
-                      <canvas 
-                        ref={panningCanvasRef}
-                        style={{
-                          width: '100%',
-                          maxWidth: '100%',
-                          height: 'auto',
-                          display: 'block',
-                          margin: '0',
-                          pointerEvents: 'none',
-                          transform: `scale(${panningZoomLevel})`,
-                          transformOrigin: 'center center'
-                        }}
-                      />
+                      <div style={{
+                        width: `${panningZoomLevel * 100}%`,
+                        height: `${panningZoomLevel * 100}%`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        minWidth: '100%',
+                        minHeight: '100%'
+                      }}>
+                        <canvas 
+                          ref={panningCanvasRef}
+                          style={{
+                            width: '100%',
+                            height: 'auto',
+                            display: 'block',
+                            pointerEvents: 'none'
+                          }}
+                        />
+                      </div>
                     </div>
                     <div style={{
                       marginTop: '8px',
