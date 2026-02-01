@@ -9946,7 +9946,10 @@ case 6: {
                         borderRadius: '8px',
                         backgroundColor: '#000',
                         cursor: panningZoomLevel > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
-                        userSelect: 'none'
+                        userSelect: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
                       }}
                       onMouseDown={(e) => {
                         if (panningZoomLevel <= 1) return;
@@ -9996,12 +9999,14 @@ case 6: {
                       <canvas 
                         ref={panningCanvasRef}
                         style={{
-                          width: `${panningZoomLevel * 100}%`,
-                          maxWidth: 'none',
+                          width: '100%',
+                          maxWidth: '100%',
                           height: 'auto',
                           display: 'block',
                           margin: '0',
-                          pointerEvents: 'none'
+                          pointerEvents: 'none',
+                          transform: `scale(${panningZoomLevel})`,
+                          transformOrigin: 'center center'
                         }}
                       />
                     </div>
