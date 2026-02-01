@@ -790,6 +790,7 @@ useEffect(() => {
   const [panningSplits, setPanningSplits] = useState<PanningSplit[]>([]);
   const [panningStartIndex, setPanningStartIndex] = useState<number | null>(null);
   const [panningEndIndex, setPanningEndIndex] = useState<number | null>(null);
+  const [panningZoomLevel, setPanningZoomLevel] = useState<number>(1); // ズームレベル (1=100%, 2=200%, etc.)
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [videoWidth, setVideoWidth] = useState<number | null>(null);
@@ -9857,20 +9858,109 @@ case 6: {
                   </div>
 
                   {/* 動画プレビュー */}
-                  <div style={{ marginBottom: '16px' }}>
-                    <canvas 
-                      ref={panningCanvasRef}
-                      style={{
-                        width: '100%',
-                        maxWidth: '100%',
-                        height: 'auto',
-                        display: 'block',
-                        border: '2px solid rgba(255,255,255,0.3)',
-                        borderRadius: '8px',
-                        backgroundColor: '#000',
-                        margin: '0 auto'
-                      }}
-                    />
+                  <div style={{ 
+                    marginBottom: '16px',
+                    position: 'relative'
+                  }}>
+                    {/* ズームコントロール */}
+                    <div style={{
+                      position: 'absolute',
+                      top: '10px',
+                      right: '10px',
+                      zIndex: 10,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      background: 'rgba(0,0,0,0.7)',
+                      padding: '8px',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255,255,255,0.3)'
+                    }}>
+                      <button
+                        onClick={() => setPanningZoomLevel(Math.min(panningZoomLevel + 0.5, 4))}
+                        style={{
+                          padding: '8px 12px',
+                          background: 'rgba(255,255,255,0.2)',
+                          color: 'white',
+                          border: '1px solid rgba(255,255,255,0.4)',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '1.2rem',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        +
+                      </button>
+                      <div style={{
+                        color: 'white',
+                        fontSize: '0.75rem',
+                        textAlign: 'center',
+                        padding: '4px'
+                      }}>
+                        {Math.round(panningZoomLevel * 100)}%
+                      </div>
+                      <button
+                        onClick={() => setPanningZoomLevel(Math.max(panningZoomLevel - 0.5, 0.5))}
+                        style={{
+                          padding: '8px 12px',
+                          background: 'rgba(255,255,255,0.2)',
+                          color: 'white',
+                          border: '1px solid rgba(255,255,255,0.4)',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '1.2rem',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        −
+                      </button>
+                      <button
+                        onClick={() => setPanningZoomLevel(1)}
+                        style={{
+                          padding: '6px 8px',
+                          background: 'rgba(255,255,255,0.2)',
+                          color: 'white',
+                          border: '1px solid rgba(255,255,255,0.4)',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '0.7rem'
+                        }}
+                      >
+                        リセット
+                      </button>
+                    </div>
+
+                    <div style={{ 
+                      overflow: 'auto',
+                      maxHeight: '80vh',
+                      WebkitOverflowScrolling: 'touch',
+                      border: '2px solid rgba(255,255,255,0.3)',
+                      borderRadius: '8px',
+                      backgroundColor: '#000'
+                    }}>
+                      <canvas 
+                        ref={panningCanvasRef}
+                        style={{
+                          width: `${panningZoomLevel * 100}%`,
+                          maxWidth: 'none',
+                          height: 'auto',
+                          display: 'block',
+                          margin: '0',
+                          cursor: panningZoomLevel > 1 ? 'move' : 'default'
+                        }}
+                      />
+                    </div>
+                    <div style={{
+                      marginTop: '8px',
+                      padding: '8px',
+                      background: 'rgba(0,0,0,0.5)',
+                      color: 'white',
+                      fontSize: '0.75rem',
+                      textAlign: 'center',
+                      borderRadius: '8px'
+                    }}>
+                      📱 右上のボタンで拡大・縮小、スワイプで移動できます
+                    </div>
                   </div>
 
                   {/* フレームスライダー */}
