@@ -57,16 +57,33 @@ const UserAthletesPage: React.FC = () => {
 
       const authUserId = sessionData.session.user.id;
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("athletes")
         .select("*")
         .eq("owner_auth_user_id", authUserId)
         .order("created_at", { ascending: false });
 
+      // weight_kg カラムがない場合のフォールバック
+      if (error && error.message.includes("weight_kg")) {
+        console.warn("⚠️ weight_kg カラムが存在しないため、weight_kg なしで取得します。");
+        const retry = await supabase
+          .from("athletes")
+          .select("id, owner_auth_user_id, full_name, full_name_kana, sex, birth_date, affiliation, notes, height_cm, current_record_s, target_record_s, created_at")
+          .eq("owner_auth_user_id", authUserId)
+          .order("created_at", { ascending: false });
+        data = retry.data;
+        error = retry.error;
+      }
+
       if (error) {
         setErrorMsg(error.message);
       } else {
-        setAthletes(data ?? []);
+        // weight_kg がない場合は null を追加
+        const athletesWithWeight = (data ?? []).map((a: any) => ({
+          ...a,
+          weight_kg: a.weight_kg ?? null,
+        }));
+        setAthletes(athletesWithWeight);
       }
 
       setLoading(false);
@@ -118,7 +135,7 @@ const UserAthletesPage: React.FC = () => {
 
       const authUserId = sessionData.session.user.id;
 
-      const payload = {
+      const payload: any = {
         owner_auth_user_id: authUserId,
         full_name: name.trim(),
         full_name_kana: nameKana.trim() || null,
@@ -127,19 +144,41 @@ const UserAthletesPage: React.FC = () => {
         affiliation: affiliation.trim() || null,
         notes: notes.trim() || null,
         height_cm: toNumberOrNull(heightCm),
-        weight_kg: toNumberOrNull(weightKg),
         current_record_s: toNumberOrNull(currentRecord),
         target_record_s: toNumberOrNull(targetRecord),
       };
 
+      // weight_kg を含めてみる（カラムがない場合はエラーハンドリング）
+      const weightValue = toNumberOrNull(weightKg);
+      if (weightValue !== null) {
+        payload.weight_kg = weightValue;
+      }
+
       if (editingId) {
         // 既存選手の更新
-        const { data, error } = await supabase
+        let { data, error } = await supabase
           .from("athletes")
           .update(payload)
           .eq("id", editingId)
           .select("*")
           .single();
+
+        // weight_kg カラムが存在しない場合のフォールバック
+        if (error && error.message.includes("weight_kg")) {
+          console.warn("⚠️ weight_kg カラムが存在しないため、体重なしで保存します。");
+          const { weight_kg, ...payloadWithoutWeight } = payload;
+          const retry = await supabase
+            .from("athletes")
+            .update(payloadWithoutWeight)
+            .eq("id", editingId)
+            .select("*")
+            .single();
+          data = retry.data;
+          error = retry.error;
+          if (!error) {
+            alert("✅ 選手情報を保存しました（体重データはSupabaseのテーブルにweight_kgカラムがないため保存されませんでした）");
+          }
+        }
 
         if (error) {
           setErrorMsg("選手情報の更新に失敗しました：" + error.message);
@@ -152,11 +191,27 @@ const UserAthletesPage: React.FC = () => {
         );
       } else {
         // 新規登録
-        const { data, error } = await supabase
+        let { data, error } = await supabase
           .from("athletes")
           .insert(payload)
           .select("*")
           .single();
+
+        // weight_kg カラムが存在しない場合のフォールバック
+        if (error && error.message.includes("weight_kg")) {
+          console.warn("⚠️ weight_kg カラムが存在しないため、体重なしで保存します。");
+          const { weight_kg, ...payloadWithoutWeight } = payload;
+          const retry = await supabase
+            .from("athletes")
+            .insert(payloadWithoutWeight)
+            .select("*")
+            .single();
+          data = retry.data;
+          error = retry.error;
+          if (!error) {
+            alert("✅ 選手情報を保存しました（体重データはSupabaseのテーブルにweight_kgカラムがないため保存されませんでした）");
+          }
+        }
 
         if (error) {
           setErrorMsg("選手の登録に失敗しました：" + error.message);
