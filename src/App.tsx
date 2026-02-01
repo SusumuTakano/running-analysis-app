@@ -9995,12 +9995,7 @@ case 6: {
                     >
                       <div style={{
                         width: `${panningZoomLevel * 100}%`,
-                        height: `${panningZoomLevel * 100}%`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        minWidth: '100%',
-                        minHeight: '100%'
+                        display: 'inline-block'
                       }}>
                         <canvas 
                           ref={panningCanvasRef}
