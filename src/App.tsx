@@ -9862,7 +9862,7 @@ case 6: {
                       ref={panningCanvasRef}
                       style={{
                         width: '100%',
-                        maxWidth: '1400px',
+                        maxWidth: '100%',
                         height: 'auto',
                         display: 'block',
                         border: '2px solid rgba(255,255,255,0.3)',
