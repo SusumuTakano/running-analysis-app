@@ -9728,8 +9728,12 @@ case 6: {
                       : "マルチカメラ解析を完了する"}
                   </button>
                 ) : (
-                  <button className="btn-primary-large" onClick={() => setWizardStep(7)} disabled={contactFrames.length < 3}>
-                    次へ：評価とアドバイス
+                  <button 
+                    className="btn-primary-large" 
+                    onClick={() => setWizardStep(analysisMode === 'panning' ? 7 : 8)} 
+                    disabled={contactFrames.length < 3}
+                  >
+                    {analysisMode === 'panning' ? '次へ：パーン撮影結果' : '次へ：解析結果'}
                   </button>
                 )}
               </div>
