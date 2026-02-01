@@ -791,6 +791,8 @@ useEffect(() => {
   const [panningStartIndex, setPanningStartIndex] = useState<number | null>(null);
   const [panningEndIndex, setPanningEndIndex] = useState<number | null>(null);
   const [panningZoomLevel, setPanningZoomLevel] = useState<number>(1); // ズームレベル (1=100%, 2=200%, etc.)
+  const [panningInputMode, setPanningInputMode] = useState<'video' | 'manual'>('video'); // 入力モード切り替え
+  const [manualTimeInput, setManualTimeInput] = useState<string>(''); // 手動タイム入力
   
   // ドラッグ用のstate
   const panningViewportRef = useRef<HTMLDivElement | null>(null);
@@ -10124,6 +10126,51 @@ case 6: {
                     borderRadius: '12px',
                     color: 'white'
                   }}>
+                    {/* 入力モード切り替え */}
+                    <div style={{
+                      marginBottom: '16px',
+                      display: 'flex',
+                      gap: '8px',
+                      padding: '4px',
+                      background: 'rgba(0,0,0,0.2)',
+                      borderRadius: '8px'
+                    }}>
+                      <button
+                        onClick={() => setPanningInputMode('video')}
+                        style={{
+                          flex: 1,
+                          padding: '10px',
+                          fontSize: '0.9rem',
+                          fontWeight: 'bold',
+                          background: panningInputMode === 'video' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.2)',
+                          color: panningInputMode === 'video' ? '#667eea' : 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        🎥 動画から測定
+                      </button>
+                      <button
+                        onClick={() => setPanningInputMode('manual')}
+                        style={{
+                          flex: 1,
+                          padding: '10px',
+                          fontSize: '0.9rem',
+                          fontWeight: 'bold',
+                          background: panningInputMode === 'manual' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.2)',
+                          color: panningInputMode === 'manual' ? '#667eea' : 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        ⌨️ 手動入力
+                      </button>
+                    </div>
+
                     <div style={{ marginBottom: '12px', fontWeight: 'bold', fontSize: '1.1rem' }}>
                       {panningSplits.length === 0 ? '🏁 スタート地点を登録（0m地点）' : '⏱️ スプリット地点を登録'}
                     </div>
@@ -10139,64 +10186,104 @@ case 6: {
                         lineHeight: '1.5'
                       }}>
                         📍 スタート地点（0m）を登録してください。<br/>
-                        ビデオをスタート位置に移動してから「登録」ボタンを押してください。
+                        {panningInputMode === 'video' 
+                          ? 'ビデオをスタート位置に移動してから「登録」ボタンを押してください。'
+                          : 'タイムは自動的に0秒になります。「登録」ボタンを押してください。'}
                       </div>
                     )}
                     
                     {/* 距離入力（スタート後のみ表示） */}
                     {panningSplits.length > 0 && (
-                      <div style={{ marginBottom: '12px' }}>
-                        <label style={{ 
-                          display: 'block', 
-                          marginBottom: '6px',
-                          fontSize: '0.9rem',
-                          opacity: 0.9
-                        }}>
-                          📏 スプリット距離 (m):
-                        </label>
-                        <input
-                          type="number"
-                          value={distanceInput}
-                          onChange={(e) => setDistanceInput(e.target.value)}
-                          placeholder={`推奨: ${panningSplits[panningSplits.length - 1].distance + 10}m`}
-                          step="0.1"
-                          min="0.1"
-                          style={{
-                            width: '100%',
-                            padding: '10px',
-                            fontSize: '1rem',
-                            border: '2px solid rgba(255,255,255,0.3)',
-                            borderRadius: '8px',
-                            background: 'rgba(255,255,255,0.2)',
-                            color: 'white'
-                          }}
-                        />
-                        <div style={{
-                          marginTop: '6px',
-                          fontSize: '0.75rem',
-                          opacity: 0.8
-                        }}>
-                          💡 前回: {panningSplits[panningSplits.length - 1].distance.toFixed(1)}m
+                      <div>
+                        <div style={{ marginBottom: '12px' }}>
+                          <label style={{ 
+                            display: 'block', 
+                            marginBottom: '6px',
+                            fontSize: '0.9rem',
+                            opacity: 0.9
+                          }}>
+                            📏 スプリット距離 (m):
+                          </label>
+                          <input
+                            type="number"
+                            value={distanceInput}
+                            onChange={(e) => setDistanceInput(e.target.value)}
+                            placeholder={`推奨: ${panningSplits[panningSplits.length - 1].distance + 10}m`}
+                            step="0.1"
+                            min="0.1"
+                            style={{
+                              width: '100%',
+                              padding: '10px',
+                              fontSize: '1rem',
+                              border: '2px solid rgba(255,255,255,0.3)',
+                              borderRadius: '8px',
+                              background: 'rgba(255,255,255,0.2)',
+                              color: 'white'
+                            }}
+                          />
+                          <div style={{
+                            marginTop: '6px',
+                            fontSize: '0.75rem',
+                            opacity: 0.8
+                          }}>
+                            💡 前回: {panningSplits[panningSplits.length - 1].distance.toFixed(1)}m
+                          </div>
                         </div>
+
+                        {/* 手動タイム入力（手動モードのみ） */}
+                        {panningInputMode === 'manual' && (
+                          <div style={{ marginBottom: '12px' }}>
+                            <label style={{ 
+                              display: 'block', 
+                              marginBottom: '6px',
+                              fontSize: '0.9rem',
+                              opacity: 0.9
+                            }}>
+                              ⏱️ 通過タイム (秒):
+                            </label>
+                            <input
+                              type="number"
+                              value={manualTimeInput}
+                              onChange={(e) => setManualTimeInput(e.target.value)}
+                              placeholder="例: 2.45"
+                              step="0.01"
+                              min="0.01"
+                              style={{
+                                width: '100%',
+                                padding: '10px',
+                                fontSize: '1rem',
+                                border: '2px solid rgba(255,255,255,0.3)',
+                                borderRadius: '8px',
+                                background: 'rgba(255,255,255,0.2)',
+                                color: 'white'
+                              }}
+                            />
+                            <div style={{
+                              marginTop: '6px',
+                              fontSize: '0.75rem',
+                              opacity: 0.8
+                            }}>
+                              💡 前回: {panningSplits[panningSplits.length - 1].time.toFixed(3)}秒
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                     
                     {/* 登録ボタン */}
                     <button
                       onClick={() => {
-                        const frame = currentFrame;
-                        const time = usedTargetFps ? frame / usedTargetFps : 0;
-                        
                         // スタート地点（0m）の登録
                         if (panningSplits.length === 0) {
                           const newSplits: PanningSplit[] = [{ 
-                            frame, 
-                            time, 
+                            frame: 0, 
+                            time: 0, 
                             distance: 0 
                           }];
                           setPanningSplits(newSplits);
                           setPanningStartIndex(0); // 自動的に開始点に設定
                           setDistanceInput('10'); // 次の推奨距離（10m）を自動入力
+                          setManualTimeInput(''); // 手動タイム入力をクリア
                           return;
                         }
                         
@@ -10222,12 +10309,46 @@ case 6: {
                           return;
                         }
                         
+                        // タイムの取得（モードによって分岐）
+                        let time: number;
+                        let frame: number;
+                        
+                        if (panningInputMode === 'manual') {
+                          // 手動入力モード
+                          const inputTime = parseFloat(manualTimeInput);
+                          if (isNaN(inputTime) || inputTime <= 0) {
+                            alert('有効なタイムを入力してください（0より大きい数値）');
+                            return;
+                          }
+                          
+                          // 前の地点より大きいかチェック
+                          const lastTime = panningSplits[panningSplits.length - 1].time;
+                          if (inputTime <= lastTime) {
+                            alert(`${lastTime.toFixed(3)}秒より大きいタイムを入力してください`);
+                            return;
+                          }
+                          
+                          time = inputTime;
+                          frame = usedTargetFps ? Math.round(time * usedTargetFps) : 0;
+                        } else {
+                          // 動画モード
+                          frame = currentFrame;
+                          time = usedTargetFps ? frame / usedTargetFps : 0;
+                          
+                          // 前の地点より大きいかチェック
+                          const lastTime = panningSplits[panningSplits.length - 1].time;
+                          if (time <= lastTime) {
+                            alert(`前の地点（${lastTime.toFixed(3)}秒）より後のフレームを選択してください`);
+                            return;
+                          }
+                        }
+                        
                         const newSplits: PanningSplit[] = [...panningSplits, { 
                           frame, 
                           time, 
                           distance 
                         }];
-                        console.log(`✅ Split registered:`, {
+                        console.log(`✅ Split registered (${panningInputMode} mode):`, {
                           frame,
                           time,
                           distance,
@@ -10239,6 +10360,15 @@ case 6: {
                         // 次の推奨距離を自動入力（10m間隔）
                         const nextDistance = distance + 10;
                         setDistanceInput(nextDistance.toString());
+                        
+                        // 手動入力の場合は次の推奨タイムも設定
+                        if (panningInputMode === 'manual' && panningSplits.length >= 2) {
+                          const lastInterval = time - panningSplits[panningSplits.length - 1].time;
+                          const nextTime = time + lastInterval;
+                          setManualTimeInput(nextTime.toFixed(3));
+                        } else {
+                          setManualTimeInput('');
+                        }
                       }}
                       style={{
                         width: '100%',
@@ -10262,8 +10392,10 @@ case 6: {
                       }}
                     >
                       {panningSplits.length === 0 
-                        ? `🏁 スタート地点を登録 (フレーム ${currentFrame})` 
-                        : `➕ スプリット追加 (フレーム ${currentFrame})`
+                        ? '🏁 スタート地点を登録 (0m / 0秒)' 
+                        : panningInputMode === 'video'
+                          ? `➕ スプリット追加 (フレーム ${currentFrame})`
+                          : '➕ スプリット追加'
                       }
                     </button>
                     
