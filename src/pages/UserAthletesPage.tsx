@@ -13,6 +13,7 @@ type Athlete = {
   affiliation: string | null;
   notes: string | null;
   height_cm: number | null;
+  weight_kg: number | null;
   current_record_s: number | null;
   target_record_s: number | null;
   created_at: string;
@@ -32,6 +33,7 @@ const UserAthletesPage: React.FC = () => {
   const [affiliation, setAffiliation] = useState("");
   const [notes, setNotes] = useState("");
   const [heightCm, setHeightCm] = useState("");
+  const [weightKg, setWeightKg] = useState("");
   const [currentRecord, setCurrentRecord] = useState("");
   const [targetRecord, setTargetRecord] = useState("");
 
@@ -88,6 +90,7 @@ const UserAthletesPage: React.FC = () => {
     setAffiliation("");
     setNotes("");
     setHeightCm("");
+    setWeightKg("");
     setCurrentRecord("");
     setTargetRecord("");
     setEditingId(null);
@@ -124,6 +127,7 @@ const UserAthletesPage: React.FC = () => {
         affiliation: affiliation.trim() || null,
         notes: notes.trim() || null,
         height_cm: toNumberOrNull(heightCm),
+        weight_kg: toNumberOrNull(weightKg),
         current_record_s: toNumberOrNull(currentRecord),
         target_record_s: toNumberOrNull(targetRecord),
       };
@@ -181,6 +185,7 @@ const UserAthletesPage: React.FC = () => {
     setAffiliation(athlete.affiliation ?? "");
     setNotes(athlete.notes ?? "");
     setHeightCm(athlete.height_cm != null ? String(athlete.height_cm) : "");
+    setWeightKg(athlete.weight_kg != null ? String(athlete.weight_kg) : "");
     setCurrentRecord(
       athlete.current_record_s != null ? String(athlete.current_record_s) : ""
     );
@@ -401,6 +406,18 @@ const UserAthletesPage: React.FC = () => {
               </div>
 
               <div>
+                <label style={labelStyle}>体重（kg）</label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={weightKg}
+                  onChange={(e) => setWeightKg(e.target.value)}
+                  style={inputStyle}
+                  placeholder="60"
+                />
+              </div>
+
+              <div>
                 <label style={labelStyle}>現在の記録（秒）</label>
                 <input
                   type="number"
@@ -568,6 +585,7 @@ const UserAthletesPage: React.FC = () => {
                     <th style={thStyle}>生年月日</th>
                     <th style={thStyle}>所属</th>
                     <th style={thStyle}>身長(cm)</th>
+                    <th style={thStyle}>体重(kg)</th>
                     <th style={thStyle}>現在の記録(s)</th>
                     <th style={thStyle}>目標記録(s)</th>
                     <th style={thStyle}>メモ</th>
@@ -587,6 +605,9 @@ const UserAthletesPage: React.FC = () => {
                       <td style={tdStyle}>{a.affiliation ?? "-"}</td>
                       <td style={tdStyle}>
                         {a.height_cm != null ? `${a.height_cm}` : "-"}
+                      </td>
+                      <td style={tdStyle}>
+                        {a.weight_kg != null ? `${a.weight_kg}` : "-"}
                       </td>
                       <td style={tdStyle}>
                         {a.current_record_s != null
