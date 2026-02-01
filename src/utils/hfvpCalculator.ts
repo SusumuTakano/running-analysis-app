@@ -578,8 +578,10 @@ export function calculateHFVPFromPanningSplits(
   // Calculate data points from splits
   const dataPoints: HFVPResult['dataPoints'] = [];
   const velocities: number[] = [];
+  const accelerations: number[] = [];
   const horizontalForces: number[] = [];
   
+  // First pass: calculate all velocities
   for (let i = 0; i < splits.length; i++) {
     const split = splits[i];
     
@@ -587,13 +589,24 @@ export function calculateHFVPFromPanningSplits(
     let velocity = 0;
     
     if (i === 0) {
-      // 最初の地点：0m地点での速度 = 0 （静止スタートと仮定）
-      // または、最初の区間速度を使用
-      if (i < splits.length - 1) {
-        const nextSplit = splits[i + 1];
-        const deltaD = nextSplit.distance - split.distance;
-        const deltaT = nextSplit.time - split.time;
-        velocity = deltaT > 0 ? deltaD / deltaT : 0;
+      // 最初の地点：0m地点
+      // スタート時の速度を推定（区間平均速度の半分と仮定）
+      if (split.distance === 0 && split.time === 0) {
+        // 完全な静止スタートの場合
+        if (i < splits.length - 1) {
+          const nextSplit = splits[i + 1];
+          const avgSpeed = nextSplit.distance / nextSplit.time;
+          // スタート時の速度は平均速度の約30%と推定
+          velocity = avgSpeed * 0.3;
+        }
+      } else {
+        // 0m地点が助走区間の途中の場合
+        if (i < splits.length - 1) {
+          const nextSplit = splits[i + 1];
+          const deltaD = nextSplit.distance - split.distance;
+          const deltaT = nextSplit.time - split.time;
+          velocity = deltaT > 0 ? deltaD / deltaT : 0;
+        }
       }
     } else if (i === splits.length - 1) {
       // 最後の地点：前の区間速度を使用
@@ -611,14 +624,18 @@ export function calculateHFVPFromPanningSplits(
     }
     
     velocities.push(velocity);
-    
-    // 加速度を計算（速度の変化から）
+  }
+  
+  // Second pass: calculate accelerations from velocities
+  for (let i = 0; i < splits.length; i++) {
+    const split = splits[i];
+    const velocity = velocities[i];
     let acceleration = 0;
     
     if (i === 0 && i < splits.length - 1) {
       // 最初の地点：前方差分
       const nextSplit = splits[i + 1];
-      const v_next = velocities.length > 1 ? velocities[i + 1] : velocity;
+      const v_next = velocities[i + 1];
       const deltaV = v_next - velocity;
       const deltaT = nextSplit.time - split.time;
       acceleration = deltaT > 0 ? deltaV / deltaT : 0;
@@ -633,15 +650,14 @@ export function calculateHFVPFromPanningSplits(
       // 中間の地点：中心差分
       const prevSplit = splits[i - 1];
       const nextSplit = splits[i + 1];
-      // 次の速度を計算
-      const deltaD_next = nextSplit.distance - split.distance;
-      const deltaT_next = nextSplit.time - split.time;
-      const v_next = deltaT_next > 0 ? deltaD_next / deltaT_next : velocity;
-      
-      const deltaV = v_next - velocities[i - 1];
+      const v_prev = velocities[i - 1];
+      const v_next = velocities[i + 1];
+      const deltaV = v_next - v_prev;
       const deltaT = nextSplit.time - prevSplit.time;
       acceleration = deltaT > 0 ? deltaV / deltaT : 0;
     }
+    
+    accelerations.push(acceleration);
     
     // Air resistance (drag force)
     const rho = 1.225; // kg/m³
@@ -745,9 +761,9 @@ export function calculateHFVPFromPanningSplits(
   const avgForce = horizontalForces.reduce((sum, f) => sum + f, 0) / horizontalForces.length;
   const avgPower = dataPoints.reduce((sum, p) => sum + p.power, 0) / dataPoints.length;
   const peakVelocity = Math.max(...velocities);
-  const accelerations = dataPoints.map(p => p.acceleration);
-  const avgAcceleration = accelerations.reduce((sum, a) => sum + a, 0) / accelerations.length;
-  const peakAcceleration = Math.max(...accelerations);
+  const allAccelerations = dataPoints.map(p => p.acceleration);
+  const avgAcceleration = allAccelerations.reduce((sum, a) => sum + a, 0) / allAccelerations.length;
+  const peakAcceleration = Math.max(...allAccelerations);
   const avgForceRatio = dataPoints.reduce((sum, p) => sum + p.forceRatio, 0) / dataPoints.length;
   const totalDistance = splits[splits.length - 1].distance - splits[0].distance;
   const totalTime = splits[splits.length - 1].time - splits[0].time;
