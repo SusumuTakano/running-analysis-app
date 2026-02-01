@@ -9781,12 +9781,12 @@ case 6: {
           <div className="wizard-content">
             <div className="wizard-step-header">
               <h2 className="wizard-step-title">
-                {analysisMode === 'panning' ? 'ステップ 7: パーン撮影結果' : 'ステップ 8: 解析結果'}
+                {analysisMode === 'panning' ? 'ステップ 7: パーン撮影結果' : 'ステップ 7: 評価とアドバイス'}
               </h2>
               <p className="wizard-step-desc">
                 {analysisMode === 'panning' 
                   ? 'フレームレートから算出したタイムと速度を表示します。'
-                  : 'ステップ解析結果とグラフを確認できます。スライダーで各フレームの角度を確認できます。'}
+                  : '走りの総合評価とトレーニングアドバイスを確認できます。'}
               </p>
             </div>
             
@@ -10533,6 +10533,77 @@ case 6: {
                     )}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* 固定カメラモード: 評価とアドバイス */}
+            {analysisMode !== 'panning' && (
+              <div className="result-card">
+                <h3 className="result-card-title">🎯 走りの評価とアドバイス</h3>
+                
+                {stepMetrics.length > 0 ? (
+                  <>
+                    <div style={{
+                      padding: '20px',
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      borderRadius: '12px',
+                      color: 'white',
+                      marginBottom: '20px'
+                    }}>
+                      <h4 style={{ margin: '0 0 16px 0', fontSize: '1.1rem' }}>📊 総合評価</h4>
+                      <div style={{ fontSize: '0.95rem', lineHeight: '1.8' }}>
+                        <p>✅ {stepMetrics.length}歩のステップを検出しました</p>
+                        <p>✅ 平均ストライド: {(stepMetrics.reduce((sum, m) => sum + (m.stride || 0), 0) / stepMetrics.length).toFixed(2)}m</p>
+                        <p>✅ 平均ピッチ: {(stepMetrics.reduce((sum, m) => sum + (m.stepPitch || 0), 0) / stepMetrics.length).toFixed(1)} steps/min</p>
+                        <p>✅ 平均速度: {(stepMetrics.reduce((sum, m) => sum + (m.speedMps || 0), 0) / stepMetrics.length).toFixed(2)} m/s</p>
+                      </div>
+                    </div>
+
+                    <div style={{
+                      padding: '20px',
+                      background: '#f0f9ff',
+                      borderRadius: '12px',
+                      border: '2px solid #3b82f6',
+                      marginBottom: '20px'
+                    }}>
+                      <h4 style={{ margin: '0 0 16px 0', color: '#1e40af', fontSize: '1.1rem' }}>💡 トレーニングアドバイス</h4>
+                      <div style={{ fontSize: '0.95rem', lineHeight: '1.8', color: '#1e3a8a' }}>
+                        <p><strong>ストライド向上のために:</strong></p>
+                        <ul style={{ marginLeft: '20px', marginBottom: '12px' }}>
+                          <li>股関節の可動域を広げるストレッチを行いましょう</li>
+                          <li>ランジやスクワットで下半身の筋力を強化しましょう</li>
+                        </ul>
+                        <p><strong>ピッチ向上のために:</strong></p>
+                        <ul style={{ marginLeft: '20px' }}>
+                          <li>腕振りのリズムを意識して走りましょう</li>
+                          <li>短い距離でのピッチ走を取り入れましょう</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <p>ステップメトリクスが計算されていません。Step 6 でマーカーを設定してください。</p>
+                )}
+
+                <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
+                  <button
+                    className="wizard-btn secondary"
+                    onClick={() => setWizardStep(6)}
+                  >
+                    前へ: マーカー設定
+                  </button>
+                  <button
+                    className="wizard-btn"
+                    onClick={() => setWizardStep(8)}
+                    style={{
+                      background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+                      border: 'none',
+                      boxShadow: '0 4px 12px rgba(6, 182, 212, 0.4)'
+                    }}
+                  >
+                    次へ: 詳細データ
+                  </button>
+                </div>
               </div>
             )}
 
