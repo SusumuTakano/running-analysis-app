@@ -9905,60 +9905,80 @@ case 6: {
                     color: 'white'
                   }}>
                     <div style={{ marginBottom: '12px', fontWeight: 'bold', fontSize: '1.1rem' }}>
-                      {panningSplits.length === 0 ? '🏁 スタート地点を登録' : '⏱️ スプリット地点を登録'}
+                      {panningSplits.length === 0 ? '🏁 スタート地点を登録（0m地点）' : '⏱️ スプリット地点を登録'}
                     </div>
                     
-                    {/* 距離入力 */}
-                    <div style={{ marginBottom: '12px' }}>
-                      <label style={{ 
-                        display: 'block', 
-                        marginBottom: '6px',
-                        fontSize: '0.9rem',
-                        opacity: 0.9
+                    {/* スタート地点の説明 */}
+                    {panningSplits.length === 0 && (
+                      <div style={{
+                        marginBottom: '12px',
+                        padding: '10px',
+                        background: 'rgba(255,255,255,0.2)',
+                        borderRadius: '8px',
+                        fontSize: '0.85rem',
+                        lineHeight: '1.5'
                       }}>
-                        📏 距離 (m):
-                      </label>
-                      <input
-                        type="number"
-                        value={distanceInput}
-                        onChange={(e) => setDistanceInput(e.target.value)}
-                        placeholder={panningSplits.length === 0 ? "0" : `例: ${parseFloat(distanceInput) || 10}`}
-                        step="0.1"
-                        min="0"
-                        style={{
-                          width: '100%',
-                          padding: '10px',
-                          fontSize: '1rem',
-                          border: '2px solid rgba(255,255,255,0.3)',
-                          borderRadius: '8px',
-                          background: 'rgba(255,255,255,0.2)',
-                          color: 'white'
-                        }}
-                      />
-                    </div>
+                        📍 スタート地点（0m）を登録してください。<br/>
+                        ビデオをスタート位置に移動してから「登録」ボタンを押してください。
+                      </div>
+                    )}
+                    
+                    {/* 距離入力（スタート後のみ表示） */}
+                    {panningSplits.length > 0 && (
+                      <div style={{ marginBottom: '12px' }}>
+                        <label style={{ 
+                          display: 'block', 
+                          marginBottom: '6px',
+                          fontSize: '0.9rem',
+                          opacity: 0.9
+                        }}>
+                          📏 スプリット距離 (m):
+                        </label>
+                        <input
+                          type="number"
+                          value={distanceInput}
+                          onChange={(e) => setDistanceInput(e.target.value)}
+                          placeholder={`例: ${parseFloat(distanceInput) || 10}`}
+                          step="0.1"
+                          min="0.1"
+                          style={{
+                            width: '100%',
+                            padding: '10px',
+                            fontSize: '1rem',
+                            border: '2px solid rgba(255,255,255,0.3)',
+                            borderRadius: '8px',
+                            background: 'rgba(255,255,255,0.2)',
+                            color: 'white'
+                          }}
+                        />
+                      </div>
+                    )}
                     
                     {/* 登録ボタン */}
                     <button
                       onClick={() => {
                         const frame = currentFrame;
                         const time = usedTargetFps ? frame / usedTargetFps : 0;
+                        
+                        // スタート地点（0m）の登録
+                        if (panningSplits.length === 0) {
+                          const newSplits: PanningSplit[] = [{ 
+                            frame, 
+                            time, 
+                            distance: 0 
+                          }];
+                          setPanningSplits(newSplits);
+                          setPanningStartIndex(0); // 自動的に開始点に設定
+                          setDistanceInput('10'); // 次は10m提案
+                          return;
+                        }
+                        
+                        // スプリット地点の登録
                         const distance = parseFloat(distanceInput);
                         
                         // 数値チェック
-                        if (isNaN(distance) || distance < 0) {
-                          alert('有効な距離を入力してください（0以上の数値）');
-                          return;
-                        }
-                        
-                        // スタート地点は0m必須
-                        if (panningSplits.length === 0 && distance !== 0) {
-                          alert('最初はスタート地点（0m）を登録してください');
-                          return;
-                        }
-                        
-                        // 2地点目以降は0より大きい必要
-                        if (panningSplits.length > 0 && distance <= 0) {
-                          alert('0mより大きい距離を入力してください');
+                        if (isNaN(distance) || distance <= 0) {
+                          alert('有効な距離を入力してください（0より大きい数値）');
                           return;
                         }
                         
@@ -9968,7 +9988,14 @@ case 6: {
                           return;
                         }
                         
-                        const newSplits: PanningSplit[] = [...(panningSplits || []), { 
+                        // 前の地点より大きいかチェック
+                        const lastDistance = panningSplits[panningSplits.length - 1].distance;
+                        if (distance <= lastDistance) {
+                          alert(`${lastDistance}mより大きい距離を入力してください`);
+                          return;
+                        }
+                        
+                        const newSplits: PanningSplit[] = [...panningSplits, { 
                           frame, 
                           time, 
                           distance 
@@ -9976,11 +10003,7 @@ case 6: {
                         setPanningSplits(newSplits);
                         
                         // 次の距離提案
-                        if (panningSplits.length === 0) {
-                          setDistanceInput('10'); // スタート後は10m
-                        } else {
-                          setDistanceInput(String(distance + 10));
-                        }
+                        setDistanceInput(String(distance + 10));
                       }}
                       style={{
                         width: '100%',
@@ -10017,6 +10040,99 @@ case 6: {
                         textAlign: 'center'
                       }}>
                         💡 まずスタート地点（0m）を登録してください
+                      </div>
+                    )}
+                    
+                    {/* 登録済みスプリット一覧 */}
+                    {panningSplits.length > 0 && (
+                      <div style={{
+                        marginTop: '16px',
+                        padding: '12px',
+                        background: 'rgba(255,255,255,0.15)',
+                        borderRadius: '8px'
+                      }}>
+                        <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '0.95rem' }}>
+                          📊 登録済みスプリット
+                        </div>
+                        <div style={{ fontSize: '0.85rem' }}>
+                          {panningSplits.map((split, idx) => {
+                            // スプリットタイム（前の地点からの区間タイム）
+                            const splitTime = idx === 0 ? 0 : split.time - panningSplits[idx - 1].time;
+                            // 累計タイム（0m地点からの累計）
+                            const cumulativeTime = split.time - panningSplits[0].time;
+                            // スプリット距離（前の地点からの距離）
+                            const splitDistance = idx === 0 ? 0 : split.distance - panningSplits[idx - 1].distance;
+                            // 区間速度
+                            const splitSpeed = idx === 0 ? 0 : splitDistance / splitTime;
+                            
+                            return (
+                              <div 
+                                key={idx}
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  padding: '8px',
+                                  marginBottom: idx < panningSplits.length - 1 ? '6px' : '0',
+                                  background: idx === 0 ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255,255,255,0.1)',
+                                  borderRadius: '6px',
+                                  borderLeft: idx === 0 ? '3px solid #22c55e' : '3px solid rgba(255,255,255,0.3)'
+                                }}
+                              >
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontWeight: 'bold' }}>
+                                    {idx === 0 ? '🏁 ' : '⏱️ '}{split.distance.toFixed(1)}m
+                                  </div>
+                                  {idx > 0 && (
+                                    <div style={{ fontSize: '0.75rem', opacity: 0.9, marginTop: '2px' }}>
+                                      区間: {splitDistance.toFixed(1)}m / {splitTime.toFixed(3)}s
+                                      {' '}({splitSpeed.toFixed(2)}m/s)
+                                    </div>
+                                  )}
+                                </div>
+                                <div style={{ textAlign: 'right' }}>
+                                  <div style={{ fontWeight: 'bold' }}>
+                                    累計: {cumulativeTime.toFixed(3)}s
+                                  </div>
+                                  {idx > 0 && (
+                                    <div style={{ fontSize: '0.75rem', opacity: 0.9, marginTop: '2px' }}>
+                                      ラップ: {splitTime.toFixed(3)}s
+                                    </div>
+                                  )}
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm(`${split.distance.toFixed(1)}m地点を削除しますか？`)) {
+                                      const newSplits = panningSplits.filter((_, i) => i !== idx);
+                                      setPanningSplits(newSplits);
+                                      // インデックスのリセット
+                                      if (panningStartIndex === idx) setPanningStartIndex(null);
+                                      if (panningEndIndex === idx) setPanningEndIndex(null);
+                                      if (panningStartIndex !== null && panningStartIndex > idx) {
+                                        setPanningStartIndex(panningStartIndex - 1);
+                                      }
+                                      if (panningEndIndex !== null && panningEndIndex > idx) {
+                                        setPanningEndIndex(panningEndIndex - 1);
+                                      }
+                                    }
+                                  }}
+                                  style={{
+                                    marginLeft: '8px',
+                                    padding: '4px 8px',
+                                    fontSize: '0.75rem',
+                                    background: 'rgba(239, 68, 68, 0.3)',
+                                    border: '1px solid rgba(239, 68, 68, 0.5)',
+                                    borderRadius: '4px',
+                                    color: 'white',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>
