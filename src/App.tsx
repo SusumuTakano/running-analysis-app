@@ -2762,7 +2762,18 @@ const clearMarksByButton = () => {
       const distance = currSplit.distance - prevSplit.distance;
       const time = currSplit.time - prevSplit.time;
       const speed = distance / time;
-      const acceleration = i === 1 ? 0 : (speed - intervals[i - 2].speed) / time;
+      
+      // 加速度の計算
+      let acceleration: number;
+      if (i === 1) {
+        // 最初の区間: 静止状態からスタート（v0 = 0）
+        // a = (v - v0) / t = v / t
+        acceleration = speed / time;
+      } else {
+        // 2番目以降の区間: 前の区間の速度から加速
+        const prevSpeed = intervals[i - 2].speed;
+        acceleration = (speed - prevSpeed) / time;
+      }
       
       intervals.push({
         startDistance: prevSplit.distance,
