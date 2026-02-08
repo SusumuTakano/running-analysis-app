@@ -2803,16 +2803,30 @@ const clearMarksByButton = () => {
         v_end    // 区間終了時の速度
       });
       
-      // デバッグログ
+      // デバッグログ（詳細版）
       console.log(`📊 Interval ${i} (${prevSplit.distance.toFixed(0)}-${currSplit.distance.toFixed(0)}m):`, {
-        distance: distance.toFixed(2),
-        time: time.toFixed(3),
-        v_avg: v_avg.toFixed(2),
-        v_start: v_start.toFixed(2),
-        v_end: v_end.toFixed(2),
-        acceleration: acceleration.toFixed(2)
+        '⏱️ Time': time.toFixed(3) + 's',
+        '📏 Distance': distance.toFixed(2) + 'm',
+        '🏃 v_avg': v_avg.toFixed(2) + ' m/s',
+        '▶️ v_start': v_start.toFixed(2) + ' m/s',
+        '⏹️ v_end': v_end.toFixed(2) + ' m/s',
+        '⚡ acceleration': acceleration.toFixed(2) + ' m/s²',
+        '⚠️ Warning': acceleration < -1 || (i <= 3 && acceleration < 0) ? '異常値！加速区間で減速' : 
+                     (i > 1 && acceleration > intervals[i-2].acceleration + 1) ? '異常値！加速度が急増' : 
+                     'OK'
       });
     }
+    
+    // 全区間の診断サマリー
+    console.log('🔍 Sprint Analysis Diagnosis:', {
+      'Total intervals': intervals.length,
+      'Acceleration pattern': intervals.map((int, idx) => 
+        `${idx+1}: ${int.acceleration.toFixed(2)} m/s²`).join(', '),
+      'Potential issues': intervals.filter((int, idx) => 
+        (idx <= 2 && int.acceleration < 0) || 
+        (idx > 0 && Math.abs(int.acceleration - intervals[idx-1].acceleration) > 2)
+      ).length > 0 ? '⚠️ 異常な加速度パターンが検出されました' : '✅ 正常'
+    });
     
     const totalDistance = intervalSplits[intervalSplits.length - 1].distance - intervalSplits[0].distance;
     const totalTime = intervalSplits[intervalSplits.length - 1].time - intervalSplits[0].time;
@@ -11140,7 +11154,15 @@ case 6: {
                                       time: currentTime
                                     };
                                     setPanningSplits(updatedSplits);
-                                    console.log(`🔄 Updated split at ${poseData.distance}m: frame ${poseData.frame} → ${currentFrame}`);
+                                    console.log(`🔄 Split Updated at ${poseData.distance}m:`, {
+                                      'Old frame': poseData.frame,
+                                      'New frame': currentFrame,
+                                      'Frame diff': currentFrame - poseData.frame,
+                                      'Old time': poseData.time.toFixed(3) + 's',
+                                      'New time': currentTime.toFixed(3) + 's',
+                                      'Time diff': (currentTime - poseData.time).toFixed(3) + 's',
+                                      '⚠️ Impact': Math.abs(currentTime - poseData.time) > 0.1 ? '大きな変更！再計算に影響' : '微調整'
+                                    });
                                   }}
                                   style={{
                                     padding: '6px 12px',
