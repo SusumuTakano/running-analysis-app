@@ -2802,6 +2802,16 @@ const clearMarksByButton = () => {
         v_start, // 区間開始時の速度
         v_end    // 区間終了時の速度
       });
+      
+      // デバッグログ
+      console.log(`📊 Interval ${i} (${prevSplit.distance.toFixed(0)}-${currSplit.distance.toFixed(0)}m):`, {
+        distance: distance.toFixed(2),
+        time: time.toFixed(3),
+        v_avg: v_avg.toFixed(2),
+        v_start: v_start.toFixed(2),
+        v_end: v_end.toFixed(2),
+        acceleration: acceleration.toFixed(2)
+      });
     }
     
     const totalDistance = intervalSplits[intervalSplits.length - 1].distance - intervalSplits[0].distance;
