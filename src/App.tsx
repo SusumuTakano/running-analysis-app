@@ -217,22 +217,45 @@ const calculateAngles = (
   const dx = shoulderCenter.x - hipCenter.x;
   const dy = shoulderCenter.y - hipCenter.y;
 
-  // 体幹角度の計算（修正版）
-  // 垂直（真っ直ぐ）= 90°
-  // 前傾（肩が前） = 90°未満（例: 45°, 60°, 80°）
-  // 後傾（肩が後ろ） = 90°超過（例: 100°, 110°）
+  // 🔍 デバッグ: 座標を確認
+  if (Math.random() < 0.01) { // 1%の確率でログ出力
+    console.log('🔍 Trunk angle debug:', {
+      hipCenter: { x: hipCenter.x.toFixed(3), y: hipCenter.y.toFixed(3) },
+      shoulderCenter: { x: shoulderCenter.x.toFixed(3), y: shoulderCenter.y.toFixed(3) },
+      dx: dx.toFixed(3),
+      dy: dy.toFixed(3),
+      abs_dx: Math.abs(dx).toFixed(3),
+      abs_dy: Math.abs(dy).toFixed(3)
+    });
+  }
+
+  // 体幹角度の計算（絶対値ベース）
+  // 走行方向に関係なく、体幹の傾きを測定
+  // 垂直 = 90°、前傾 < 90°
   // 
-  // 画像座標系：右方向がX+、下方向がY+
-  // 前傾時: dx > 0（肩が腰より右/前）、dy < 0（肩が腰より上）
+  // 体幹の長さ（腰→肩）を分解:
+  // - 水平成分: |dx|
+  // - 垂直成分: |dy|
   // 
-  // Math.atan2(dy, dx)で垂直からの角度を計算
-  // 垂直: dy < 0, dx ≈ 0 → atan2 ≈ -90° → trunkAngle ≈ 90°
-  // 前傾: dy < 0, dx > 0 → atan2 ≈ -45° → trunkAngle ≈ 45°
-  let trunkAngle = 90 + (Math.atan2(dy, dx) * 180) / Math.PI;
+  // 体幹と垂直のなす角度:
+  // tan(θ) = 水平成分 / 垂直成分 = |dx| / |dy|
+  // θ = atan(|dx| / |dy|)
+  // trunkAngle = 90° - θ（垂直からの偏差）
+  const horizontalComponent = Math.abs(dx);
+  const verticalComponent = Math.abs(dy);
   
-  // 角度を0-180の範囲に正規化
-  if (trunkAngle < 0) trunkAngle += 180;
-  if (trunkAngle > 180) trunkAngle -= 180;
+  let trunkAngle: number;
+  if (verticalComponent < 0.001) {
+    // ほぼ水平（ありえない姿勢）
+    trunkAngle = 0;
+  } else {
+    const theta = Math.atan(horizontalComponent / verticalComponent);
+    trunkAngle = 90 - (theta * 180) / Math.PI;
+  }
+  
+  // 角度を0-90の範囲に制限（前傾のみ）
+  if (trunkAngle < 0) trunkAngle = 0;
+  if (trunkAngle > 90) trunkAngle = 90;
 
   const calcLegAngles = (side: "left" | "right") => {
     const hipIdx = side === "left" ? 23 : 24;
