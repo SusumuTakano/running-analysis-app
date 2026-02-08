@@ -2761,18 +2761,29 @@ const clearMarksByButton = () => {
       const currSplit = intervalSplits[i];
       const distance = currSplit.distance - prevSplit.distance;
       const time = currSplit.time - prevSplit.time;
-      const speed = distance / time;
+      const speed = distance / time; // 区間平均速度
       
       // 加速度の計算
       let acceleration: number;
+      let v_start: number; // 区間開始時の瞬間速度
+      let v_end: number;   // 区間終了時の瞬間速度
+      
       if (i === 1) {
         // 最初の区間: 静止状態からスタート（v0 = 0）
-        // a = (v - v0) / t = v / t
-        acceleration = speed / time;
+        v_start = 0;
+        // 等加速度運動: s = v₀t + (1/2)at²
+        // distance = 0 + (1/2) × a × time²
+        // a = 2 × distance / time²
+        acceleration = (2 * distance) / (time * time);
+        v_end = v_start + acceleration * time;
       } else {
-        // 2番目以降の区間: 前の区間の速度から加速
-        const prevSpeed = intervals[i - 2].speed;
-        acceleration = (speed - prevSpeed) / time;
+        // 2番目以降の区間: 前の区間の終了速度から開始
+        v_start = intervals[i - 2].v_end;
+        // 等加速度運動: s = v₀t + (1/2)at²
+        // distance = v_start × time + (1/2) × a × time²
+        // a = 2 × (distance - v_start × time) / time²
+        acceleration = (2 * (distance - v_start * time)) / (time * time);
+        v_end = v_start + acceleration * time;
       }
       
       intervals.push({
@@ -2780,8 +2791,10 @@ const clearMarksByButton = () => {
         endDistance: currSplit.distance,
         distance,
         time,
-        speed,
-        acceleration
+        speed, // 区間平均速度
+        acceleration,
+        v_start, // 区間開始時の速度
+        v_end    // 区間終了時の速度
       });
     }
     
