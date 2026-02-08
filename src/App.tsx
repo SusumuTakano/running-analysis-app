@@ -2653,11 +2653,17 @@ const clearMarksByButton = () => {
 
   // ⚡ H-FVP 計算（Horizontal Force-Velocity Profile）
   // パンモードでは10mスプリットデータからH-FVPを計算
+  // H-FVP計算（パーン撮影モードでは無効化）
   const hfvpResult = useMemo((): HFVPResult | null => {
-    // 固定カメラモードでは無効
-    if (analysisMode !== 'panning') {
+    // パーン撮影モードではH-FVP計算を行わない
+    if (analysisMode === 'panning') {
       return null;
     }
+    
+    // 固定カメラモードでも無効（現在は全モードでH-FVP無効）
+    return null;
+    
+    /* 以下、H-FVP計算コード（現在は無効化）
     
     // 測定区間が選択されていない
     if (panningStartIndex === null || panningEndIndex === null || panningStartIndex >= panningEndIndex) {
@@ -2697,6 +2703,7 @@ const clearMarksByButton = () => {
     }
     
     return result;
+    */
   }, [analysisMode, panningSplits, panningStartIndex, panningEndIndex, athleteInfo.weight_kg, athleteInfo.height_cm]);
   
   // 🏃 パンモード用簡易スプリント分析
@@ -10610,34 +10617,8 @@ case 6: {
                   </div>
                 )}
                 
-                {/* パーン撮影モード: H-FVP分析結果 デバッグ情報 */}
-                {analysisMode === 'panning' && (
-                  <div style={{
-                    marginTop: '16px',
-                    padding: '12px',
-                    background: '#f3f4f6',
-                    borderRadius: '8px',
-                    fontSize: '0.85rem',
-                    color: '#1f2937'
-                  }}>
-                    <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>🔍 H-FVP デバッグ情報:</div>
-                    <div>analysisMode: {analysisMode}</div>
-                    <div>hfvpResult: {hfvpResult ? '✅ 計算済み' : '❌ null'}</div>
-                    <div>panningSplits数: {panningSplits.length}</div>
-                    <div>開始点Index: {panningStartIndex !== null ? panningStartIndex : 'null'}</div>
-                    <div>終了点Index: {panningEndIndex !== null ? panningEndIndex : 'null'}</div>
-                    <div>体重: {athleteInfo.weight_kg ?? 'null'} kg</div>
-                    <div>身長: {athleteInfo.height_cm ?? 'null'} cm</div>
-                    {hfvpResult && (
-                      <div style={{ marginTop: '8px', color: '#10b981', fontWeight: 'bold' }}>
-                        ✅ H-FVP計算成功: F0={hfvpResult.F0.toFixed(1)}N, V0={hfvpResult.V0.toFixed(2)}m/s
-                      </div>
-                    )}
-                  </div>
-                )}
-                
-                {/* パーン撮影モード: H-FVP分析結果 */}
-                {analysisMode === 'panning' && hfvpResult && (
+                {/* パーン撮影モード: スプリント分析のみ表示（H-FVP計算は無効） */}
+                {analysisMode === 'panning' && panningSprintAnalysis && (
                   <div style={{
                     background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
                     borderRadius: '16px',
@@ -10654,18 +10635,18 @@ case 6: {
                       alignItems: 'center',
                       gap: '12px'
                     }}>
-                      ⚡ H-FVP 分析
+                      📊 スプリント分析
                       <span style={{ 
                         fontSize: '0.75rem', 
                         padding: '2px 8px', 
                         background: 'rgba(255,255,255,0.2)', 
                         borderRadius: '4px' 
                       }}>
-                        Horizontal Force-Velocity Profile
+                        Sprint Analysis
                       </span>
                     </h3>
                     
-                    {/* データ品質インジケーター */}
+                    {/* 区間データ表示 */}
                     <div style={{
                       padding: '12px',
                       background: 'rgba(255,255,255,0.15)',
