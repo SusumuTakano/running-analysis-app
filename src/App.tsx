@@ -10858,12 +10858,31 @@ case 6: {
 
                     {/* 各スプリット地点での姿勢データ */}
                     {panningPoseAnalysis.map((poseData, idx) => (
-                      <div key={idx} style={{
-                        padding: '16px',
-                        background: 'rgba(255,255,255,0.15)',
-                        borderRadius: '12px',
-                        marginBottom: '16px'
-                      }}>
+                      <div 
+                        key={idx} 
+                        onClick={() => {
+                          // フレームスライダーをクリックした地点に移動
+                          setCurrentFrame(poseData.frame);
+                          console.log(`🎯 Jumped to frame ${poseData.frame} (${poseData.distance.toFixed(0)}m地点)`);
+                        }}
+                        style={{
+                          padding: '16px',
+                          background: 'rgba(255,255,255,0.15)',
+                          borderRadius: '12px',
+                          marginBottom: '16px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          border: currentFrame === poseData.frame ? '2px solid rgba(255,223,0,0.8)' : '2px solid transparent'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(255,255,255,0.25)';
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
+                          e.currentTarget.style.transform = 'translateY(0)';
+                        }}
+                      >
                         <h4 style={{ 
                           margin: '0 0 12px 0',
                           fontSize: '1rem',
@@ -10872,11 +10891,30 @@ case 6: {
                           gap: '8px'
                         }}>
                           📍 {poseData.distance.toFixed(0)}m地点
+                          {currentFrame === poseData.frame && (
+                            <span style={{
+                              fontSize: '0.7rem',
+                              padding: '2px 6px',
+                              background: 'rgba(255,223,0,0.3)',
+                              borderRadius: '4px',
+                              fontWeight: 'bold'
+                            }}>
+                              ▶ 現在地
+                            </span>
+                          )}
                           <span style={{ 
                             fontSize: '0.75rem', 
                             opacity: 0.8 
                           }}>
                             ({poseData.time.toFixed(3)}秒 / フレーム {poseData.frame})
+                          </span>
+                          <span style={{
+                            marginLeft: 'auto',
+                            fontSize: '0.7rem',
+                            opacity: 0.6,
+                            fontStyle: 'italic'
+                          }}>
+                            🖱️ クリックで動画ジャンプ
                           </span>
                         </h4>
 
