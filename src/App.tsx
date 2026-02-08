@@ -2761,9 +2761,9 @@ const clearMarksByButton = () => {
       const currSplit = intervalSplits[i];
       const distance = currSplit.distance - prevSplit.distance;
       const time = currSplit.time - prevSplit.time;
-      const speed = distance / time; // 区間平均速度
+      const v_avg = distance / time; // 区間平均速度
       
-      // 加速度の計算
+      // 速度と加速度の計算
       let acceleration: number;
       let v_start: number; // 区間開始時の瞬間速度
       let v_end: number;   // 区間終了時の瞬間速度
@@ -2771,19 +2771,25 @@ const clearMarksByButton = () => {
       if (i === 1) {
         // 最初の区間: 静止状態からスタート（v0 = 0）
         v_start = 0;
-        // 等加速度運動: s = v₀t + (1/2)at²
-        // distance = 0 + (1/2) × a × time²
-        // a = 2 × distance / time²
-        acceleration = (2 * distance) / (time * time);
-        v_end = v_start + acceleration * time;
+        // 等加速度運動: v_avg = (v_start + v_end) / 2
+        // v_end = 2 × v_avg - v_start = 2 × v_avg
+        v_end = 2 * v_avg;
+        // a = (v_end - v_start) / time
+        acceleration = (v_end - v_start) / time;
       } else {
         // 2番目以降の区間: 前の区間の終了速度から開始
         v_start = intervals[i - 2].v_end;
-        // 等加速度運動: s = v₀t + (1/2)at²
-        // distance = v_start × time + (1/2) × a × time²
-        // a = 2 × (distance - v_start × time) / time²
-        acceleration = (2 * (distance - v_start * time)) / (time * time);
-        v_end = v_start + acceleration * time;
+        // 等加速度運動: v_avg = (v_start + v_end) / 2
+        // v_end = 2 × v_avg - v_start
+        v_end = 2 * v_avg - v_start;
+        
+        // v_end が負になる場合は補正（物理的にありえない）
+        if (v_end < 0) {
+          v_end = v_avg; // 最低でも平均速度を保証
+        }
+        
+        // a = (v_end - v_start) / time
+        acceleration = (v_end - v_start) / time;
       }
       
       intervals.push({
@@ -2791,7 +2797,7 @@ const clearMarksByButton = () => {
         endDistance: currSplit.distance,
         distance,
         time,
-        speed, // 区間平均速度
+        speed: v_avg, // 区間平均速度
         acceleration,
         v_start, // 区間開始時の速度
         v_end    // 区間終了時の速度
