@@ -4476,24 +4476,27 @@ const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
     let MAX_WIDTH: number;
     let preferredFps: number;
     
+    // パーン撮影モードの場合は、より多くのフレームを許可（姿勢推定は実行するが、接地検出はしないため）
+    const isPanningMode = analysisMode === 'panning';
+    
     if (isIOS) {
       // iOS（iPhone/iPad）: メモリ制限が厳しいため、控えめに設定
-      MAX_FRAMES = 300; // 🔧 60fps × 5秒 or 120fps × 2.5秒（メモリ節約）
-      MAX_WIDTH = 640;  // 🔧 SD品質（メモリ節約）
+      MAX_FRAMES = isPanningMode ? 600 : 300; // パンモードなら2倍許可
+      MAX_WIDTH = isPanningMode ? 960 : 640;  // パンモードなら解像度も少し上げる
       preferredFps = selectedFps;
-      console.log(`📱 iOS detected: ${selectedFps}fps mode (640px, max 300 frames - memory optimized)`);
+      console.log(`📱 iOS detected: ${selectedFps}fps mode (${MAX_WIDTH}px, max ${MAX_FRAMES} frames${isPanningMode ? ' - panning mode' : ''})`);
     } else if (isMobile) {
       // その他のモバイル（Android等）: やや厳しめに設定
-      MAX_FRAMES = 400; // 🔧 60fps × 6.7秒 or 120fps × 3.3秒
-      MAX_WIDTH = 720;  // 🔧 HD品質（メモリ節約）
+      MAX_FRAMES = isPanningMode ? 800 : 400; // パンモードなら2倍許可
+      MAX_WIDTH = isPanningMode ? 1280 : 720;
       preferredFps = selectedFps;
-      console.log(`📱 Mobile detected: ${selectedFps}fps mode (720px, max 400 frames - memory optimized)`);
+      console.log(`📱 Mobile detected: ${selectedFps}fps mode (${MAX_WIDTH}px, max ${MAX_FRAMES} frames${isPanningMode ? ' - panning mode' : ''})`);
     } else {
       // デスクトップ: 比較的余裕があるが、大きな動画には注意
-      MAX_FRAMES = 600;   // 🔧 60fps × 10秒 or 120fps × 5秒
-      MAX_WIDTH = 1280;   // 🔧 HD品質
+      MAX_FRAMES = isPanningMode ? 1200 : 600;   // パンモードなら2倍許可
+      MAX_WIDTH = isPanningMode ? 1920 : 1280;
       preferredFps = selectedFps;
-      console.log(`💻 Desktop detected: ${selectedFps}fps mode (1280px, max 600 frames)`);
+      console.log(`💻 Desktop detected: ${selectedFps}fps mode (${MAX_WIDTH}px, max ${MAX_FRAMES} frames${isPanningMode ? ' - panning mode' : ''})`);
     }
     
     // ユーザーが選択したFPSを使用
@@ -4699,11 +4702,16 @@ console.log(`🎬 Video specs: analysisFps=${targetFps}fps, extractFrames=${tota
 
 // ✅ 重すぎる時は fps を落とすのではなく「警告して中止」
 if (totalFrames > MAX_FRAMES) {
+  const modeMessage = isPanningMode 
+    ? `パーン撮影モードでは ${MAX_FRAMES} フレームまで対応しています。`
+    : `固定カメラモードでは ${MAX_FRAMES} フレームまで対応しています。`;
+  
   const ok = confirm(
     `⚠️ 動画が長いため、抽出フレーム数が ${totalFrames} になります。\n` +
-      `iPhoneではメモリ不足になる可能性があります。\n\n` +
-      `接地マーク精度のため analysisFps は落とさず、抽出はこのフレーム数で続行しますか？\n\n` +
-      `（重い場合は、解析区間を短くする / 解像度を下げる を推奨）`
+      `${modeMessage}\n\n` +
+      `メモリ不足になる可能性があります。\n` +
+      `続行しますか？\n\n` +
+      `（推奨: より短い動画や低解像度の動画を使用）`
   );
   if (!ok) return;
 }
@@ -4761,8 +4769,9 @@ setUsedTargetFps(targetFps);
       }
     }
     
-    if (isIOS && estimatedMemoryMB > 200) {
+    if (isIOS && estimatedMemoryMB > (isPanningMode ? 400 : 200)) {
       console.warn('⚠️ High memory usage detected on iOS. May cause crash.');
+      const memoryThreshold = isPanningMode ? 400 : 200;
       if (!confirm(`この動画の処理には約${estimatedMemoryMB.toFixed(0)}MBのメモリが必要です。\niPhoneでは処理中にクラッシュする可能性があります。\n\n続行しますか？`)) {
         setIsExtracting(false);
         setStatus("キャンセルされました");
