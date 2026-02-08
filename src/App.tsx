@@ -217,13 +217,22 @@ const calculateAngles = (
   const dx = shoulderCenter.x - hipCenter.x;
   const dy = shoulderCenter.y - hipCenter.y;
 
-  // 体幹角度: 垂直=90°、前傾で減少（80-40°）、後傾で増加（95-100°+）
-  // atan2(dx, -dy) で計算し、垂直を基準に調整
-  let trunkAngle = 90 - (Math.atan2(dx, -dy) * 180) / Math.PI;
+  // 体幹角度の計算（修正版）
+  // 垂直（真っ直ぐ）= 90°
+  // 前傾（肩が前） = 90°未満（例: 45°, 60°, 80°）
+  // 後傾（肩が後ろ） = 90°超過（例: 100°, 110°）
+  // 
+  // 画像座標系：右方向がX+、下方向がY+
+  // 前傾時: dx > 0（肩が腰より右/前）、dy < 0（肩が腰より上）
+  // 
+  // Math.atan2(dy, dx)で垂直からの角度を計算
+  // 垂直: dy < 0, dx ≈ 0 → atan2 ≈ -90° → trunkAngle ≈ 90°
+  // 前傾: dy < 0, dx > 0 → atan2 ≈ -45° → trunkAngle ≈ 45°
+  let trunkAngle = 90 + (Math.atan2(dy, dx) * 180) / Math.PI;
   
   // 角度を0-180の範囲に正規化
-  while (trunkAngle < 0) trunkAngle += 180;
-  while (trunkAngle > 180) trunkAngle -= 180;
+  if (trunkAngle < 0) trunkAngle += 180;
+  if (trunkAngle > 180) trunkAngle -= 180;
 
   const calcLegAngles = (side: "left" | "right") => {
     const hipIdx = side === "left" ? 23 : 24;
