@@ -11022,66 +11022,122 @@ case 6: {
                     </h3>
 
                     {/* 各スプリット地点での姿勢データ */}
-                    {panningPoseAnalysis.map((poseData, idx) => (
-                      <div 
-                        key={idx} 
-                        onClick={() => {
-                          // フレームスライダーをクリックした地点に移動
-                          setCurrentFrame(poseData.frame);
-                          console.log(`🎯 Jumped to frame ${poseData.frame} (${poseData.distance.toFixed(0)}m地点)`);
-                        }}
-                        style={{
-                          padding: '16px',
-                          background: 'rgba(255,255,255,0.15)',
-                          borderRadius: '12px',
-                          marginBottom: '16px',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease',
-                          border: currentFrame === poseData.frame ? '2px solid rgba(255,223,0,0.8)' : '2px solid transparent'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'rgba(255,255,255,0.25)';
-                          e.currentTarget.style.transform = 'translateY(-2px)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
-                          e.currentTarget.style.transform = 'translateY(0)';
-                        }}
-                      >
-                        <h4 style={{ 
-                          margin: '0 0 12px 0',
-                          fontSize: '1rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px'
-                        }}>
-                          📍 {poseData.distance.toFixed(0)}m地点
-                          {currentFrame === poseData.frame && (
-                            <span style={{
-                              fontSize: '0.7rem',
-                              padding: '2px 6px',
-                              background: 'rgba(255,223,0,0.3)',
-                              borderRadius: '4px',
-                              fontWeight: 'bold'
+                    {panningPoseAnalysis.map((poseData, idx) => {
+                      // 対応するスプリットのインデックスを見つける
+                      const splitIndex = panningSplits.findIndex(s => s.frame === poseData.frame);
+                      
+                      return (
+                        <div 
+                          key={idx} 
+                          style={{
+                            padding: '16px',
+                            background: 'rgba(255,255,255,0.15)',
+                            borderRadius: '12px',
+                            marginBottom: '16px',
+                            transition: 'all 0.2s ease',
+                            border: currentFrame === poseData.frame ? '2px solid rgba(255,223,0,0.8)' : '2px solid transparent'
+                          }}
+                        >
+                          <h4 style={{ 
+                            margin: '0 0 12px 0',
+                            fontSize: '1rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            flexWrap: 'wrap'
+                          }}>
+                            📍 {poseData.distance.toFixed(0)}m地点
+                            {currentFrame === poseData.frame && (
+                              <span style={{
+                                fontSize: '0.7rem',
+                                padding: '2px 6px',
+                                background: 'rgba(255,223,0,0.3)',
+                                borderRadius: '4px',
+                                fontWeight: 'bold'
+                              }}>
+                                ▶ 現在地
+                              </span>
+                            )}
+                            <span style={{ 
+                              fontSize: '0.75rem', 
+                              opacity: 0.8 
                             }}>
-                              ▶ 現在地
+                              ({poseData.time.toFixed(3)}秒 / フレーム {poseData.frame})
                             </span>
-                          )}
-                          <span style={{ 
-                            fontSize: '0.75rem', 
-                            opacity: 0.8 
-                          }}>
-                            ({poseData.time.toFixed(3)}秒 / フレーム {poseData.frame})
-                          </span>
-                          <span style={{
-                            marginLeft: 'auto',
-                            fontSize: '0.7rem',
-                            opacity: 0.6,
-                            fontStyle: 'italic'
-                          }}>
-                            🖱️ クリックで動画ジャンプ
-                          </span>
-                        </h4>
+                            
+                            {/* アクションボタン */}
+                            <div style={{ 
+                              marginLeft: 'auto',
+                              display: 'flex',
+                              gap: '8px'
+                            }}>
+                              <button
+                                onClick={() => {
+                                  setCurrentFrame(poseData.frame);
+                                  console.log(`🎯 Jumped to frame ${poseData.frame} (${poseData.distance.toFixed(0)}m地点)`);
+                                }}
+                                style={{
+                                  padding: '6px 12px',
+                                  background: 'rgba(255,255,255,0.2)',
+                                  border: '1px solid rgba(255,255,255,0.4)',
+                                  borderRadius: '6px',
+                                  color: 'white',
+                                  fontSize: '0.75rem',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s',
+                                  fontWeight: 'bold'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = 'rgba(255,255,255,0.35)';
+                                  e.currentTarget.style.transform = 'translateY(-1px)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = 'rgba(255,255,255,0.2)';
+                                  e.currentTarget.style.transform = 'translateY(0)';
+                                }}
+                              >
+                                🎯 ジャンプ
+                              </button>
+                              
+                              {splitIndex !== -1 && (
+                                <button
+                                  onClick={() => {
+                                    // 現在のフレームでスプリット地点を更新
+                                    const updatedSplits = [...panningSplits];
+                                    const currentTime = usedTargetFps ? currentFrame / usedTargetFps : 0;
+                                    updatedSplits[splitIndex] = {
+                                      ...updatedSplits[splitIndex],
+                                      frame: currentFrame,
+                                      time: currentTime
+                                    };
+                                    setPanningSplits(updatedSplits);
+                                    console.log(`🔄 Updated split at ${poseData.distance}m: frame ${poseData.frame} → ${currentFrame}`);
+                                  }}
+                                  style={{
+                                    padding: '6px 12px',
+                                    background: 'rgba(59, 130, 246, 0.8)',
+                                    border: '1px solid rgba(255,255,255,0.4)',
+                                    borderRadius: '6px',
+                                    color: 'white',
+                                    fontSize: '0.75rem',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    fontWeight: 'bold'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = 'rgba(59, 130, 246, 1)';
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = 'rgba(59, 130, 246, 0.8)';
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                  }}
+                                >
+                                  🔄 再登録 (フレーム {currentFrame})
+                                </button>
+                              )}
+                            </div>
+                          </h4>
 
                         {/* 関節角度 */}
                         <div style={{ marginBottom: '12px' }}>
@@ -11207,7 +11263,8 @@ case 6: {
                           </div>
                         )}
                       </div>
-                    ))}
+                    );
+                  })}
                   </div>
                 )}
                 {/* パーン撮影モード: 保存ボタン */}
