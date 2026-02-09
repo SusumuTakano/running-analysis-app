@@ -2825,7 +2825,9 @@ const clearMarksByButton = () => {
       segmentSpeeds.push(distance / time);
     }
     
-    // 各区間の加速度を計算: a = (v_i - v_{i-1}) / t_i
+    // 各区間の加速度を計算
+    // 1区間目: 静止スタートの物理式 a = 2s/t²
+    // 2区間目以降: 中心時刻差分法 a = 2(v_i - v_{i-1})/(t_i + t_{i-1})
     for (let i = 1; i < intervalSplits.length; i++) {
       const prevSplit = intervalSplits[i - 1];
       const currSplit = intervalSplits[i];
@@ -2839,16 +2841,19 @@ const clearMarksByButton = () => {
       let v_end: number;
       
       if (i === 1) {
-        // 最初の区間: v_0 = 0（静止スタート）
+        // 最初の区間: 静止スタート（v_0 = 0）
+        // s = (1/2) * a * t² → a = 2s / t²
         v_start = 0;
         v_end = v_avg;
-        acceleration = v_avg / time;
+        acceleration = (2 * distance) / (time * time);
       } else {
-        // 2番目以降: a = (v_i - v_{i-1}) / t_i
+        // 2番目以降: 中心時刻差分法
+        // a = 2 * (v_i - v_{i-1}) / (t_i + t_{i-1})
         const v_prev = segmentSpeeds[i - 2];
+        const t_prev = intervalSplits[i - 1].time - intervalSplits[i - 2].time;
         v_start = v_prev;
         v_end = v_avg;
-        acceleration = (v_avg - v_prev) / time;
+        acceleration = (2 * (v_avg - v_prev)) / (time + t_prev);
       }
       
       intervals.push({
