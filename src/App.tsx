@@ -2898,6 +2898,112 @@ const clearMarksByButton = () => {
     const maxSpeed = Math.max(...intervals.map(i => i.speed));
     const avgAcceleration = intervals.reduce((sum, i) => sum + i.acceleration, 0) / intervals.length;
     
+    // 🔬 H-FVP計算（Horizontal Force-Velocity Profile）
+    // 線形回帰により F0 (最大推進力) と V0 (理論最大速度) を推定
+    // a = a0 - (a0/v0) × v の形で線形近似
+    
+    let hfvpData = null;
+    
+    if (athleteInfo.weight_kg > 0 && intervals.length >= 2) {
+      // 各区間の中間速度と加速度のデータポイントを収集
+      const velocities: number[] = [];
+      const accelerations: number[] = [];
+      
+      for (let i = 0; i < intervals.length; i++) {
+        const interval = intervals[i];
+        // 区間の中間速度を使用
+        const v_mid = (interval.v_start + interval.v_end) / 2;
+        velocities.push(v_mid);
+        accelerations.push(interval.acceleration);
+      }
+      
+      // 線形回帰: a = a0 - (a0/v0) * v
+      // 最小二乗法で a0 と v0 を推定
+      const n = velocities.length;
+      const sum_v = velocities.reduce((s, v) => s + v, 0);
+      const sum_a = accelerations.reduce((s, a) => s + a, 0);
+      const sum_vv = velocities.reduce((s, v) => s + v * v, 0);
+      const sum_va = velocities.reduce((s, v, i) => s + v * accelerations[i], 0);
+      
+      // 回帰係数の計算
+      const slope = (n * sum_va - sum_v * sum_a) / (n * sum_vv - sum_v * sum_v);
+      const intercept = (sum_a - slope * sum_v) / n;
+      
+      // a0 (v=0での加速度) と v0 (a=0での速度) を計算
+      const a0 = intercept;
+      const v0 = -intercept / slope; // a = a0 + slope*v = 0 → v = -a0/slope
+      
+      // F0 (最大推進力) = 体重 × a0
+      const F0 = athleteInfo.weight_kg * a0;
+      
+      // Pmax (最大パワー) = F0 × V0 / 4
+      const Pmax = F0 * v0 / 4;
+      
+      // 各地点でのH-FVP指標を計算
+      const hfvpPoints = intervalSplits.map((split, idx) => {
+        let v: number;
+        let a: number;
+        
+        if (idx === 0) {
+          // 開始地点（静止）
+          v = 0;
+          a = a0;
+        } else {
+          // 区間の終了時点での速度と加速度を使用
+          const interval = intervals[idx - 1];
+          v = interval.v_end;
+          a = interval.acceleration;
+        }
+        
+        // F (推進力) = 体重 × a
+        const F = athleteInfo.weight_kg * a;
+        
+        // P (パワー) = F × v
+        const P = F * v;
+        
+        // DRF (Decrease in Ratio of Force) = F / F0 × 100
+        const DRF = (F / F0) * 100;
+        
+        return {
+          distance: split.distance,
+          time: split.time,
+          velocity: v,
+          acceleration: a,
+          force: F,
+          power: P,
+          drf: DRF
+        };
+      });
+      
+      hfvpData = {
+        F0,      // 最大推進力 (N)
+        v0,      // 理論最大速度 (m/s)
+        Pmax,    // 最大パワー (W)
+        a0,      // 初期加速度 (m/s²)
+        points: hfvpPoints
+      };
+      
+      // デバッグログ
+      console.log('🔬 H-FVP Analysis:', {
+        'F0 (最大推進力)': F0.toFixed(2) + ' N',
+        'V0 (理論最大速度)': v0.toFixed(2) + ' m/s',
+        'Pmax (最大パワー)': Pmax.toFixed(2) + ' W',
+        'a0 (初期加速度)': a0.toFixed(2) + ' m/s²',
+        '回帰式': `a = ${a0.toFixed(2)} - ${(a0/v0).toFixed(2)} × v`,
+        '決定係数 R²': 'TODO' // 必要に応じて追加
+      });
+      
+      console.log('📊 H-FVP Points (各地点):');
+      hfvpPoints.forEach((point, idx) => {
+        console.log(`  ${point.distance.toFixed(0)}m:`, {
+          '速度 v': point.velocity.toFixed(2) + ' m/s',
+          '力 F': point.force.toFixed(0) + ' N',
+          'パワー P': point.power.toFixed(0) + ' W',
+          'DRF': point.drf.toFixed(1) + ' %'
+        });
+      });
+    }
+    
     // 100m推定タイム（最大速度を維持すると仮定）
     const estimated100mTime = totalTime + (100 - totalDistance) / maxSpeed;
     
@@ -2918,9 +3024,110 @@ const clearMarksByButton = () => {
       averageSpeed,
       maxSpeed,
       avgAcceleration,
-      estimated100mTime
+      estimated100mTime,
+      hfvpData // H-FVPデータを追加
     };
   }, [analysisMode, panningSplits, panningStartIndex, panningEndIndex]);
+
+  // 🔬 H-FVP計算（水平力-速度プロファイル）
+  const hfvpAnalysis = useMemo(() => {
+    if (!panningSprintAnalysis || !athleteInfo.weight_kg || athleteInfo.weight_kg <= 0) {
+      return null;
+    }
+
+    const intervals = panningSprintAnalysis.intervals;
+    if (intervals.length < 3) {
+      return null; // 最低3区間必要
+    }
+
+    const mass = athleteInfo.weight_kg;
+
+    // 速度-加速度データポイントを収集
+    const dataPoints: { v: number; a: number }[] = [];
+    
+    for (const interval of intervals) {
+      // 区間の中間速度と加速度を使用
+      const v = interval.speed;
+      const a = interval.acceleration;
+      if (v > 0 && Number.isFinite(a)) {
+        dataPoints.push({ v, a });
+      }
+    }
+
+    if (dataPoints.length < 2) {
+      return null;
+    }
+
+    // 線形回帰: a = a0 - (a0/v0) * v
+    // y = a0 - slope * v, where slope = a0/v0
+    const n = dataPoints.length;
+    const sum_v = dataPoints.reduce((s, p) => s + p.v, 0);
+    const sum_a = dataPoints.reduce((s, p) => s + p.a, 0);
+    const sum_vv = dataPoints.reduce((s, p) => s + p.v * p.v, 0);
+    const sum_va = dataPoints.reduce((s, p) => s + p.v * p.a, 0);
+
+    const mean_v = sum_v / n;
+    const mean_a = sum_a / n;
+
+    // 回帰係数計算
+    const slope = (sum_va - n * mean_v * mean_a) / (sum_vv - n * mean_v * mean_v);
+    const a0 = mean_a - slope * mean_v;
+
+    // V0 = a0 / (-slope) = a0 * v0 / a0 = v0
+    const V0 = slope !== 0 ? -a0 / slope : panningSprintAnalysis.maxSpeed * 1.1;
+
+    // F0 = mass * a0
+    const F0 = mass * a0;
+
+    // Pmax = F0 * V0 / 4
+    const Pmax = (F0 * V0) / 4;
+
+    // 各区間での力、パワー、DRFを計算
+    const profileData = intervals.map((interval) => {
+      const v = interval.speed;
+      const a = interval.acceleration;
+      
+      // 水平力: F = mass * a
+      const F = mass * a;
+      
+      // パワー: P = F * v
+      const P = F * v;
+      
+      // 理論最大力（この速度での）: F_theoretical = F0 * (1 - v/V0)
+      const F_theoretical = F0 * (1 - v / V0);
+      
+      // DRF (力指向性): DRF = F / F_theoretical
+      const DRF = F_theoretical !== 0 ? (F / F_theoretical) * 100 : 0;
+      
+      return {
+        distance: interval.endDistance,
+        velocity: v,
+        acceleration: a,
+        force: F,
+        power: P,
+        theoreticalForce: F_theoretical,
+        drf: DRF
+      };
+    });
+
+    console.log('🔬 H-FVP Analysis:', {
+      'F0 (N)': F0.toFixed(1),
+      'V0 (m/s)': V0.toFixed(2),
+      'Pmax (W)': Pmax.toFixed(0),
+      'Regression': `a = ${a0.toFixed(2)} - ${(-slope).toFixed(2)} * v`,
+      'Data points': dataPoints.length
+    });
+
+    return {
+      F0,
+      V0,
+      Pmax,
+      a0,
+      slope,
+      profileData,
+      dataPoints
+    };
+  }, [panningSprintAnalysis, athleteInfo.weight_kg]);
 
   // 🏃 パンモード用姿勢分析
   const panningPoseAnalysis = useMemo(() => {
@@ -6634,6 +6841,138 @@ setUsedTargetFps(targetFps);
       }
     }
   }, [wizardStep, ready, framesCount]);
+  
+  // F-V曲線グラフの描画
+  useEffect(() => {
+    if (analysisMode !== 'panning' || !panningSprintAnalysis?.hfvpData) {
+      return;
+    }
+    
+    const hfvp = panningSprintAnalysis.hfvpData;
+    const canvas = document.getElementById('fv-curve-chart') as HTMLCanvasElement;
+    
+    if (!canvas) return;
+    
+    // 既存のグラフを破棄
+    const existingChart = Chart.getChart(canvas);
+    if (existingChart) {
+      existingChart.destroy();
+    }
+    
+    // データポイント: 各地点の速度と力
+    const dataPoints = hfvp.points.map(p => ({
+      x: p.velocity,
+      y: p.force
+    }));
+    
+    // 理論曲線: F = F0 * (1 - v/v0)
+    const theoreticalCurve = [];
+    for (let v = 0; v <= hfvp.v0; v += hfvp.v0 / 50) {
+      theoreticalCurve.push({
+        x: v,
+        y: hfvp.F0 * (1 - v / hfvp.v0)
+      });
+    }
+    
+    // Chart.jsでグラフ作成
+    new Chart(canvas, {
+      type: 'scatter',
+      data: {
+        datasets: [
+          {
+            label: '実測値',
+            data: dataPoints,
+            backgroundColor: 'rgba(236, 72, 153, 0.8)',
+            borderColor: 'rgba(236, 72, 153, 1)',
+            pointRadius: 8,
+            pointHoverRadius: 10
+          },
+          {
+            label: '理論曲線 F = F0(1-v/V0)',
+            data: theoreticalCurve,
+            type: 'line' as const,
+            borderColor: 'rgba(139, 92, 246, 0.8)',
+            backgroundColor: 'rgba(139, 92, 246, 0.1)',
+            borderWidth: 2,
+            pointRadius: 0,
+            fill: false
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        aspectRatio: 2,
+        plugins: {
+          title: {
+            display: true,
+            text: '力-速度プロファイル（F-V Curve）',
+            color: '#333',
+            font: {
+              size: 16,
+              weight: 'bold'
+            }
+          },
+          legend: {
+            display: true,
+            position: 'top',
+            labels: {
+              color: '#333',
+              font: {
+                size: 12
+              }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const point = context.raw as { x: number; y: number };
+                return `速度: ${point.x.toFixed(2)} m/s, 力: ${point.y.toFixed(0)} N`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            type: 'linear',
+            title: {
+              display: true,
+              text: '速度 (m/s)',
+              color: '#333',
+              font: {
+                size: 14,
+                weight: 'bold'
+              }
+            },
+            ticks: {
+              color: '#333'
+            },
+            grid: {
+              color: 'rgba(0, 0, 0, 0.1)'
+            }
+          },
+          y: {
+            type: 'linear',
+            title: {
+              display: true,
+              text: '力 (N)',
+              color: '#333',
+              font: {
+                size: 14,
+                weight: 'bold'
+              }
+            },
+            ticks: {
+              color: '#333'
+            },
+            grid: {
+              color: 'rgba(0, 0, 0, 0.1)'
+            }
+          }
+        }
+      }
+    });
+  }, [analysisMode, panningSprintAnalysis]);
 
   // 認証ハンドラー
   // 認証は AppWithAuth で処理済み
@@ -11172,6 +11511,408 @@ case 6: {
                           </div>
                         </div>
                       ))}
+                    </div>
+                    
+                    {/* H-FVP分析（Horizontal Force-Velocity Profile） */}
+                    {panningSprintAnalysis.hfvpData && (
+                      <div style={{
+                        marginTop: '24px',
+                        padding: '20px',
+                        background: 'linear-gradient(135deg, rgba(236,72,153,0.2) 0%, rgba(139,92,246,0.2) 100%)',
+                        borderRadius: '12px',
+                        border: '2px solid rgba(236,72,153,0.3)'
+                      }}>
+                        <h4 style={{ 
+                          margin: '0 0 16px 0',
+                          fontSize: '1.2rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}>
+                          🔬 H-FVP分析
+                          <span style={{ 
+                            fontSize: '0.7rem', 
+                            padding: '2px 6px', 
+                            background: 'rgba(255,255,255,0.2)', 
+                            borderRadius: '4px' 
+                          }}>
+                            Force-Velocity Profile
+                          </span>
+                        </h4>
+                        
+                        {/* 主要指標 */}
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                          gap: '12px',
+                          marginBottom: '20px'
+                        }}>
+                          <div style={{
+                            padding: '14px',
+                            background: 'rgba(255,255,255,0.15)',
+                            borderRadius: '8px'
+                          }}>
+                            <div style={{ fontSize: '0.8rem', opacity: 0.9, marginBottom: '4px' }}>最大推進力 F0</div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold' }}>
+                              {panningSprintAnalysis.hfvpData.F0.toFixed(1)} N
+                            </div>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7, marginTop: '2px' }}>
+                              体重 × 初期加速度
+                            </div>
+                          </div>
+                          
+                          <div style={{
+                            padding: '14px',
+                            background: 'rgba(255,255,255,0.15)',
+                            borderRadius: '8px'
+                          }}>
+                            <div style={{ fontSize: '0.8rem', opacity: 0.9, marginBottom: '4px' }}>理論最大速度 V0</div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold' }}>
+                              {panningSprintAnalysis.hfvpData.v0.toFixed(2)} m/s
+                            </div>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7, marginTop: '2px' }}>
+                              加速度ゼロでの速度
+                            </div>
+                          </div>
+                          
+                          <div style={{
+                            padding: '14px',
+                            background: 'rgba(255,255,255,0.15)',
+                            borderRadius: '8px'
+                          }}>
+                            <div style={{ fontSize: '0.8rem', opacity: 0.9, marginBottom: '4px' }}>最大パワー Pmax</div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold' }}>
+                              {panningSprintAnalysis.hfvpData.Pmax.toFixed(0)} W
+                            </div>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7, marginTop: '2px' }}>
+                              F0 × V0 / 4
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* 各地点のH-FVP指標 */}
+                        <div style={{ marginTop: '20px' }}>
+                          <h5 style={{ 
+                            margin: '0 0 12px 0',
+                            fontSize: '1rem',
+                            opacity: 0.95
+                          }}>
+                            📊 各地点の力・速度・パワー
+                          </h5>
+                          <div style={{
+                            display: 'grid',
+                            gap: '8px'
+                          }}>
+                            {panningSprintAnalysis.hfvpData.points.map((point, idx) => (
+                              <div key={idx} style={{
+                                padding: '10px',
+                                background: 'rgba(255,255,255,0.1)',
+                                borderRadius: '6px',
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))',
+                                gap: '10px',
+                                fontSize: '0.85rem'
+                              }}>
+                                <div>
+                                  <div style={{ opacity: 0.8, fontSize: '0.75rem' }}>地点</div>
+                                  <div style={{ fontWeight: 'bold' }}>{point.distance.toFixed(0)}m</div>
+                                </div>
+                                <div>
+                                  <div style={{ opacity: 0.8, fontSize: '0.75rem' }}>速度 v</div>
+                                  <div style={{ fontWeight: 'bold' }}>{point.velocity.toFixed(2)} m/s</div>
+                                </div>
+                                <div>
+                                  <div style={{ opacity: 0.8, fontSize: '0.75rem' }}>力 F</div>
+                                  <div style={{ fontWeight: 'bold' }}>{point.force.toFixed(0)} N</div>
+                                </div>
+                                <div>
+                                  <div style={{ opacity: 0.8, fontSize: '0.75rem' }}>パワー P</div>
+                                  <div style={{ fontWeight: 'bold' }}>{point.power.toFixed(0)} W</div>
+                                </div>
+                                <div>
+                                  <div style={{ opacity: 0.8, fontSize: '0.75rem' }}>DRF</div>
+                                  <div style={{ fontWeight: 'bold' }}>{point.drf.toFixed(1)} %</div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        {/* F-V曲線グラフ（Chart.js使用） */}
+                        <div style={{ marginTop: '24px' }}>
+                          <h5 style={{ 
+                            margin: '0 0 12px 0',
+                            fontSize: '1rem',
+                            opacity: 0.95
+                          }}>
+                            📈 力-速度プロファイル（F-V曲線）
+                          </h5>
+                          <div style={{
+                            background: 'rgba(255,255,255,0.9)',
+                            borderRadius: '8px',
+                            padding: '16px',
+                            maxWidth: '600px',
+                            margin: '0 auto'
+                          }}>
+                            <canvas id="fv-curve-chart" style={{ width: '100%', height: '300px' }}></canvas>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* パーン撮影モード: H-FVP分析 */}
+                {analysisMode === 'panning' && hfvpAnalysis && (
+                  <div style={{
+                    background: 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)',
+                    borderRadius: '16px',
+                    padding: '24px',
+                    marginTop: '24px',
+                    marginBottom: '24px',
+                    color: 'white',
+                    boxShadow: '0 10px 30px rgba(236, 72, 153, 0.3)'
+                  }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      marginBottom: '20px'
+                    }}>
+                      <h3 style={{ 
+                        margin: '0', 
+                        fontSize: '1.3rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px'
+                      }}>
+                        🔬 H-FVP分析
+                        <span style={{ 
+                          fontSize: '0.75rem', 
+                          padding: '2px 8px', 
+                          background: 'rgba(255,255,255,0.2)', 
+                          borderRadius: '4px' 
+                        }}>
+                          Horizontal Force-Velocity Profile
+                        </span>
+                      </h3>
+                    </div>
+                    
+                    {/* 主要指標 */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                      gap: '12px',
+                      marginBottom: '20px'
+                    }}>
+                      <div style={{
+                        padding: '16px',
+                        background: 'rgba(255,255,255,0.15)',
+                        borderRadius: '8px'
+                      }}>
+                        <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>最大水平力</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
+                          {hfvpAnalysis.F0.toFixed(1)} N
+                        </div>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>
+                          F0 = 体重 × 初期加速度
+                        </div>
+                      </div>
+                      <div style={{
+                        padding: '16px',
+                        background: 'rgba(255,255,255,0.15)',
+                        borderRadius: '8px'
+                      }}>
+                        <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>最大理論速度</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
+                          {hfvpAnalysis.V0.toFixed(2)} m/s
+                        </div>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>
+                          V0 = 加速度がゼロになる速度
+                        </div>
+                      </div>
+                      <div style={{
+                        padding: '16px',
+                        background: 'rgba(255,255,255,0.15)',
+                        borderRadius: '8px'
+                      }}>
+                        <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>最大パワー</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
+                          {hfvpAnalysis.Pmax.toFixed(0)} W
+                        </div>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>
+                          Pmax = F0 × V0 / 4
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* F-Vカーブグラフ */}
+                    <div style={{
+                      marginTop: '20px',
+                      padding: '16px',
+                      background: 'rgba(255,255,255,0.1)',
+                      borderRadius: '8px'
+                    }}>
+                      <h4 style={{ 
+                        margin: '0 0 12px 0',
+                        fontSize: '1.1rem'
+                      }}>
+                        📈 力-速度プロファイル（F-Vカーブ）
+                      </h4>
+                      <canvas 
+                        ref={(canvas) => {
+                          if (canvas && hfvpAnalysis) {
+                            const ctx = canvas.getContext('2d');
+                            if (ctx) {
+                              // 既存のチャートを破棄
+                              const existingChart = (canvas as any).chart;
+                              if (existingChart) {
+                                existingChart.destroy();
+                              }
+
+                              // F-Vカーブのデータ
+                              const velocities = hfvpAnalysis.profileData.map(d => d.velocity);
+                              const forces = hfvpAnalysis.profileData.map(d => d.force);
+                              
+                              // 理論曲線のポイント
+                              const theoreticalV = [];
+                              const theoreticalF = [];
+                              for (let v = 0; v <= hfvpAnalysis.V0; v += hfvpAnalysis.V0 / 20) {
+                                theoreticalV.push(v);
+                                theoreticalF.push(hfvpAnalysis.F0 * (1 - v / hfvpAnalysis.V0));
+                              }
+
+                              const chart = new Chart(ctx, {
+                                type: 'scatter',
+                                data: {
+                                  datasets: [
+                                    {
+                                      label: '実測値',
+                                      data: velocities.map((v, i) => ({ x: v, y: forces[i] })),
+                                      backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                                      borderColor: 'rgba(255, 255, 255, 1)',
+                                      pointRadius: 6,
+                                      pointHoverRadius: 8
+                                    },
+                                    {
+                                      label: '理論曲線',
+                                      data: theoreticalV.map((v, i) => ({ x: v, y: theoreticalF[i] })),
+                                      type: 'line',
+                                      borderColor: 'rgba(255, 255, 255, 0.5)',
+                                      borderWidth: 2,
+                                      borderDash: [5, 5],
+                                      fill: false,
+                                      pointRadius: 0
+                                    }
+                                  ]
+                                },
+                                options: {
+                                  responsive: true,
+                                  maintainAspectRatio: false,
+                                  plugins: {
+                                    legend: {
+                                      display: true,
+                                      labels: { color: 'white', font: { size: 12 } }
+                                    },
+                                    tooltip: {
+                                      callbacks: {
+                                        label: (context) => {
+                                          const label = context.dataset.label || '';
+                                          const x = context.parsed.x.toFixed(2);
+                                          const y = context.parsed.y.toFixed(1);
+                                          return `${label}: v=${x}m/s, F=${y}N`;
+                                        }
+                                      }
+                                    }
+                                  },
+                                  scales: {
+                                    x: {
+                                      title: { display: true, text: '速度 (m/s)', color: 'white' },
+                                      ticks: { color: 'white' },
+                                      grid: { color: 'rgba(255,255,255,0.1)' }
+                                    },
+                                    y: {
+                                      title: { display: true, text: '水平力 (N)', color: 'white' },
+                                      ticks: { color: 'white' },
+                                      grid: { color: 'rgba(255,255,255,0.1)' }
+                                    }
+                                  }
+                                }
+                              });
+                              (canvas as any).chart = chart;
+                            }
+                          }
+                        }}
+                        style={{ 
+                          maxHeight: '300px',
+                          width: '100%',
+                          background: 'rgba(0,0,0,0.2)',
+                          borderRadius: '8px',
+                          padding: '8px'
+                        }}
+                      />
+                    </div>
+
+                    {/* 各地点の詳細データ */}
+                    <div style={{
+                      marginTop: '20px'
+                    }}>
+                      <h4 style={{ 
+                        margin: '0 0 12px 0',
+                        fontSize: '1.1rem'
+                      }}>
+                        📏 各地点の詳細データ
+                      </h4>
+                      {hfvpAnalysis.profileData.map((data, idx) => (
+                        <div key={idx} style={{
+                          padding: '12px',
+                          background: 'rgba(255,255,255,0.1)',
+                          borderRadius: '8px',
+                          marginBottom: '8px',
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                          gap: '12px',
+                          fontSize: '0.9rem'
+                        }}>
+                          <div>
+                            <div style={{ opacity: 0.8 }}>地点</div>
+                            <div style={{ fontWeight: 'bold' }}>
+                              {data.distance.toFixed(0)}m
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ opacity: 0.8 }}>速度</div>
+                            <div style={{ fontWeight: 'bold' }}>{data.velocity.toFixed(2)} m/s</div>
+                          </div>
+                          <div>
+                            <div style={{ opacity: 0.8 }}>水平力</div>
+                            <div style={{ fontWeight: 'bold' }}>{data.force.toFixed(1)} N</div>
+                          </div>
+                          <div>
+                            <div style={{ opacity: 0.8 }}>パワー</div>
+                            <div style={{ fontWeight: 'bold' }}>{data.power.toFixed(0)} W</div>
+                          </div>
+                          <div>
+                            <div style={{ opacity: 0.8 }}>DRF</div>
+                            <div style={{ fontWeight: 'bold' }}>{data.drf.toFixed(1)}%</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{
+                      marginTop: '16px',
+                      padding: '12px',
+                      background: 'rgba(255,255,255,0.1)',
+                      borderRadius: '8px',
+                      fontSize: '0.85rem',
+                      lineHeight: '1.6'
+                    }}>
+                      <strong>📖 H-FVP指標の見方:</strong><br/>
+                      • <strong>F0</strong>: スタート時の最大推進力。高いほどスタートダッシュが強い<br/>
+                      • <strong>V0</strong>: 理論上の最高速度。実際の最高速度より高い値が望ましい<br/>
+                      • <strong>Pmax</strong>: 最大パワー出力。F0とV0のバランスを示す<br/>
+                      • <strong>DRF</strong>: 力指向性。100%に近いほど効率的に力を発揮している
                     </div>
                   </div>
                 )}
