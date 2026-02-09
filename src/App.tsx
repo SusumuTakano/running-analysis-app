@@ -2814,41 +2814,48 @@ const clearMarksByButton = () => {
     
     // 区間データを計算
     const intervals = [];
+    
+    // まず、全区間の累積タイムと累積距離から瞬間速度を推定
+    const instantaneousSpeeds: number[] = [0]; // 0m地点は静止（v=0）
+    
+    for (let i = 1; i < intervalSplits.length; i++) {
+      const prevSplit = intervalSplits[i - 1];
+      const currSplit = intervalSplits[i];
+      const intervalDistance = currSplit.distance - prevSplit.distance;
+      const intervalTime = currSplit.time - prevSplit.time;
+      
+      // この地点での瞬間速度を推定
+      // 前後の区間から推定（最初と最後は片側のみ）
+      let estimatedSpeed: number;
+      
+      if (i === intervalSplits.length - 1) {
+        // 最後の地点: 前の区間の平均速度の2倍から前の速度を引く
+        const v_avg = intervalDistance / intervalTime;
+        estimatedSpeed = 2 * v_avg - instantaneousSpeeds[i - 1];
+      } else {
+        // 中間地点: 前後の区間の平均速度を使用
+        const nextSplit = intervalSplits[i + 1];
+        const nextDistance = nextSplit.distance - currSplit.distance;
+        const nextTime = nextSplit.time - currSplit.time;
+        const v_before = intervalDistance / intervalTime;
+        const v_after = nextDistance / nextTime;
+        estimatedSpeed = (v_before + v_after) / 2;
+      }
+      
+      instantaneousSpeeds.push(estimatedSpeed);
+    }
+    
+    // 各区間の加速度を計算
     for (let i = 1; i < intervalSplits.length; i++) {
       const prevSplit = intervalSplits[i - 1];
       const currSplit = intervalSplits[i];
       const distance = currSplit.distance - prevSplit.distance;
       const time = currSplit.time - prevSplit.time;
-      const v_avg = distance / time; // 区間平均速度
+      const v_avg = distance / time;
       
-      // 速度と加速度の計算
-      let acceleration: number;
-      let v_start: number; // 区間開始時の瞬間速度
-      let v_end: number;   // 区間終了時の瞬間速度
-      
-      if (i === 1) {
-        // 最初の区間: 静止状態からスタート（v0 = 0）
-        v_start = 0;
-        // 等加速度運動: v_avg = (v_start + v_end) / 2
-        // v_end = 2 × v_avg - v_start = 2 × v_avg
-        v_end = 2 * v_avg;
-        // a = (v_end - v_start) / time
-        acceleration = (v_end - v_start) / time;
-      } else {
-        // 2番目以降の区間: 前の区間の終了速度から開始
-        v_start = intervals[i - 2].v_end;
-        // 等加速度運動: v_avg = (v_start + v_end) / 2
-        // v_end = 2 × v_avg - v_start
-        v_end = 2 * v_avg - v_start;
-        
-        // v_end が負になる場合は補正（物理的にありえない）
-        if (v_end < 0) {
-          v_end = v_avg; // 最低でも平均速度を保証
-        }
-        
-        // a = (v_end - v_start) / time
-        acceleration = (v_end - v_start) / time;
-      }
+      const v_start = instantaneousSpeeds[i - 1];
+      const v_end = instantaneousSpeeds[i];
+      const acceleration = (v_end - v_start) / time;
       
       intervals.push({
         startDistance: prevSplit.distance,
