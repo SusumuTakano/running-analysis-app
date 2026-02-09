@@ -568,7 +568,6 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
       setIsMobile(isMobileDevice);
       setIsTablet(false); // iPadもモバイルとして扱うため、タブレット判定は常にfalse
       
-      console.log(`📱 デバイス判定: ${isMobileDevice ? 'モバイル（iPad含む）' : 'PC'} (幅: ${width}px, UA: ${ua.substring(0, 50)})`);
     };
     
     checkDevice();
@@ -3375,7 +3374,6 @@ const clearMarksByButton = () => {
         staticImageMode = false; // ストリーミングモードで連続性を保つ
         smoothLandmarks = true; // スムージングを有効化
       } else if (isMobile) {
-        console.log('📱 Mobile device detected - optimized settings');
         modelComplexity = 1; // 中精度モデル（モバイルはメモリ制限）
         minDetectionConfidence = 0.05; // 認識率を最大化
         minTrackingConfidence = 0.05; // 認識率を最大化
@@ -3645,7 +3643,6 @@ const clearMarksByButton = () => {
       //     解析後のフレーム間引きは行わない（表示のズレを防止）
       const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       if (isMobileDevice) {
-        console.log(`📱 Mobile device detected → keeping all ${framesRef.current.length} frames for accurate overlay`);
       }
       
       // 自動で次のステップへ（区間設定）
@@ -4437,9 +4434,6 @@ const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
             actualHeight = video.videoHeight;
             retries++;
           }
-          
-          console.log(`📹 実際の動画サイズ: ${actualWidth} × ${actualHeight}`);
-          console.log(`📹 ビデオ要素の表示サイズ: ${video.width || 'N/A'} × ${video.height || 'N/A'}`);
           
           // サイズが取得できない場合はエラー
           if (actualWidth === 0 || actualHeight === 0) {
@@ -7593,10 +7587,6 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
     */
 
     // 通常のシングルカメラモードのステップ処理
-    console.log('🔍 [CRITICAL] wizardStep =', wizardStep, 'analysisMode =', analysisMode);
-    console.log('🔍 [CRITICAL] typeof wizardStep =', typeof wizardStep);
-    console.log('🔍 [CRITICAL] wizardStep === 8 ?', wizardStep === 8);
-    console.log('🔍 [CRITICAL] wizardStep === 7 ?', wizardStep === 7);
     switch (wizardStep) {
       case 0:
       return (
@@ -12447,7 +12437,6 @@ case 6: {
 
       case 8:
         console.log('✅ [STEP 8] Rendering Step 8! stepMetrics.length =', stepMetrics.length);
-        console.log('✅ [STEP 8] analysisMode =', analysisMode);
         console.log('✅ [STEP 8] contactFrames.length =', contactFrames.length);
         console.log('✅ [STEP 8] stepMetrics =', stepMetrics);
         return (
