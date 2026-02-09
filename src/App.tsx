@@ -3,6 +3,7 @@ import React, {
   useRef,
   useEffect,
   useMemo,
+  useCallback,
   ChangeEvent,
 } from "react";
 import "./App.css";
@@ -2736,6 +2737,153 @@ const clearMarksByButton = () => {
     return result;
     */
   }, [analysisMode, panningSplits, panningStartIndex, panningEndIndex, athleteInfo.weight_kg, athleteInfo.height_cm]);
+  
+  // 🔧 自動微調整機能：スプリット地点を最適化
+  const autoAdjustSplits = useCallback(() => {
+    if (!panningSplits || panningSplits.length < 4 || !usedTargetFps) {
+      alert('❌ 自動微調整には最低4つのスプリット地点が必要です');
+      return;
+    }
+
+    console.log('🔧 自動微調整を開始...');
+    
+    // 各スプリット地点の前後±3フレームの範囲を探索
+    const searchRange = 3;
+    const numSplits = panningSplits.length;
+    
+    // 全パターンを試行して最適な組み合わせを見つける
+    let bestScore = Infinity;
+    let bestAdjustments = panningSplits.map(s => s.frame);
+    
+    // 中間地点（0m以外）のみを調整対象とする（0m地点は固定）
+    const adjustableIndices = Array.from({ length: numSplits - 1 }, (_, i) => i + 1);
+    
+    // 各調整可能地点の候補フレームを生成
+    const candidateFrames = adjustableIndices.map(idx => {
+      const baseFrame = panningSplits[idx].frame;
+      const candidates = [];
+      for (let offset = -searchRange; offset <= searchRange; offset++) {
+        const frame = baseFrame + offset;
+        if (frame > 0 && frame < framesRef.current.length) {
+          candidates.push(frame);
+        }
+      }
+      return candidates;
+    });
+    
+    // 評価関数：加速度パターンのスコアを計算（低いほど良い）
+    const evaluatePattern = (frames: number[]) => {
+      const testSplits = frames.map((frame, idx) => ({
+        distance: panningSplits[idx].distance,
+        time: frame / usedTargetFps,
+        frame: frame
+      }));
+      
+      // 区間データを計算
+      const accelerations = [];
+      let v_start = 0; // 静止スタート
+      
+      for (let i = 1; i < testSplits.length; i++) {
+        const prevSplit = testSplits[i - 1];
+        const currSplit = testSplits[i];
+        const distance = currSplit.distance - prevSplit.distance;
+        const time = currSplit.time - prevSplit.time;
+        
+        if (time <= 0 || distance <= 0) return Infinity; // 無効なパターン
+        
+        const v_avg = distance / time;
+        const v_end = 2 * v_avg - v_start;
+        const acceleration = (v_end - v_start) / time;
+        
+        accelerations.push(acceleration);
+        v_start = v_end;
+      }
+      
+      // スコアリング基準
+      let score = 0;
+      
+      // 1. 0-30m区間は正の加速度であるべき
+      for (let i = 0; i < Math.min(3, accelerations.length); i++) {
+        if (accelerations[i] < 0) {
+          score += 1000; // 大きなペナルティ
+        }
+      }
+      
+      // 2. 加速度の連続性（急激な変化を避ける）
+      for (let i = 1; i < accelerations.length; i++) {
+        const diff = Math.abs(accelerations[i] - accelerations[i - 1]);
+        score += diff * 10; // 変化が大きいほどペナルティ
+      }
+      
+      // 3. 0-30m区間での加速度減少傾向
+      for (let i = 1; i < Math.min(3, accelerations.length); i++) {
+        if (accelerations[i] > accelerations[i - 1]) {
+          score += 50; // 加速が増加するのは不自然
+        }
+      }
+      
+      // 4. 極端な加速度値を避ける
+      for (const acc of accelerations) {
+        if (Math.abs(acc) > 5) {
+          score += Math.abs(acc) * 20;
+        }
+      }
+      
+      return score;
+    };
+    
+    // 再帰的に全組み合わせを試行（簡易版：各地点を個別に最適化）
+    console.log('🔍 最適なフレームを探索中...');
+    
+    // 貪欲法：各地点を順番に最適化
+    const optimizedFrames = [panningSplits[0].frame]; // 0m地点は固定
+    
+    for (let splitIdx = 1; splitIdx < numSplits; splitIdx++) {
+      let bestFrameForThisSplit = panningSplits[splitIdx].frame;
+      let bestScoreForThisSplit = Infinity;
+      
+      // この地点の候補フレームを試行
+      const baseFrame = panningSplits[splitIdx].frame;
+      for (let offset = -searchRange; offset <= searchRange; offset++) {
+        const candidateFrame = baseFrame + offset;
+        if (candidateFrame <= optimizedFrames[splitIdx - 1] || candidateFrame >= framesRef.current.length) {
+          continue; // 前の地点より前、または範囲外はスキップ
+        }
+        
+        // 現在までのフレーム + この候補で評価
+        const testFrames = [...optimizedFrames, candidateFrame];
+        // 残りは元のフレームを使用
+        for (let j = splitIdx + 1; j < numSplits; j++) {
+          testFrames.push(panningSplits[j].frame);
+        }
+        
+        const score = evaluatePattern(testFrames);
+        
+        if (score < bestScoreForThisSplit) {
+          bestScoreForThisSplit = score;
+          bestFrameForThisSplit = candidateFrame;
+        }
+      }
+      
+      optimizedFrames.push(bestFrameForThisSplit);
+      console.log(`  - ${panningSplits[splitIdx].distance}m地点: フレーム ${panningSplits[splitIdx].frame} → ${bestFrameForThisSplit} (オフセット: ${bestFrameForThisSplit - panningSplits[splitIdx].frame})`);
+    }
+    
+    // 調整を適用
+    const updatedSplits = panningSplits.map((split, idx) => ({
+      ...split,
+      frame: optimizedFrames[idx],
+      time: optimizedFrames[idx] / usedTargetFps
+    }));
+    
+    setPanningSplits(updatedSplits);
+    
+    // 調整結果を表示
+    const adjustmentCount = optimizedFrames.filter((f, idx) => f !== panningSplits[idx].frame).length;
+    console.log(`✅ 自動微調整完了: ${adjustmentCount}個の地点を調整しました`);
+    alert(`✅ 自動微調整完了！\n${adjustmentCount}個のスプリット地点を最適化しました。\n\n加速度パターンを確認してください。`);
+    
+  }, [panningSplits, usedTargetFps, framesRef, setPanningSplits]);
   
   // 🏃 パンモード用簡易スプリント分析
   const panningSprintAnalysis = useMemo(() => {
@@ -10913,23 +11061,72 @@ case 6: {
                     color: 'white',
                     boxShadow: '0 10px 30px rgba(139, 92, 246, 0.3)'
                   }}>
-                    <h3 style={{ 
-                      margin: '0 0 20px 0', 
-                      fontSize: '1.3rem',
-                      display: 'flex',
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
                       alignItems: 'center',
-                      gap: '12px'
+                      marginBottom: '20px'
                     }}>
-                      📊 スプリント分析
-                      <span style={{ 
-                        fontSize: '0.75rem', 
-                        padding: '2px 8px', 
-                        background: 'rgba(255,255,255,0.2)', 
-                        borderRadius: '4px' 
+                      <h3 style={{ 
+                        margin: '0', 
+                        fontSize: '1.3rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px'
                       }}>
-                        Sprint Analysis
-                      </span>
-                    </h3>
+                        📊 スプリント分析
+                        <span style={{ 
+                          fontSize: '0.75rem', 
+                          padding: '2px 8px', 
+                          background: 'rgba(255,255,255,0.2)', 
+                          borderRadius: '4px' 
+                        }}>
+                          Sprint Analysis
+                        </span>
+                      </h3>
+                      
+                      {/* 自動微調整ボタン */}
+                      <button
+                        onClick={autoAdjustSplits}
+                        disabled={!panningSplits || panningSplits.length < 4}
+                        style={{
+                          padding: '10px 20px',
+                          background: panningSplits && panningSplits.length >= 4 
+                            ? 'rgba(255,255,255,0.25)' 
+                            : 'rgba(255,255,255,0.1)',
+                          border: '2px solid rgba(255,255,255,0.4)',
+                          borderRadius: '8px',
+                          color: 'white',
+                          fontSize: '0.95rem',
+                          fontWeight: 'bold',
+                          cursor: panningSplits && panningSplits.length >= 4 ? 'pointer' : 'not-allowed',
+                          transition: 'all 0.2s',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          opacity: panningSplits && panningSplits.length >= 4 ? 1 : 0.5
+                        }}
+                        onMouseEnter={(e) => {
+                          if (panningSplits && panningSplits.length >= 4) {
+                            e.currentTarget.style.background = 'rgba(255,255,255,0.35)';
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = panningSplits && panningSplits.length >= 4 
+                            ? 'rgba(255,255,255,0.25)' 
+                            : 'rgba(255,255,255,0.1)';
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = 'none';
+                        }}
+                      >
+                        🔧 自動微調整
+                        <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>
+                          Auto Adjust
+                        </span>
+                      </button>
+                    </div>
                     
                     {/* 区間データ表示 */}
                     <div style={{
