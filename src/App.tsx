@@ -10346,125 +10346,6 @@ case 6: {
                     />
                   </div>
 
-                  {/* 現在フレームの姿勢分析（リアルタイム表示） */}
-                  {analysisMode === 'panning' && poseResults && poseResults[currentFrame]?.landmarks && (() => {
-                    const landmarks = poseResults[currentFrame]!.landmarks;
-                    const angles = calculateAngles(landmarks);
-                    const currentTime = usedTargetFps ? (currentFrame / usedTargetFps) : 0;
-                    
-                    return (
-                      <div style={{
-                        marginBottom: '16px',
-                        padding: '16px',
-                        background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-                        borderRadius: '12px',
-                        color: 'white'
-                      }}>
-                        <h4 style={{
-                          margin: '0 0 12px 0',
-                          fontSize: '1rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px'
-                        }}>
-                          🎯 現在のフレーム姿勢
-                          <span style={{
-                            fontSize: '0.75rem',
-                            opacity: 0.9,
-                            background: 'rgba(255,255,255,0.2)',
-                            padding: '2px 8px',
-                            borderRadius: '4px'
-                          }}>
-                            フレーム {currentFrame} ({currentTime.toFixed(3)}秒)
-                          </span>
-                        </h4>
-
-                        {/* 関節角度 */}
-                        <div style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                          gap: '8px',
-                          fontSize: '0.85rem'
-                        }}>
-                          {angles.kneeFlex.left !== null && (
-                            <div style={{ 
-                              padding: '10px', 
-                              background: 'rgba(255,255,255,0.2)', 
-                              borderRadius: '8px',
-                              border: '1px solid rgba(255,255,255,0.3)'
-                            }}>
-                              <div style={{ opacity: 0.9, fontSize: '0.75rem' }}>左膝角度</div>
-                              <div style={{ fontWeight: 'bold', fontSize: '1.3rem', marginTop: '4px' }}>
-                                {angles.kneeFlex.left.toFixed(1)}°
-                              </div>
-                            </div>
-                          )}
-                          {angles.kneeFlex.right !== null && (
-                            <div style={{ 
-                              padding: '10px', 
-                              background: 'rgba(255,255,255,0.2)', 
-                              borderRadius: '8px',
-                              border: '1px solid rgba(255,255,255,0.3)'
-                            }}>
-                              <div style={{ opacity: 0.9, fontSize: '0.75rem' }}>右膝角度</div>
-                              <div style={{ fontWeight: 'bold', fontSize: '1.3rem', marginTop: '4px' }}>
-                                {angles.kneeFlex.right.toFixed(1)}°
-                              </div>
-                            </div>
-                          )}
-                          {angles.thighAngle.left !== null && (
-                            <div style={{ 
-                              padding: '10px', 
-                              background: 'rgba(255,255,255,0.2)', 
-                              borderRadius: '8px',
-                              border: '1px solid rgba(255,255,255,0.3)'
-                            }}>
-                              <div style={{ opacity: 0.9, fontSize: '0.75rem' }}>左大腿角度</div>
-                              <div style={{ fontWeight: 'bold', fontSize: '1.3rem', marginTop: '4px' }}>
-                                {angles.thighAngle.left.toFixed(1)}°
-                              </div>
-                            </div>
-                          )}
-                          {angles.thighAngle.right !== null && (
-                            <div style={{ 
-                              padding: '10px', 
-                              background: 'rgba(255,255,255,0.2)', 
-                              borderRadius: '8px',
-                              border: '1px solid rgba(255,255,255,0.3)'
-                            }}>
-                              <div style={{ opacity: 0.9, fontSize: '0.75rem' }}>右大腿角度</div>
-                              <div style={{ fontWeight: 'bold', fontSize: '1.3rem', marginTop: '4px' }}>
-                                {angles.thighAngle.right.toFixed(1)}°
-                              </div>
-                            </div>
-                          )}
-                          {angles.trunkAngle !== null && (
-                            <div style={{ 
-                              padding: '10px', 
-                              background: 'rgba(255,255,255,0.2)', 
-                              borderRadius: '8px',
-                              border: '1px solid rgba(255,255,255,0.3)'
-                            }}>
-                              <div style={{ opacity: 0.9, fontSize: '0.75rem' }}>体幹角度</div>
-                              <div style={{ fontWeight: 'bold', fontSize: '1.3rem', marginTop: '4px' }}>
-                                {angles.trunkAngle.toFixed(1)}°
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        <div style={{
-                          marginTop: '12px',
-                          fontSize: '0.8rem',
-                          opacity: 0.9,
-                          textAlign: 'center'
-                        }}>
-                          💡 スライダーを動かすと、リアルタイムに角度が更新されます
-                        </div>
-                      </div>
-                    );
-                  })()}
-
                 </div>
                 
 
@@ -10855,6 +10736,125 @@ case 6: {
                     )}
                   </div>
                 )}
+                
+                {/* 現在フレームの姿勢分析（リアルタイム表示） */}
+                {analysisMode === 'panning' && poseResults && poseResults[currentFrame]?.landmarks && (() => {
+                  const landmarks = poseResults[currentFrame]!.landmarks;
+                  const angles = calculateAngles(landmarks);
+                  const currentTime = usedTargetFps ? (currentFrame / usedTargetFps) : 0;
+                  
+                  return (
+                    <div style={{
+                      marginTop: '16px',
+                      padding: '16px',
+                      background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                      borderRadius: '12px',
+                      color: 'white'
+                    }}>
+                      <h4 style={{
+                        margin: '0 0 12px 0',
+                        fontSize: '1rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        🎯 現在のフレーム姿勢
+                        <span style={{
+                          fontSize: '0.75rem',
+                          opacity: 0.9,
+                          background: 'rgba(255,255,255,0.2)',
+                          padding: '2px 8px',
+                          borderRadius: '4px'
+                        }}>
+                          フレーム {currentFrame} ({currentTime.toFixed(3)}秒)
+                        </span>
+                      </h4>
+
+                      {/* 関節角度 */}
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                        gap: '8px',
+                        fontSize: '0.85rem'
+                      }}>
+                        {angles.kneeFlex.left !== null && (
+                          <div style={{ 
+                            padding: '10px', 
+                            background: 'rgba(255,255,255,0.2)', 
+                            borderRadius: '8px',
+                            border: '1px solid rgba(255,255,255,0.3)'
+                          }}>
+                            <div style={{ opacity: 0.9, fontSize: '0.75rem' }}>左膝角度</div>
+                            <div style={{ fontWeight: 'bold', fontSize: '1.3rem', marginTop: '4px' }}>
+                              {angles.kneeFlex.left.toFixed(1)}°
+                            </div>
+                          </div>
+                        )}
+                        {angles.kneeFlex.right !== null && (
+                          <div style={{ 
+                            padding: '10px', 
+                            background: 'rgba(255,255,255,0.2)', 
+                            borderRadius: '8px',
+                            border: '1px solid rgba(255,255,255,0.3)'
+                          }}>
+                            <div style={{ opacity: 0.9, fontSize: '0.75rem' }}>右膝角度</div>
+                            <div style={{ fontWeight: 'bold', fontSize: '1.3rem', marginTop: '4px' }}>
+                              {angles.kneeFlex.right.toFixed(1)}°
+                            </div>
+                          </div>
+                        )}
+                        {angles.thighAngle.left !== null && (
+                          <div style={{ 
+                            padding: '10px', 
+                            background: 'rgba(255,255,255,0.2)', 
+                            borderRadius: '8px',
+                            border: '1px solid rgba(255,255,255,0.3)'
+                          }}>
+                            <div style={{ opacity: 0.9, fontSize: '0.75rem' }}>左大腿角度</div>
+                            <div style={{ fontWeight: 'bold', fontSize: '1.3rem', marginTop: '4px' }}>
+                              {angles.thighAngle.left.toFixed(1)}°
+                            </div>
+                          </div>
+                        )}
+                        {angles.thighAngle.right !== null && (
+                          <div style={{ 
+                            padding: '10px', 
+                            background: 'rgba(255,255,255,0.2)', 
+                            borderRadius: '8px',
+                            border: '1px solid rgba(255,255,255,0.3)'
+                          }}>
+                            <div style={{ opacity: 0.9, fontSize: '0.75rem' }}>右大腿角度</div>
+                            <div style={{ fontWeight: 'bold', fontSize: '1.3rem', marginTop: '4px' }}>
+                              {angles.thighAngle.right.toFixed(1)}°
+                            </div>
+                          </div>
+                        )}
+                        {angles.trunkAngle !== null && (
+                          <div style={{ 
+                            padding: '10px', 
+                            background: 'rgba(255,255,255,0.2)', 
+                            borderRadius: '8px',
+                            border: '1px solid rgba(255,255,255,0.3)'
+                          }}>
+                            <div style={{ opacity: 0.9, fontSize: '0.75rem' }}>体幹角度</div>
+                            <div style={{ fontWeight: 'bold', fontSize: '1.3rem', marginTop: '4px' }}>
+                              {angles.trunkAngle.toFixed(1)}°
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{
+                        marginTop: '12px',
+                        fontSize: '0.8rem',
+                        opacity: 0.9,
+                        textAlign: 'center'
+                      }}>
+                        💡 スライダーを動かすと、リアルタイムに角度が更新されます
+                      </div>
+                    </div>
+                  );
+                })()}
                 
                 {/* 測定区間選択（スプリットが2つ以上ある場合のみ表示） */}
                 {analysisMode === 'panning' && panningSplits.length >= 2 && (
