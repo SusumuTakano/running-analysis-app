@@ -3197,6 +3197,108 @@ const clearMarksByButton = () => {
     };
   }, [athleteInfo.weight_kg, panningSprintAnalysis]);
 
+  // ===== 目標達成カード計算 (ADD) =====
+  const goalAchievement = useMemo(() => {
+    if (!panningSprintAnalysis || !hfvpDashboard) return null;
+    
+    const currentTime = panningSprintAnalysis.totalTime;
+    const currentDistance = panningSprintAnalysis.totalDistance;
+    
+    // 目標タイムをパース（例: "6.50s" or "6.5" or "6秒50"）
+    const targetRecordStr = athleteInfo.target_record?.trim() || '';
+    if (!targetRecordStr) return null;
+    
+    let goalTime: number | null = null;
+    
+    // パターン1: "6.50" or "6.5" (数値のみ)
+    const numMatch = targetRecordStr.match(/^(\d+(?:\.\d+)?)$/);
+    if (numMatch) {
+      goalTime = parseFloat(numMatch[1]);
+    }
+    
+    // パターン2: "6.50s" or "6.5秒"
+    const timeMatch = targetRecordStr.match(/(\d+(?:\.\d+)?)\s*[s秒]/i);
+    if (timeMatch) {
+      goalTime = parseFloat(timeMatch[1]);
+    }
+    
+    // パターン3: "6秒50" or "6'50"
+    const minSecMatch = targetRecordStr.match(/(\d+)\s*[秒']['""]?\s*(\d+)/);
+    if (minSecMatch) {
+      goalTime = parseInt(minSecMatch[1]) + parseInt(minSecMatch[2]) / 100;
+    }
+    
+    if (!goalTime || !isFiniteNumber(goalTime) || goalTime <= 0) return null;
+    
+    // 距離を50mにスケーリング（測定距離が50mと異なる場合）
+    const targetDistance = 50;
+    let scaled50mTime = currentTime;
+    
+    if (Math.abs(currentDistance - targetDistance) > 0.1) {
+      // 平均速度で50mタイムを推定
+      const avgSpeed = currentDistance / currentTime;
+      scaled50mTime = targetDistance / avgSpeed;
+    }
+    
+    // 不足分
+    const gap = scaled50mTime - goalTime;
+    
+    // 達成度（%）
+    const achievement = goalTime > 0 ? Math.min(100, (goalTime / scaled50mTime) * 100) : 0;
+    
+    // 改善提案
+    const suggestions: string[] = [];
+    
+    if (gap > 0) {
+      // 遅い場合の改善提案
+      
+      // V0改善による効果推定
+      const currentV0 = hfvpDashboard.v0;
+      const currentF0Rel = hfvpDashboard.f0Rel;
+      
+      // 必要な速度向上（簡易計算: Δt ≈ -Distance/V² × ΔV）
+      // より正確には: 50m / (V+ΔV) = goalTime → ΔV = 50/goalTime - V_avg
+      const currentAvgSpeed = currentDistance / scaled50mTime;
+      const neededAvgSpeed = targetDistance / goalTime;
+      const speedGap = neededAvgSpeed - currentAvgSpeed;
+      
+      if (speedGap > 0.2) {
+        const v0Improvement = speedGap * 1.2; // V0は平均速度より高い
+        suggestions.push(`V0を${v0Improvement.toFixed(2)} m/s向上させる（目標: ${(currentV0 + v0Improvement).toFixed(2)} m/s）`);
+      }
+      
+      // F0改善提案
+      if (currentF0Rel < 4.5) {
+        const f0ImprovementPercent = Math.min(15, gap * 20);
+        suggestions.push(`F0を${f0ImprovementPercent.toFixed(0)}%向上させる（筋力トレーニング）`);
+      }
+      
+      // DRF改善提案
+      const drf = hfvpDashboard.drf;
+      if (drf !== null && drf < -8) {
+        suggestions.push('トップスピード維持トレーニング（DRFが急すぎる）');
+      } else if (drf !== null && drf > -6) {
+        suggestions.push('スタートダッシュ強化（DRFが緩すぎる）');
+      }
+      
+      // 技術改善
+      suggestions.push('スプリント技術の改善（ストライド頻度・接地時間）');
+    } else {
+      // 既に目標達成
+      suggestions.push('🎉 目標達成おめでとうございます！');
+      suggestions.push('さらなる記録更新を目指しましょう');
+    }
+    
+    return {
+      goalTime: round(goalTime, 2),
+      currentTime: round(scaled50mTime, 2),
+      gap: round(gap, 3),
+      achievement: round(achievement, 1),
+      isAchieved: gap <= 0,
+      suggestions
+    };
+  }, [panningSprintAnalysis, hfvpDashboard, athleteInfo.target_record]);
+
   // 🔬 H-FVP計算（水平力-速度プロファイル）
   const hfvpAnalysis = useMemo(() => {
     if (!panningSprintAnalysis || !athleteInfo.weight_kg || athleteInfo.weight_kg <= 0) {
@@ -11680,6 +11782,157 @@ case 6: {
                         </div>
                       ))}
                     </div>
+                    
+                    {/* ===== 目標達成カード（ADD）===== */}
+                    {goalAchievement && (
+                      <div style={{
+                        marginTop: '24px',
+                        padding: '20px',
+                        background: goalAchievement.isAchieved 
+                          ? 'linear-gradient(135deg, rgba(16,185,129,0.2) 0%, rgba(5,150,105,0.2) 100%)'
+                          : 'linear-gradient(135deg, rgba(251,146,60,0.2) 0%, rgba(249,115,22,0.2) 100%)',
+                        borderRadius: '12px',
+                        border: goalAchievement.isAchieved
+                          ? '2px solid rgba(16,185,129,0.4)'
+                          : '2px solid rgba(251,146,60,0.4)'
+                      }}>
+                        <h4 style={{ 
+                          margin: '0 0 16px 0',
+                          fontSize: '1.2rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}>
+                          🎯 目標タイム達成への道
+                          <span style={{ 
+                            fontSize: '0.7rem', 
+                            padding: '2px 6px', 
+                            background: 'rgba(255,255,255,0.2)', 
+                            borderRadius: '4px' 
+                          }}>
+                            Goal Achievement
+                          </span>
+                        </h4>
+                        
+                        {/* タイム比較 */}
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                          gap: '12px',
+                          marginBottom: '16px'
+                        }}>
+                          <div style={{
+                            padding: '14px',
+                            background: 'rgba(255,255,255,0.15)',
+                            borderRadius: '8px'
+                          }}>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>目標タイム</div>
+                            <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
+                              {goalAchievement.goalTime}
+                            </div>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>秒</div>
+                          </div>
+                          
+                          <div style={{
+                            padding: '14px',
+                            background: 'rgba(255,255,255,0.15)',
+                            borderRadius: '8px'
+                          }}>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>現在タイム（50m換算）</div>
+                            <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
+                              {goalAchievement.currentTime}
+                            </div>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>秒</div>
+                          </div>
+                          
+                          <div style={{
+                            padding: '14px',
+                            background: goalAchievement.isAchieved
+                              ? 'rgba(16,185,129,0.3)'
+                              : 'rgba(239,68,68,0.3)',
+                            borderRadius: '8px'
+                          }}>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>
+                              {goalAchievement.isAchieved ? '超過分' : '不足分'}
+                            </div>
+                            <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
+                              {goalAchievement.isAchieved 
+                                ? `+${Math.abs(goalAchievement.gap).toFixed(3)}`
+                                : `-${Math.abs(goalAchievement.gap).toFixed(3)}`}
+                            </div>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>秒</div>
+                          </div>
+                        </div>
+                        
+                        {/* 達成度バー */}
+                        <div style={{
+                          padding: '14px',
+                          background: 'rgba(255,255,255,0.1)',
+                          borderRadius: '8px',
+                          marginBottom: '16px'
+                        }}>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '8px'
+                          }}>
+                            <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>達成度</span>
+                            <span style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
+                              {goalAchievement.achievement.toFixed(1)}%
+                            </span>
+                          </div>
+                          <div style={{
+                            width: '100%',
+                            height: '24px',
+                            background: 'rgba(255,255,255,0.2)',
+                            borderRadius: '12px',
+                            overflow: 'hidden',
+                            position: 'relative'
+                          }}>
+                            <div style={{
+                              width: `${Math.min(100, goalAchievement.achievement)}%`,
+                              height: '100%',
+                              background: goalAchievement.isAchieved
+                                ? 'linear-gradient(90deg, #10b981 0%, #059669 100%)'
+                                : 'linear-gradient(90deg, #fb923c 0%, #f97316 100%)',
+                              transition: 'width 0.5s ease',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'flex-end',
+                              paddingRight: '8px'
+                            }}>
+                              {goalAchievement.achievement >= 10 && (
+                                <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'white' }}>
+                                  {goalAchievement.achievement.toFixed(1)}%
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* 改善アドバイス */}
+                        <div style={{
+                          padding: '14px',
+                          background: 'rgba(255,255,255,0.1)',
+                          borderRadius: '8px'
+                        }}>
+                          <h5 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                            {goalAchievement.isAchieved ? '🎉 おめでとうございます！' : '💪 改善アドバイス'}
+                          </h5>
+                          <ul style={{ 
+                            margin: '0', 
+                            paddingLeft: '20px',
+                            fontSize: '0.85rem',
+                            lineHeight: '1.8'
+                          }}>
+                            {goalAchievement.suggestions.map((suggestion, idx) => (
+                              <li key={idx} style={{ marginBottom: '6px' }}>{suggestion}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
                     
                     {/* ===== H-FVP結果パネル（ADD/REPLACE）===== */}
                     {hfvpDashboard && (
