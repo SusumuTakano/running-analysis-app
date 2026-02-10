@@ -10,6 +10,7 @@ import "./App.css";
 import { supabase } from "./lib/supabaseClient";
 import Chart from "chart.js/auto";
 import { generateRunningEvaluation, type RunningEvaluation } from "./runningEvaluation";
+import OpenAI from "openai";
 // New multi-camera components
 import { MultiCameraSetup } from './components/MultiCameraSetup';
 import CanvasRoiSelector from './components/CanvasRoiSelector';
@@ -3298,6 +3299,170 @@ const clearMarksByButton = () => {
       suggestions
     };
   }, [panningSprintAnalysis, hfvpDashboard, athleteInfo.target_record]);
+
+  // ===== AI Training Plan State (ADD) =====
+  const [aiTrainingPlan, setAiTrainingPlan] = useState<string | null>(null);
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
+
+  // ===== Generate AI Training Plan (ADD) =====
+  const generateAITrainingPlan = useCallback(async () => {
+    if (!hfvpDashboard || !goalAchievement || !panningSprintAnalysis) {
+      alert('H-FVPデータと目標達成データが必要です');
+      return;
+    }
+
+    setIsGeneratingPlan(true);
+    setPlanError(null);
+
+    try {
+      // OpenAI client initialization
+      const client = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY || '',
+        baseURL: process.env.OPENAI_BASE_URL || 'https://www.genspark.ai/api/llm_proxy/v1',
+        dangerouslyAllowBrowser: true
+      });
+
+      // Prepare athlete profile
+      const athleteProfile = {
+        name: athleteInfo.name || '選手',
+        age: athleteInfo.age || 'N/A',
+        gender: athleteInfo.gender || 'N/A',
+        weight_kg: athleteInfo.weight_kg || 'N/A',
+        height_cm: athleteInfo.height_cm || 'N/A',
+        current_record: athleteInfo.current_record || 'N/A',
+        target_record: athleteInfo.target_record || 'N/A'
+      };
+
+      // Prepare H-FVP metrics
+      const hfvpMetrics = {
+        F0_relative: hfvpDashboard.f0Rel,
+        V0: hfvpDashboard.v0,
+        Pmax_relative: hfvpDashboard.pmaxRel,
+        RFmax: hfvpDashboard.rfmax,
+        DRF: hfvpDashboard.drf,
+        Vmax: hfvpDashboard.vmax,
+        tau: hfvpDashboard.tau,
+        fvR2: hfvpDashboard.fvR2,
+        posR2: hfvpDashboard.posR2,
+        dataQuality: `F-v: ${hfvpDashboard.fvQuality}, Position: ${hfvpDashboard.posQuality}`
+      };
+
+      // Prepare goal achievement data
+      const goalData = {
+        goalTime: goalAchievement.goalTime,
+        currentTime: goalAchievement.currentTime,
+        gap: goalAchievement.gap,
+        achievement: goalAchievement.achievement,
+        isAchieved: goalAchievement.isAchieved
+      };
+
+      // System prompt
+      const systemPrompt = `あなたは世界トップレベルのスプリントコーチであり、スポーツ科学の専門家です。
+H-FVP（Horizontal Force-Velocity Profile）分析に基づいた個別最適化トレーニングプログラムを作成します。
+
+以下の原則に従ってください：
+1. 科学的根拠（論文・研究）に基づいた提案
+2. 選手の現在の能力（H-FVP指標）を考慮
+3. 目標達成までの具体的な期間別トレーニング
+4. 実践可能な具体的メニュー（セット数・レップ数・負荷）
+5. 各トレーニングの目的と科学的根拠の説明
+
+H-FVP指標の解釈：
+- F0（相対）: 最大推進力/体重。高い=パワー型、低い=スピード型
+- V0: 理論最大速度。高い=トップスピード型
+- Pmax（相対）: 最大パワー/体重。総合的なスプリント能力
+- RFmax: 理論最大RF。力の維持能力
+- DRF: RF低下率。-6～-10が理想。<-10はスタート特化、>-6はスピード特化
+- Vmax: 実測最大速度
+- τ: 時定数。小さい=素早い加速`;
+
+      // User prompt
+      const userPrompt = `以下の選手の個別最適化トレーニングプランを作成してください。
+
+【選手プロフィール】
+${Object.entries(athleteProfile).map(([key, value]) => `- ${key}: ${value}`).join('\n')}
+
+【H-FVP分析結果】
+${Object.entries(hfvpMetrics).map(([key, value]) => `- ${key}: ${value}`).join('\n')}
+
+【目標達成状況】
+- 目標タイム: ${goalData.goalTime}秒
+- 現在タイム: ${goalData.currentTime}秒
+- 不足分: ${goalData.gap}秒
+- 達成度: ${goalData.achievement}%
+- 状態: ${goalData.isAchieved ? '✅ 達成済み' : '⏳ 未達成'}
+
+【スプリント区間データ】
+${panningSprintAnalysis.intervals.map((int, idx) => 
+  `${int.startDistance.toFixed(0)}-${int.endDistance.toFixed(0)}m: 速度${int.speed.toFixed(2)}m/s, 加速度${int.acceleration.toFixed(2)}m/s²`
+).join('\n')}
+
+以下の形式で出力してください：
+
+## 🎯 総合評価と課題
+
+## 📋 期間別トレーニングプラン（8週間）
+
+### Week 1-2: [フェーズ名]
+**目的**: 
+**科学的根拠**: 
+**トレーニングメニュー**:
+1. [種目名]
+   - セット数: 
+   - レップ数/距離: 
+   - 負荷/強度: 
+   - 回復時間: 
+   - 週頻度: 
+
+### Week 3-4: [フェーズ名]
+...
+
+### Week 5-6: [フェーズ名]
+...
+
+### Week 7-8: [フェーズ名]
+...
+
+## 💡 重要なポイント
+
+## 📊 進捗確認指標
+
+## ⚠️ 注意事項`;
+
+      console.log('🤖 AI Training Plan Generation Started...');
+      console.log('Athlete Profile:', athleteProfile);
+      console.log('H-FVP Metrics:', hfvpMetrics);
+      console.log('Goal Data:', goalData);
+
+      const completion = await client.chat.completions.create({
+        model: 'gpt-5',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 3000
+      });
+
+      const plan = completion.choices[0]?.message?.content || '';
+      
+      if (!plan) {
+        throw new Error('AIからの応答が空でした');
+      }
+
+      setAiTrainingPlan(plan);
+      console.log('✅ AI Training Plan Generated Successfully');
+
+    } catch (error) {
+      console.error('❌ AI Training Plan Generation Error:', error);
+      const errorMessage = error instanceof Error ? error.message : '不明なエラー';
+      setPlanError(`トレーニングプラン生成エラー: ${errorMessage}`);
+      alert(`AIトレーニングプラン生成に失敗しました: ${errorMessage}`);
+    } finally {
+      setIsGeneratingPlan(false);
+    }
+  }, [hfvpDashboard, goalAchievement, panningSprintAnalysis, athleteInfo]);
 
   // 🔬 H-FVP計算（水平力-速度プロファイル）
   const hfvpAnalysis = useMemo(() => {
@@ -11931,6 +12096,168 @@ case 6: {
                             ))}
                           </ul>
                         </div>
+                      </div>
+                    )}
+                    
+                    {/* ===== AIトレーニングプラン（ADD）===== */}
+                    {goalAchievement && hfvpDashboard && (
+                      <div style={{
+                        marginTop: '24px',
+                        padding: '20px',
+                        background: 'linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(79,70,229,0.2) 100%)',
+                        borderRadius: '12px',
+                        border: '2px solid rgba(99,102,241,0.4)'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          marginBottom: '16px'
+                        }}>
+                          <h4 style={{ 
+                            margin: '0',
+                            fontSize: '1.2rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                          }}>
+                            🤖 AI個別最適化トレーニングプラン
+                            <span style={{ 
+                              fontSize: '0.7rem', 
+                              padding: '2px 6px', 
+                              background: 'rgba(255,255,255,0.2)', 
+                              borderRadius: '4px' 
+                            }}>
+                              Powered by GPT-5
+                            </span>
+                          </h4>
+                          
+                          <button
+                            onClick={generateAITrainingPlan}
+                            disabled={isGeneratingPlan}
+                            style={{
+                              padding: '10px 20px',
+                              background: isGeneratingPlan 
+                                ? 'rgba(156,163,175,0.5)' 
+                                : 'rgba(99,102,241,0.8)',
+                              border: 'none',
+                              borderRadius: '8px',
+                              color: 'white',
+                              fontSize: '0.9rem',
+                              fontWeight: 'bold',
+                              cursor: isGeneratingPlan ? 'not-allowed' : 'pointer',
+                              transition: 'all 0.2s',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px'
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isGeneratingPlan) {
+                                e.currentTarget.style.background = 'rgba(99,102,241,1)';
+                                e.currentTarget.style.transform = 'translateY(-2px)';
+                                e.currentTarget.style.boxShadow = '0 4px 12px rgba(99,102,241,0.4)';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = isGeneratingPlan 
+                                ? 'rgba(156,163,175,0.5)' 
+                                : 'rgba(99,102,241,0.8)';
+                              e.currentTarget.style.transform = 'translateY(0)';
+                              e.currentTarget.style.boxShadow = 'none';
+                            }}
+                          >
+                            {isGeneratingPlan ? (
+                              <>
+                                <span style={{
+                                  display: 'inline-block',
+                                  width: '16px',
+                                  height: '16px',
+                                  border: '2px solid white',
+                                  borderTop: '2px solid transparent',
+                                  borderRadius: '50%',
+                                  animation: 'spin 1s linear infinite'
+                                }}></span>
+                                生成中...
+                              </>
+                            ) : (
+                              <>
+                                🚀 プラン生成
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        
+                        {/* 説明 */}
+                        {!aiTrainingPlan && !planError && (
+                          <div style={{
+                            padding: '16px',
+                            background: 'rgba(255,255,255,0.1)',
+                            borderRadius: '8px',
+                            fontSize: '0.9rem',
+                            lineHeight: '1.6'
+                          }}>
+                            <p style={{ margin: '0 0 8px 0' }}>
+                              <strong>🎯 AIが科学的根拠に基づいた個別最適化トレーニングプランを生成します</strong>
+                            </p>
+                            <ul style={{ margin: '0', paddingLeft: '20px' }}>
+                              <li>H-FVP分析結果を考慮した課題特定</li>
+                              <li>目標達成までの期間別トレーニング（8週間）</li>
+                              <li>具体的なメニュー（セット数・レップ数・負荷）</li>
+                              <li>各トレーニングの科学的根拠と論文引用</li>
+                              <li>進捗確認指標と注意事項</li>
+                            </ul>
+                            <p style={{ margin: '12px 0 0 0', fontSize: '0.85rem', opacity: 0.8 }}>
+                              ※ 生成には20-30秒かかります
+                            </p>
+                          </div>
+                        )}
+                        
+                        {/* エラー表示 */}
+                        {planError && (
+                          <div style={{
+                            padding: '16px',
+                            background: 'rgba(239,68,68,0.2)',
+                            border: '2px solid rgba(239,68,68,0.4)',
+                            borderRadius: '8px',
+                            color: 'white',
+                            fontSize: '0.9rem'
+                          }}>
+                            ⚠️ {planError}
+                          </div>
+                        )}
+                        
+                        {/* AIトレーニングプラン表示 */}
+                        {aiTrainingPlan && (
+                          <div style={{
+                            padding: '20px',
+                            background: 'rgba(255,255,255,0.95)',
+                            borderRadius: '8px',
+                            color: '#1f2937',
+                            fontSize: '0.95rem',
+                            lineHeight: '1.8',
+                            maxHeight: '600px',
+                            overflowY: 'auto'
+                          }}>
+                            <style>{`
+                              @keyframes spin {
+                                0% { transform: rotate(0deg); }
+                                100% { transform: rotate(360deg); }
+                              }
+                            `}</style>
+                            <div 
+                              style={{ whiteSpace: 'pre-wrap' }}
+                              dangerouslySetInnerHTML={{
+                                __html: aiTrainingPlan
+                                  .replace(/^## (.*$)/gim, '<h2 style="font-size: 1.3rem; font-weight: bold; margin: 24px 0 12px 0; color: #4f46e5;">$1</h2>')
+                                  .replace(/^### (.*$)/gim, '<h3 style="font-size: 1.1rem; font-weight: bold; margin: 20px 0 10px 0; color: #6366f1;">$1</h3>')
+                                  .replace(/^\*\*(.*?)\*\*/gim, '<strong style="font-weight: bold; color: #1f2937;">$1</strong>')
+                                  .replace(/^- (.*$)/gim, '<li style="margin-left: 20px;">$1</li>')
+                                  .replace(/^\d+\. (.*$)/gim, '<li style="margin-left: 20px; list-style-type: decimal;">$1</li>')
+                                  .replace(/\n\n/g, '<br/><br/>')
+                              }}
+                            />
+                          </div>
+                        )}
                       </div>
                     )}
                     
