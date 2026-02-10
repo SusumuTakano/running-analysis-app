@@ -3060,6 +3060,100 @@ const clearMarksByButton = () => {
       const DRF = slope_rf; // %/(m/s)
       const RF_max = intercept_rf; // 理論上の最大RF (%)
       
+      // 🎯 AI改善提案の生成
+      const generateImprovementGoals = () => {
+        const goals = [];
+        
+        // 体重別の標準値（アスリートレベル）
+        const weight = athleteInfo.weight_kg;
+        
+        // F0の評価と目標
+        const F0_target = weight * 4.5; // 理想値: 体重×4.5 N/kg
+        const F0_excellent = weight * 5.5; // 優秀: 体重×5.5 N/kg
+        const F0_percent = (F0 / F0_target) * 100;
+        
+        if (F0 < F0_target) {
+          goals.push({
+            category: '筋力・爆発力',
+            current: F0.toFixed(1) + ' N',
+            target: F0_target.toFixed(1) + ' N',
+            excellent: F0_excellent.toFixed(1) + ' N',
+            improvement: ((F0_target - F0) / F0 * 100).toFixed(1) + '%',
+            level: F0_percent < 70 ? '初級' : F0_percent < 90 ? '中級' : '上級',
+            recommendation: 'ウェイトトレーニング（スクワット、デッドリフト）を週3回。プライオメトリクス（ジャンプ系）も追加。'
+          });
+        }
+        
+        // V0の評価と目標
+        const V0_target = 11.0; // 理想値: 11.0 m/s
+        const V0_excellent = 12.0; // 優秀: 12.0 m/s
+        const V0_percent = (v0 / V0_target) * 100;
+        
+        if (v0 < V0_target) {
+          goals.push({
+            category: '最大速度',
+            current: v0.toFixed(2) + ' m/s',
+            target: V0_target.toFixed(2) + ' m/s',
+            excellent: V0_excellent.toFixed(2) + ' m/s',
+            improvement: ((V0_target - v0) / v0 * 100).toFixed(1) + '%',
+            level: V0_percent < 70 ? '初級' : V0_percent < 90 ? '中級' : '上級',
+            recommendation: '最大速度走（30-40m）を週2回。フライングスタートや風抵抗走も効果的。'
+          });
+        }
+        
+        // Pmaxの評価と目標
+        const Pmax_target = weight * 15; // 理想値: 体重×15 W/kg
+        const Pmax_excellent = weight * 20; // 優秀: 体重×20 W/kg
+        const Pmax_percent = (Pmax / Pmax_target) * 100;
+        
+        if (Pmax < Pmax_target) {
+          goals.push({
+            category: 'パワー出力',
+            current: Pmax.toFixed(0) + ' W',
+            target: Pmax_target.toFixed(0) + ' W',
+            excellent: Pmax_excellent.toFixed(0) + ' W',
+            improvement: ((Pmax_target - Pmax) / Pmax * 100).toFixed(1) + '%',
+            level: Pmax_percent < 70 ? '初級' : Pmax_percent < 90 ? '中級' : '上級',
+            recommendation: 'パワークリーン、メディシンボール投げ。加速ダッシュ（0-30m）を週2-3回。'
+          });
+        }
+        
+        // 0-10m加速度の評価
+        const first_interval = intervals[0];
+        const a_10m_target = 4.0; // 理想値: 4.0 m/s²
+        const a_10m_excellent = 5.0; // 優秀: 5.0 m/s²
+        
+        if (first_interval && first_interval.acceleration < a_10m_target) {
+          goals.push({
+            category: '初期加速（0-10m）',
+            current: first_interval.acceleration.toFixed(2) + ' m/s²',
+            target: a_10m_target.toFixed(2) + ' m/s²',
+            excellent: a_10m_excellent.toFixed(2) + ' m/s²',
+            improvement: ((a_10m_target - first_interval.acceleration) / first_interval.acceleration * 100).toFixed(1) + '%',
+            level: (first_interval.acceleration / a_10m_target * 100) < 70 ? '初級' : (first_interval.acceleration / a_10m_target * 100) < 90 ? '中級' : '上級',
+            recommendation: 'スタート練習（クラウチングスタート）。ヒルスプリント（坂道ダッシュ）で前傾姿勢を強化。'
+          });
+        }
+        
+        // 全体評価
+        const overall_score = (F0_percent + V0_percent + Pmax_percent) / 3;
+        
+        return {
+          goals,
+          overall_score: overall_score.toFixed(1),
+          overall_level: overall_score < 70 ? '初級' : overall_score < 85 ? '中級' : overall_score < 95 ? '上級' : 'エリート',
+          summary: overall_score >= 95 
+            ? '素晴らしいパフォーマンスです！現状維持と微調整に集中しましょう。' 
+            : overall_score >= 85 
+            ? '良好なパフォーマンスです。特定の弱点を集中的に改善しましょう。'
+            : overall_score >= 70
+            ? '基礎的な力は備わっています。バランスよくトレーニングを継続しましょう。'
+            : '基礎体力と技術の向上が必要です。段階的にトレーニングを積み重ねましょう。'
+        };
+      };
+      
+      const improvementGoals = generateImprovementGoals();
+      
       hfvpData = {
         F0,      // 最大推進力 (N)
         v0,      // 理論最大速度 (m/s)
@@ -3067,7 +3161,8 @@ const clearMarksByButton = () => {
         a0,      // 初期加速度 (m/s²)
         DRF,     // RF低下率 (%/(m/s))
         RF_max,  // 理論最大RF (%)
-        points: hfvpPoints
+        points: hfvpPoints,
+        improvementGoals // AI改善提案を追加
       };
       
       // デバッグログ
@@ -5165,8 +5260,37 @@ const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
               correctedWidth = 1920;
               correctedHeight = 1080;
             } else {
-              // 本当の4K動画
+              // 本当の4K動画 → ユーザーに確認ダイアログを表示
               console.log(`✅ ファイルサイズ ${fileSizeMB.toFixed(0)}MB から判定: 真の4K動画`);
+              
+              // 🎯 4K動画の自動HDスケール設定（確認ダイアログ）
+              const use4K = window.confirm(
+                `4K動画が検出されました（3840×2160）\n` +
+                `ファイルサイズ: ${fileSizeMB.toFixed(1)}MB\n\n` +
+                `推奨: 処理速度とメモリ使用量を考慮し、HD（1920×1080）にスケールして読み込みます。\n\n` +
+                `【OK】: HD（1920×1080）で読み込む（推奨・高速）\n` +
+                `【キャンセル】: 4K（3840×2160）で読み込む（低速・大容量メモリ使用）\n\n` +
+                `HD（1920×1080）で読み込みますか？`
+              );
+              
+              if (use4K) {
+                // ユーザーが「OK」を選択 → HDにスケール
+                console.log(`✅ ユーザー選択: HD（1920×1080）にスケールして読み込み`);
+                correctedWidth = 1920;
+                correctedHeight = 1080;
+                alert(`HD（1920×1080）で読み込みます。\n処理が高速化され、メモリ使用量も削減されます。`);
+              } else {
+                // ユーザーが「キャンセル」を選択 → 4Kのまま
+                console.log(`⚠️ ユーザー選択: 4K（3840×2160）で読み込み（低速・大容量）`);
+                alert(
+                  `4K（3840×2160）で読み込みます。\n\n` +
+                  `注意:\n` +
+                  `- 処理時間が長くなります（2-3倍）\n` +
+                  `- メモリ使用量が大幅に増加します（4倍）\n` +
+                  `- ブラウザがクラッシュする可能性があります\n\n` +
+                  `推奨: HD（1920×1080）で十分な精度が得られます。`
+                );
+              }
             }
           }
           
@@ -12503,6 +12627,187 @@ case 6: {
                             <canvas id="fv-curve-chart" style={{ width: '100%', height: '300px' }}></canvas>
                           </div>
                         </div>
+                        
+                        {/* 🎯 AI改善提案 */}
+                        {panningSprintAnalysis.hfvpData.improvementGoals && (
+                          <div style={{ marginTop: '32px' }}>
+                            <h5 style={{ 
+                              margin: '0 0 16px 0',
+                              fontSize: '1.2rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px'
+                            }}>
+                              🎯 AI改善提案
+                              <span style={{ 
+                                fontSize: '0.7rem', 
+                                padding: '2px 8px', 
+                                background: 'rgba(255,255,255,0.2)', 
+                                borderRadius: '4px' 
+                              }}>
+                                Improvement Goals
+                              </span>
+                            </h5>
+                            
+                            {/* 総合評価 */}
+                            <div style={{
+                              padding: '16px',
+                              background: 'rgba(255,255,255,0.2)',
+                              borderRadius: '10px',
+                              marginBottom: '20px',
+                              border: '2px solid rgba(255,255,255,0.3)'
+                            }}>
+                              <div style={{ 
+                                display: 'flex', 
+                                justifyContent: 'space-between', 
+                                alignItems: 'center',
+                                marginBottom: '12px'
+                              }}>
+                                <div style={{ fontSize: '1rem', fontWeight: 'bold' }}>総合スコア</div>
+                                <div style={{ 
+                                  fontSize: '1.8rem', 
+                                  fontWeight: 'bold',
+                                  color: panningSprintAnalysis.hfvpData.improvementGoals.overall_score >= 95 ? '#10b981' :
+                                         panningSprintAnalysis.hfvpData.improvementGoals.overall_score >= 85 ? '#3b82f6' :
+                                         panningSprintAnalysis.hfvpData.improvementGoals.overall_score >= 70 ? '#f59e0b' : '#ef4444'
+                                }}>
+                                  {panningSprintAnalysis.hfvpData.improvementGoals.overall_score}点
+                                </div>
+                              </div>
+                              <div style={{
+                                padding: '8px 12px',
+                                background: 'rgba(255,255,255,0.15)',
+                                borderRadius: '6px',
+                                fontSize: '0.85rem',
+                                marginBottom: '8px'
+                              }}>
+                                レベル: <strong>{panningSprintAnalysis.hfvpData.improvementGoals.overall_level}</strong>
+                              </div>
+                              <div style={{ 
+                                fontSize: '0.9rem', 
+                                lineHeight: '1.5',
+                                opacity: 0.95
+                              }}>
+                                {panningSprintAnalysis.hfvpData.improvementGoals.summary}
+                              </div>
+                            </div>
+                            
+                            {/* 各項目の改善目標 */}
+                            {panningSprintAnalysis.hfvpData.improvementGoals.goals.length > 0 && (
+                              <div style={{
+                                display: 'grid',
+                                gap: '16px'
+                              }}>
+                                {panningSprintAnalysis.hfvpData.improvementGoals.goals.map((goal, idx) => (
+                                  <div key={idx} style={{
+                                    padding: '16px',
+                                    background: 'rgba(255,255,255,0.15)',
+                                    borderRadius: '10px',
+                                    border: '1px solid rgba(255,255,255,0.25)'
+                                  }}>
+                                    <div style={{ 
+                                      display: 'flex', 
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      marginBottom: '12px'
+                                    }}>
+                                      <h6 style={{ 
+                                        margin: 0, 
+                                        fontSize: '1rem',
+                                        fontWeight: 'bold'
+                                      }}>
+                                        {goal.category}
+                                      </h6>
+                                      <span style={{
+                                        padding: '4px 10px',
+                                        background: goal.level === '初級' ? 'rgba(239,68,68,0.3)' :
+                                                   goal.level === '中級' ? 'rgba(245,158,11,0.3)' :
+                                                   'rgba(59,130,246,0.3)',
+                                        borderRadius: '6px',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 'bold'
+                                      }}>
+                                        {goal.level}
+                                      </span>
+                                    </div>
+                                    
+                                    <div style={{
+                                      display: 'grid',
+                                      gridTemplateColumns: 'repeat(3, 1fr)',
+                                      gap: '12px',
+                                      marginBottom: '12px',
+                                      fontSize: '0.85rem'
+                                    }}>
+                                      <div>
+                                        <div style={{ opacity: 0.8, fontSize: '0.75rem' }}>現在値</div>
+                                        <div style={{ fontWeight: 'bold', fontSize: '1rem' }}>{goal.current}</div>
+                                      </div>
+                                      <div>
+                                        <div style={{ opacity: 0.8, fontSize: '0.75rem' }}>目標値</div>
+                                        <div style={{ fontWeight: 'bold', fontSize: '1rem', color: '#10b981' }}>{goal.target}</div>
+                                      </div>
+                                      <div>
+                                        <div style={{ opacity: 0.8, fontSize: '0.75rem' }}>優秀値</div>
+                                        <div style={{ fontWeight: 'bold', fontSize: '1rem', color: '#3b82f6' }}>{goal.excellent}</div>
+                                      </div>
+                                    </div>
+                                    
+                                    <div style={{
+                                      padding: '10px',
+                                      background: 'rgba(0,0,0,0.2)',
+                                      borderRadius: '6px',
+                                      marginBottom: '10px'
+                                    }}>
+                                      <div style={{ fontSize: '0.75rem', opacity: 0.9, marginBottom: '4px' }}>
+                                        必要な改善率
+                                      </div>
+                                      <div style={{ 
+                                        fontSize: '1.2rem', 
+                                        fontWeight: 'bold',
+                                        color: '#fbbf24'
+                                      }}>
+                                        +{goal.improvement}
+                                      </div>
+                                    </div>
+                                    
+                                    <div style={{
+                                      padding: '12px',
+                                      background: 'rgba(255,255,255,0.1)',
+                                      borderRadius: '6px',
+                                      fontSize: '0.85rem',
+                                      lineHeight: '1.5'
+                                    }}>
+                                      <div style={{ 
+                                        fontWeight: 'bold', 
+                                        marginBottom: '6px',
+                                        opacity: 0.9
+                                      }}>
+                                        💡 推奨トレーニング
+                                      </div>
+                                      {goal.recommendation}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {panningSprintAnalysis.hfvpData.improvementGoals.goals.length === 0 && (
+                              <div style={{
+                                padding: '20px',
+                                background: 'rgba(16,185,129,0.2)',
+                                borderRadius: '10px',
+                                border: '2px solid rgba(16,185,129,0.4)',
+                                textAlign: 'center',
+                                fontSize: '1rem'
+                              }}>
+                                🎉 素晴らしい！すべての指標が目標値を達成しています！<br/>
+                                <span style={{ fontSize: '0.85rem', opacity: 0.9 }}>
+                                  現状維持とさらなる向上を目指してトレーニングを継続しましょう。
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
