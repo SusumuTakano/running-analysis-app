@@ -3188,8 +3188,101 @@ const clearMarksByButton = () => {
       });
     }
     
-    // 100m推定タイム（最大速度を維持すると仮定）
-    const estimated100mTime = totalTime + (100 - totalDistance) / maxSpeed;
+    // 🎯 100m推定タイム（AIベースの高精度予測）
+    // 
+    // 方法: 速度-距離の関係をモデル化し、50m以降の速度を予測
+    // 
+    // アプローチ:
+    // 1. 0-50mの速度変化パターンから加速度の減衰率を計算
+    // 2. 50-100mでは加速度がさらに低下し、最終的に減速
+    // 3. 各10m区間の予測タイムを積算
+    
+    let estimated100mTime = totalTime;
+    
+    if (totalDistance >= 40 && intervals.length >= 4) {
+      // 加速度の変化パターンを分析
+      const accelerations = intervals.map(i => i.acceleration);
+      
+      // 最後の2区間の加速度（減速傾向を確認）
+      const lastAccel = accelerations[accelerations.length - 1];
+      const secondLastAccel = accelerations[accelerations.length - 2];
+      
+      // 加速度の変化率（減衰率）
+      const accelDecayRate = secondLastAccel > 0 
+        ? (lastAccel - secondLastAccel) / secondLastAccel 
+        : -0.2; // デフォルト: -20%
+      
+      // 最後の区間の終了速度（50m地点）
+      const v50 = intervals[intervals.length - 1].v_end;
+      
+      // 50-100mの各10m区間を予測
+      let currentVelocity = v50;
+      let currentTime = totalTime;
+      let predictedAccel = lastAccel;
+      
+      console.log('🔮 100m予測計算:', {
+        '50m地点の速度': v50.toFixed(2) + ' m/s',
+        '最終区間の加速度': lastAccel.toFixed(3) + ' m/s²',
+        '加速度減衰率': (accelDecayRate * 100).toFixed(1) + '%',
+      });
+      
+      // 50-100mの各10m区間をシミュレーション
+      for (let dist = 50; dist < 100; dist += 10) {
+        // 加速度を減衰させる（減速方向へ）
+        predictedAccel = predictedAccel * (1 + accelDecayRate * 0.8);
+        
+        // 速度の減衰も考慮（トップスピード以降は維持または減速）
+        if (predictedAccel < 0) {
+          // 減速している場合
+          predictedAccel = Math.max(predictedAccel, -0.5); // 最大減速を制限
+        } else if (predictedAccel > 0 && predictedAccel < 0.2) {
+          // ほぼ速度維持
+          predictedAccel = 0.1;
+        }
+        
+        // 次の10m区間の平均速度を計算
+        // v_avg = (v_start + v_end) / 2
+        // v_end = v_start + a × t
+        // distance = v_avg × t = v_start × t + 0.5 × a × t²
+        // 10 = v_start × t + 0.5 × a × t²
+        
+        // 簡易計算: t = distance / v_avg（等加速度運動の近似）
+        const nextVelocity = currentVelocity + predictedAccel * (10 / currentVelocity);
+        const avgVelocityInInterval = (currentVelocity + nextVelocity) / 2;
+        const timeForInterval = 10 / avgVelocityInInterval;
+        
+        console.log(`  ${dist}-${dist+10}m:`, {
+          '開始速度': currentVelocity.toFixed(2) + ' m/s',
+          '終了速度': nextVelocity.toFixed(2) + ' m/s',
+          '加速度': predictedAccel.toFixed(3) + ' m/s²',
+          '区間タイム': timeForInterval.toFixed(3) + 's'
+        });
+        
+        currentTime += timeForInterval;
+        currentVelocity = nextVelocity;
+      }
+      
+      estimated100mTime = currentTime;
+      
+      console.log('🏁 100m予測結果:', {
+        '50mタイム': totalTime.toFixed(3) + 's',
+        '100m予測タイム': estimated100mTime.toFixed(3) + 's',
+        '50-100m区間': (estimated100mTime - totalTime).toFixed(3) + 's',
+        '100m地点の予測速度': currentVelocity.toFixed(2) + ' m/s'
+      });
+      
+    } else {
+      // データ不足の場合は、最大速度の90%を維持すると仮定
+      const remainingDistance = 100 - totalDistance;
+      const estimatedSpeedFor50_100m = maxSpeed * 0.9;
+      estimated100mTime = totalTime + remainingDistance / estimatedSpeedFor50_100m;
+      
+      console.log('⚠️ データ不足: 簡易推定を使用', {
+        '残り距離': remainingDistance.toFixed(1) + 'm',
+        '推定速度': estimatedSpeedFor50_100m.toFixed(2) + ' m/s',
+        '100m予測タイム': estimated100mTime.toFixed(3) + 's'
+      });
+    }
     
     console.log(`📊 Panning Sprint Analysis:`, {
       totalDistance,
