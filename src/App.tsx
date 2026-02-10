@@ -31,6 +31,70 @@ import MultiCameraAnalyzer from "./components/MultiCameraAnalyzer";
 import { parseMedia } from "@remotion/media-parser";
 import { calculateHFVP, calculateHFVPFromPanningSplits, type HFVPResult, type StepDataForHFVP, type PanningSplitDataForHFVP } from './utils/hfvpCalculator';
 
+// ===== H-FVP display helpers (ADD) =====
+type XY = { x: number; y: number };
+
+type RegressionResult = {
+  slope: number;
+  intercept: number;
+  r2: number;
+};
+
+const isFiniteNumber = (v: unknown): v is number =>
+  typeof v === "number" && Number.isFinite(v);
+
+const round = (v: number, d = 2): number => {
+  const p = 10 ** d;
+  return Math.round(v * p) / p;
+};
+
+const linearRegression = (points: XY[]): RegressionResult | null => {
+  if (!points || points.length < 2) return null;
+
+  const n = points.length;
+  const sx = points.reduce((s, p) => s + p.x, 0);
+  const sy = points.reduce((s, p) => s + p.y, 0);
+  const sxx = points.reduce((s, p) => s + p.x * p.x, 0);
+  const sxy = points.reduce((s, p) => s + p.x * p.y, 0);
+
+  const den = n * sxx - sx * sx;
+  if (Math.abs(den) < 1e-12) return null;
+
+  const slope = (n * sxy - sx * sy) / den;
+  const intercept = (sy - slope * sx) / n;
+
+  const yMean = sy / n;
+  let ssTot = 0;
+  let ssRes = 0;
+  for (const p of points) {
+    const yHat = slope * p.x + intercept;
+    ssTot += (p.y - yMean) ** 2;
+    ssRes += (p.y - yHat) ** 2;
+  }
+  const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 1;
+
+  return { slope, intercept, r2 };
+};
+
+const r2FromActualPred = (actual: number[], pred: number[]): number | null => {
+  if (actual.length !== pred.length || actual.length < 2) return null;
+  const mean = actual.reduce((s, v) => s + v, 0) / actual.length;
+  let ssTot = 0;
+  let ssRes = 0;
+  for (let i = 0; i < actual.length; i++) {
+    ssTot += (actual[i] - mean) ** 2;
+    ssRes += (actual[i] - pred[i]) ** 2;
+  }
+  return ssTot > 0 ? 1 - ssRes / ssTot : 1;
+};
+
+const qualityLabel = (r2: number | null): "優" | "良" | "可" | "-" => {
+  if (r2 === null || !Number.isFinite(r2)) return "-";
+  if (r2 >= 0.99) return "優";
+  if (r2 >= 0.97) return "良";
+  return "可";
+};
+
 /** ウィザードのステップ */
 type WizardStep = 0 | 1 | 2 | 3 | 3.5 | 4 | 5 | 5.5 | 6 | 6.5 | 7 | 8 | 9;
 
@@ -3051,7 +3115,87 @@ const clearMarksByButton = () => {
       estimated100mTime,
       hfvpData // H-FVPデータを追加
     };
-  }, [analysisMode, panningSplits, panningStartIndex, panningEndIndex]);
+  }, [analysisMode, panningSplits, panningStartIndex, panningEndIndex, athleteInfo.weight_kg]);
+
+  // ===== H-FVP dashboard values (ADD) =====
+  const hfvpDashboard = useMemo(() => {
+    // --- 既存変数名に合わせて置換 ---
+    // 1) 体重(kg)
+    const massKg = athleteInfo.weight_kg ?? 60;
+    
+    // 2) 既存H-FVPカード値（絶対値）
+    const hfvpData = panningSprintAnalysis?.hfvpData;
+    if (!hfvpData) return null;
+    
+    const F0 = hfvpData.F0 ?? 0;   // N
+    const V0 = hfvpData.v0 ?? 0;   // m/s
+    const Pmax = hfvpData.Pmax ?? 0; // W
+    
+    // 3) 既存の「各地点(区間代表値)」配列
+    const rows = hfvpData.points ?? [];
+    
+    // 4) 10mスプリット配列（位置フィットR²用）
+    const intervals = panningSprintAnalysis?.intervals ?? [];
+    const splitTimes = intervals.map(int => int.time); // 各区間のタイム
+    const segmentDistance = 10;
+    // --- ここまで ---
+
+    if (!isFiniteNumber(massKg) || massKg <= 0) return null;
+    if (F0 <= 0 || V0 <= 0) return null;
+
+    // 相対値
+    const f0Rel = F0 / massKg;      // N/kg
+    const pmaxRel = Pmax / massKg;  // W/kg
+
+    // Vmax（実測最大）
+    const vmax = rows.length ? Math.max(...rows.map((r) => r.velocity || 0)) : 0;
+
+    // RF点: 既存定義を維持して F/F0*100（0m除外）
+    const rfPoints = rows
+      .filter((r) => r.velocity > 0 && isFiniteNumber(r.force) && F0 > 0)
+      .map((r) => ({ x: r.velocity, y: (r.force / F0) * 100 }));
+
+    const rfReg = linearRegression(rfPoints);
+    const rfmax = rfReg ? rfReg.intercept : null; // %
+    const drf = rfReg ? rfReg.slope : null;       // %/(m/s), 通常は負
+
+    // F-v 回帰R²（品質）
+    const fvPoints = rows
+      .filter((r) => isFiniteNumber(r.velocity) && isFiniteNumber(r.force))
+      .map((r) => ({ x: r.velocity, y: r.force }));
+    const fvReg = linearRegression(fvPoints);
+
+    // τ（単純モデル）: tau = m*V0/F0 = V0/(F0/m)
+    const tau = F0 > 0 ? (massKg * V0) / F0 : null;
+
+    // 位置フィットR²: x(t)=V0*(t - tau*(1-exp(-t/tau)))
+    let posR2: number | null = null;
+    if (tau && tau > 0 && splitTimes.length >= 2) {
+      const tCum: number[] = [];
+      let t = 0;
+      for (const dt of splitTimes) {
+        t += dt;
+        tCum.push(t);
+      }
+      const xActual = tCum.map((_, i) => (i + 1) * segmentDistance);
+      const xPred = tCum.map((tc) => V0 * (tc - tau * (1 - Math.exp(-tc / tau))));
+      posR2 = r2FromActualPred(xActual, xPred);
+    }
+
+    return {
+      f0Rel: round(f0Rel, 2),
+      v0: round(V0, 2),
+      pmaxRel: round(pmaxRel, 2),
+      rfmax: rfmax !== null ? round(Math.max(0, Math.min(100, rfmax)), 1) : null,
+      drf: drf !== null ? round(drf, 2) : null,
+      vmax: round(vmax, 2),
+      tau: tau !== null ? round(tau, 2) : null,
+      fvR2: fvReg ? round(fvReg.r2, 3) : null,
+      posR2: posR2 !== null ? round(posR2, 3) : null,
+      fvQuality: qualityLabel(fvReg ? fvReg.r2 : null),
+      posQuality: qualityLabel(posR2),
+    };
+  }, [athleteInfo.weight_kg, panningSprintAnalysis]);
 
   // 🔬 H-FVP計算（水平力-速度プロファイル）
   const hfvpAnalysis = useMemo(() => {
@@ -11537,8 +11681,8 @@ case 6: {
                       ))}
                     </div>
                     
-                    {/* H-FVP分析（Horizontal Force-Velocity Profile） */}
-                    {panningSprintAnalysis.hfvpData && (
+                    {/* ===== H-FVP結果パネル（ADD/REPLACE）===== */}
+                    {hfvpDashboard && (
                       <div style={{
                         marginTop: '24px',
                         padding: '20px',
@@ -11553,36 +11697,34 @@ case 6: {
                           alignItems: 'center',
                           gap: '8px'
                         }}>
-                          🔬 H-FVP分析
+                          🔬 H-FVP結果
                           <span style={{ 
                             fontSize: '0.7rem', 
                             padding: '2px 6px', 
                             background: 'rgba(255,255,255,0.2)', 
                             borderRadius: '4px' 
                           }}>
-                            Force-Velocity Profile
+                            Horizontal Force-Velocity Profile
                           </span>
                         </h4>
                         
-                        {/* 主要指標 */}
+                        {/* 1段目: F0(相対), V0, Pmax(相対), RFmax */}
                         <div style={{
                           display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
                           gap: '12px',
-                          marginBottom: '20px'
+                          marginBottom: '12px'
                         }}>
                           <div style={{
                             padding: '14px',
                             background: 'rgba(255,255,255,0.15)',
                             borderRadius: '8px'
                           }}>
-                            <div style={{ fontSize: '0.8rem', opacity: 0.9, marginBottom: '4px' }}>最大推進力 F0</div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold' }}>
-                              {panningSprintAnalysis.hfvpData.F0.toFixed(1)} N
+                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>F0（相対）</div>
+                            <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
+                              {hfvpDashboard.f0Rel}
                             </div>
-                            <div style={{ fontSize: '0.7rem', opacity: 0.7, marginTop: '2px' }}>
-                              体重 × 初期加速度
-                            </div>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>N/kg</div>
                           </div>
                           
                           <div style={{
@@ -11590,13 +11732,11 @@ case 6: {
                             background: 'rgba(255,255,255,0.15)',
                             borderRadius: '8px'
                           }}>
-                            <div style={{ fontSize: '0.8rem', opacity: 0.9, marginBottom: '4px' }}>理論最大速度 V0</div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold' }}>
-                              {panningSprintAnalysis.hfvpData.v0.toFixed(2)} m/s
+                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>V0</div>
+                            <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
+                              {hfvpDashboard.v0}
                             </div>
-                            <div style={{ fontSize: '0.7rem', opacity: 0.7, marginTop: '2px' }}>
-                              加速度ゼロでの速度
-                            </div>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>m/s</div>
                           </div>
                           
                           <div style={{
@@ -11604,13 +11744,11 @@ case 6: {
                             background: 'rgba(255,255,255,0.15)',
                             borderRadius: '8px'
                           }}>
-                            <div style={{ fontSize: '0.8rem', opacity: 0.9, marginBottom: '4px' }}>最大パワー Pmax</div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold' }}>
-                              {panningSprintAnalysis.hfvpData.Pmax.toFixed(0)} W
+                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>Pmax（相対）</div>
+                            <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
+                              {hfvpDashboard.pmaxRel}
                             </div>
-                            <div style={{ fontSize: '0.7rem', opacity: 0.7, marginTop: '2px' }}>
-                              F0 × V0 / 4
-                            </div>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>W/kg</div>
                           </div>
                           
                           <div style={{
@@ -11618,24 +11756,114 @@ case 6: {
                             background: 'rgba(255,255,255,0.15)',
                             borderRadius: '8px'
                           }}>
-                            <div style={{ fontSize: '0.8rem', opacity: 0.9, marginBottom: '4px' }}>DRF (RF低下率)</div>
-                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold' }}>
-                              {panningSprintAnalysis.hfvpData.DRF.toFixed(2)} %/(m/s)
+                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>RFmax</div>
+                            <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
+                              {hfvpDashboard.rfmax !== null ? hfvpDashboard.rfmax : '-'}
                             </div>
-                            <div style={{ fontSize: '0.7rem', opacity: 0.7, marginTop: '2px' }}>
-                              速度増加に伴うRF低下
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>%</div>
+                          </div>
+                        </div>
+                        
+                        {/* 2段目: DRF, Vmax, τ */}
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                          gap: '12px',
+                          marginBottom: '16px'
+                        }}>
+                          <div style={{
+                            padding: '14px',
+                            background: 'rgba(255,255,255,0.15)',
+                            borderRadius: '8px'
+                          }}>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>DRF</div>
+                            <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
+                              {hfvpDashboard.drf !== null ? hfvpDashboard.drf : '-'}
+                            </div>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>% per m/s</div>
+                          </div>
+                          
+                          <div style={{
+                            padding: '14px',
+                            background: 'rgba(255,255,255,0.15)',
+                            borderRadius: '8px'
+                          }}>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>Vmax（実測）</div>
+                            <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
+                              {hfvpDashboard.vmax}
+                            </div>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>m/s</div>
+                          </div>
+                          
+                          <div style={{
+                            padding: '14px',
+                            background: 'rgba(255,255,255,0.15)',
+                            borderRadius: '8px'
+                          }}>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>τ（tau）</div>
+                            <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
+                              {hfvpDashboard.tau !== null ? hfvpDashboard.tau : '-'}
+                            </div>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>s</div>
+                          </div>
+                        </div>
+                        
+                        {/* データ品質 */}
+                        <div style={{
+                          padding: '14px',
+                          background: 'rgba(255,255,255,0.1)',
+                          borderRadius: '8px',
+                          marginBottom: '20px'
+                        }}>
+                          <h5 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', fontWeight: 'bold' }}>データ品質</h5>
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                            gap: '10px'
+                          }}>
+                            <div style={{
+                              padding: '10px',
+                              background: 'rgba(255,255,255,0.1)',
+                              borderRadius: '6px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between'
+                            }}>
+                              <div>
+                                <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>F-v回帰 R²</div>
+                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold' }}>
+                                  {hfvpDashboard.fvR2 !== null ? hfvpDashboard.fvR2 : '-'}
+                                </div>
+                              </div>
+                              <div style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{hfvpDashboard.fvQuality}</div>
+                            </div>
+                            <div style={{
+                              padding: '10px',
+                              background: 'rgba(255,255,255,0.1)',
+                              borderRadius: '6px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between'
+                            }}>
+                              <div>
+                                <div style={{ fontSize: '0.75rem', opacity: 0.8 }}>位置フィット R²</div>
+                                <div style={{ fontSize: '1.3rem', fontWeight: 'bold' }}>
+                                  {hfvpDashboard.posR2 !== null ? hfvpDashboard.posR2 : '-'}
+                                </div>
+                              </div>
+                              <div style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{hfvpDashboard.posQuality}</div>
                             </div>
                           </div>
                         </div>
                         
-                        {/* 各地点のH-FVP指標 */}
+                        {/* 各区間代表値のH-FVP指標 */}
                         <div style={{ marginTop: '20px' }}>
                           <h5 style={{ 
                             margin: '0 0 12px 0',
                             fontSize: '1rem',
                             opacity: 0.95
                           }}>
-                            📊 各地点の力・速度・パワー・RF
+                            📊 各区間代表値の力・速度・パワー・RF
                           </h5>
                           <div style={{
                             display: 'grid',
@@ -11652,7 +11880,7 @@ case 6: {
                                 fontSize: '0.85rem'
                               }}>
                                 <div>
-                                  <div style={{ opacity: 0.8, fontSize: '0.75rem' }}>地点</div>
+                                  <div style={{ opacity: 0.8, fontSize: '0.75rem' }}>区間代表</div>
                                   <div style={{ fontWeight: 'bold' }}>{point.distance.toFixed(0)}m</div>
                                 </div>
                                 <div>
