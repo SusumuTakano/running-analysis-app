@@ -5654,11 +5654,34 @@ setUsedTargetFps(targetFps);
       console.log(`💾 Full resolution would use: ${fullResMemoryMB.toFixed(0)}MB`);
       console.log(`💾 Scaled to ${MAX_WIDTH}px would use: ${scaledMemoryMB.toFixed(0)}MB`);
       
-      if (confirm(`4K動画が検出されました（${actualVideoWidth}x${actualVideoHeight}）\n\nフル解像度で処理しますか？\n\n「OK」: フル解像度（${fullResMemoryMB.toFixed(0)}MB使用、高精度）\n「キャンセル」: ${MAX_WIDTH}pxにスケール（${scaledMemoryMB.toFixed(0)}MB使用、推奨）`)) {
-        scale = 1; // フル解像度
-        console.log('✅ Processing at full 4K resolution');
+      // 🎯 修正: デフォルトをHDスケールに変更（confirmの論理を反転）
+      const useFullResolution = confirm(
+        `4K動画が検出されました（${actualVideoWidth}x${actualVideoHeight}）\n` +
+        `\n` +
+        `推奨: 処理速度とメモリ使用量を考慮し、HD（${MAX_WIDTH}px）にスケールして処理します。\n` +
+        `\n` +
+        `【OK】: HD（${MAX_WIDTH}px）にスケール（${scaledMemoryMB.toFixed(0)}MB使用、推奨）\n` +
+        `【キャンセル】: フル解像度（${fullResMemoryMB.toFixed(0)}MB使用、低速）\n` +
+        `\n` +
+        `HD（${MAX_WIDTH}px）にスケールして処理しますか？`
+      );
+      
+      if (useFullResolution) {
+        // OKを選択 → HDにスケール（推奨）
+        console.log(`✅ Scaling to ${MAX_WIDTH}px for performance (recommended)`);
+        // scale は既に計算済み（MAX_WIDTH基準）
       } else {
-        console.log(`✅ Scaling to ${MAX_WIDTH}px for performance`);
+        // キャンセルを選択 → フル解像度
+        scale = 1; // フル解像度
+        console.log('⚠️ Processing at full 4K resolution (slow, high memory)');
+        alert(
+          `フル解像度（${actualVideoWidth}x${actualVideoHeight}）で処理します。\n\n` +
+          `注意:\n` +
+          `- メモリ使用量: 約${fullResMemoryMB.toFixed(0)}MB\n` +
+          `- 処理時間が大幅に長くなります\n` +
+          `- ブラウザがクラッシュする可能性があります\n\n` +
+          `推奨: HD（${MAX_WIDTH}px）で十分な精度が得られます。`
+        );
       }
     }
     
