@@ -2961,8 +2961,9 @@ const clearMarksByButton = () => {
         // P (パワー) = F × v
         const P = F * v;
         
-        // DRF (Decrease in Ratio of Force) = F / F0 × 100
-        const DRF = (F / F0) * 100;
+        // RF (Ratio of Force) = F / F0 × 100
+        // 各地点での力の比率
+        const RF = (F / F0) * 100;
         
         return {
           distance: split.distance,
@@ -2971,15 +2972,36 @@ const clearMarksByButton = () => {
           acceleration: a,
           force: F,
           power: P,
-          drf: DRF
+          rf: RF  // DRFではなくRF
         };
       });
+      
+      // DRF（Decrease in Ratio of Force）の計算
+      // RF(v) = RF_max + DRF × v の線形回帰で傾きを求める
+      const rfValues = hfvpPoints.map(p => p.rf);
+      const velocities_rf = hfvpPoints.map(p => p.velocity);
+      
+      const n_rf = rfValues.length;
+      const sum_v_rf = velocities_rf.reduce((s, v) => s + v, 0);
+      const sum_rf = rfValues.reduce((s, rf) => s + rf, 0);
+      const sum_vv_rf = velocities_rf.reduce((s, v) => s + v * v, 0);
+      const sum_v_rf_product = velocities_rf.reduce((s, v, i) => s + v * rfValues[i], 0);
+      
+      // 線形回帰: RF = intercept + slope × v
+      const slope_rf = (n_rf * sum_v_rf_product - sum_v_rf * sum_rf) / (n_rf * sum_vv_rf - sum_v_rf * sum_v_rf);
+      const intercept_rf = (sum_rf - slope_rf * sum_v_rf) / n_rf;
+      
+      // DRF = slope（速度増加に伴うRF低下率）
+      const DRF = slope_rf; // %/(m/s)
+      const RF_max = intercept_rf; // 理論上の最大RF (%)
       
       hfvpData = {
         F0,      // 最大推進力 (N)
         v0,      // 理論最大速度 (m/s)
         Pmax,    // 最大パワー (W)
         a0,      // 初期加速度 (m/s²)
+        DRF,     // RF低下率 (%/(m/s))
+        RF_max,  // 理論最大RF (%)
         points: hfvpPoints
       };
       
@@ -2989,8 +3011,10 @@ const clearMarksByButton = () => {
         'V0 (理論最大速度)': v0.toFixed(2) + ' m/s',
         'Pmax (最大パワー)': Pmax.toFixed(2) + ' W',
         'a0 (初期加速度)': a0.toFixed(2) + ' m/s²',
-        '回帰式': `a = ${a0.toFixed(2)} - ${(a0/v0).toFixed(2)} × v`,
-        '決定係数 R²': 'TODO' // 必要に応じて追加
+        'DRF (RF低下率)': DRF.toFixed(2) + ' %/(m/s)',
+        'RF_max (理論最大RF)': RF_max.toFixed(1) + ' %',
+        '回帰式 (加速度)': `a = ${a0.toFixed(2)} - ${(a0/v0).toFixed(2)} × v`,
+        '回帰式 (RF)': `RF = ${RF_max.toFixed(1)} + ${DRF.toFixed(2)} × v`
       });
       
       console.log('📊 H-FVP Points (各地点):');
@@ -2999,7 +3023,7 @@ const clearMarksByButton = () => {
           '速度 v': point.velocity.toFixed(2) + ' m/s',
           '力 F': point.force.toFixed(0) + ' N',
           'パワー P': point.power.toFixed(0) + ' W',
-          'DRF': point.drf.toFixed(1) + ' %'
+          'RF (力比率)': point.rf.toFixed(1) + ' %'
         });
       });
     }
@@ -11543,7 +11567,7 @@ case 6: {
                         {/* 主要指標 */}
                         <div style={{
                           display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
                           gap: '12px',
                           marginBottom: '20px'
                         }}>
@@ -11588,6 +11612,20 @@ case 6: {
                               F0 × V0 / 4
                             </div>
                           </div>
+                          
+                          <div style={{
+                            padding: '14px',
+                            background: 'rgba(255,255,255,0.15)',
+                            borderRadius: '8px'
+                          }}>
+                            <div style={{ fontSize: '0.8rem', opacity: 0.9, marginBottom: '4px' }}>DRF (RF低下率)</div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 'bold' }}>
+                              {panningSprintAnalysis.hfvpData.DRF.toFixed(2)} %/(m/s)
+                            </div>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7, marginTop: '2px' }}>
+                              速度増加に伴うRF低下
+                            </div>
+                          </div>
                         </div>
                         
                         {/* 各地点のH-FVP指標 */}
@@ -11597,7 +11635,7 @@ case 6: {
                             fontSize: '1rem',
                             opacity: 0.95
                           }}>
-                            📊 各地点の力・速度・パワー
+                            📊 各地点の力・速度・パワー・RF
                           </h5>
                           <div style={{
                             display: 'grid',
@@ -11630,8 +11668,8 @@ case 6: {
                                   <div style={{ fontWeight: 'bold' }}>{point.power.toFixed(0)} W</div>
                                 </div>
                                 <div>
-                                  <div style={{ opacity: 0.8, fontSize: '0.75rem' }}>DRF</div>
-                                  <div style={{ fontWeight: 'bold' }}>{point.drf.toFixed(1)} %</div>
+                                  <div style={{ opacity: 0.8, fontSize: '0.75rem' }}>RF</div>
+                                  <div style={{ fontWeight: 'bold' }}>{point.rf.toFixed(1)} %</div>
                                 </div>
                               </div>
                             ))}
