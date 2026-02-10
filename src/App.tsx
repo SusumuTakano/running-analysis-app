@@ -3527,8 +3527,8 @@ const clearMarksByButton = () => {
     try {
       // OpenAI client initialization
       const client = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY || '',
-        baseURL: process.env.OPENAI_BASE_URL || 'https://www.genspark.ai/api/llm_proxy/v1',
+        apiKey: import.meta.env.VITE_OPENAI_API_KEY || '',
+        baseURL: import.meta.env.VITE_OPENAI_BASE_URL || 'https://www.genspark.ai/api/llm_proxy/v1',
         dangerouslyAllowBrowser: true
       });
 
