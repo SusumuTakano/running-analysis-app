@@ -3330,10 +3330,23 @@ const clearMarksByButton = () => {
     const targetDistance = 50;
     let scaled50mTime = currentTime;
     
+    console.log('🎯 目標達成計算:', {
+      '測定距離': currentDistance.toFixed(2) + 'm',
+      '測定タイム': currentTime.toFixed(3) + 's',
+      '目標距離': targetDistance + 'm',
+      '目標タイム': goalTime + 's'
+    });
+    
     if (Math.abs(currentDistance - targetDistance) > 0.1) {
       // 平均速度で50mタイムを推定
       const avgSpeed = currentDistance / currentTime;
       scaled50mTime = targetDistance / avgSpeed;
+      console.log('⚠️ 距離が異なるため換算:', {
+        '平均速度': avgSpeed.toFixed(2) + ' m/s',
+        '換算後50mタイム': scaled50mTime.toFixed(3) + 's'
+      });
+    } else {
+      console.log('✅ 測定距離が50mなので換算不要');
     }
     
     // 不足分
@@ -3341,6 +3354,14 @@ const clearMarksByButton = () => {
     
     // 達成度（%）
     const achievement = goalTime > 0 ? Math.min(100, (goalTime / scaled50mTime) * 100) : 0;
+    
+    console.log('📊 目標達成結果:', {
+      '50mタイム（表示値）': scaled50mTime.toFixed(2) + 's',
+      '目標タイム': goalTime + 's',
+      '差分': gap.toFixed(3) + 's',
+      '達成度': achievement.toFixed(1) + '%',
+      '達成': gap <= 0 ? '✅' : '❌'
+    });
     
     // 改善提案
     const suggestions: string[] = [];
