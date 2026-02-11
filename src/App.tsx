@@ -895,12 +895,13 @@ useEffect(() => {
   
   // アコーディオン用のstate（初期状態: 全て閉じる）
   const [accordionState, setAccordionState] = useState({
-    overview: true,              // 概要（初期表示）
+    overview: false,             // 概要
     intervals: false,            // 区間データ
     hfvpAnalysis: false,         // H-FVP分析
     goalAchievement: false,      // 目標達成
     aiImprovements: false,       // AI改善提案
-    aiTrainingPlan: false        // AIトレーニングプラン
+    aiTrainingPlan: false,       // AIトレーニングプラン
+    poseAnalysis: false          // 姿勢分析
   });
   
   const toggleAccordion = (key: keyof typeof accordionState) => {
@@ -13444,13 +13445,25 @@ case 6: {
                     color: 'white',
                     boxShadow: '0 10px 30px rgba(16, 185, 129, 0.3)'
                   }}>
-                    <h3 style={{ 
-                      margin: '0 0 20px 0', 
-                      fontSize: '1.3rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px'
-                    }}>
+                    <h3 
+                      onClick={() => toggleAccordion('poseAnalysis')}
+                      style={{ 
+                        margin: '0 0 20px 0', 
+                        fontSize: '1.3rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        cursor: 'pointer',
+                        userSelect: 'none'
+                      }}
+                    >
+                      <span style={{ 
+                        transition: 'transform 0.3s ease',
+                        display: 'inline-block',
+                        transform: accordionState.poseAnalysis ? 'rotate(90deg)' : 'rotate(0deg)'
+                      }}>
+                        ▶
+                      </span>
                       🏃 姿勢分析
                       <span style={{ 
                         fontSize: '0.75rem', 
@@ -13462,7 +13475,9 @@ case 6: {
                       </span>
                     </h3>
 
-                    {/* 各スプリット地点での姿勢データ */}
+                    {accordionState.poseAnalysis && (
+                      <>
+                        {/* 各スプリット地点での姿勢データ */}
                     {panningPoseAnalysis.map((poseData, idx) => {
                       // 対応するスプリットのインデックスを見つける
                       const splitIndex = panningSplits.findIndex(s => s.frame === poseData.frame);
@@ -13714,6 +13729,8 @@ case 6: {
                       </div>
                     );
                   })}
+                      </>
+                    )}
                   </div>
                 )}
                 {/* パーン撮影モード: 保存ボタン */}
