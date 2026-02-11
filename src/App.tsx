@@ -895,8 +895,8 @@ useEffect(() => {
   
   // アコーディオン用のstate（初期状態: 全て閉じる）
   const [accordionState, setAccordionState] = useState({
-    sprintAnalysis: false,      // スプリント分析
-    intervalData: false,         // 区間データ
+    overview: true,              // 概要（初期表示）
+    intervals: false,            // 区間データ
     hfvpAnalysis: false,         // H-FVP分析
     goalAchievement: false,      // 目標達成
     aiImprovements: false,       // AI改善提案
@@ -12048,7 +12048,7 @@ case 6: {
                       borderRadius: '8px',
                       transition: 'all 0.2s'
                     }}
-                    onClick={() => toggleAccordion('sprintAnalysis')}
+                    onClick={() => toggleAccordion('overview')}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
                     }}
@@ -12065,18 +12065,18 @@ case 6: {
                         <span style={{ 
                           fontSize: '1.5rem',
                           transition: 'transform 0.2s',
-                          transform: accordionState.sprintAnalysis ? 'rotate(90deg)' : 'rotate(0deg)'
+                          transform: accordionState.overview ? 'rotate(90deg)' : 'rotate(0deg)'
                         }}>
                           ▶
                         </span>
-                        📊 スプリント分析
+                        📊 分析結果
                         <span style={{ 
                           fontSize: '0.75rem', 
                           padding: '2px 8px', 
                           background: 'rgba(255,255,255,0.2)', 
                           borderRadius: '4px' 
                         }}>
-                          Sprint Analysis
+                          Analysis Results
                         </span>
                       </h3>
                       
@@ -12160,10 +12160,10 @@ case 6: {
                       </div>
                     </div>
                     
-                    {/* スプリント分析コンテンツ（アコーディオン） */}
-                    {accordionState.sprintAnalysis && (
+                    {/* 分析結果コンテンツ（アコーディオン） */}
+                    {accordionState.overview && (
                     <>
-                    {/* 区間データ表示 */}
+                    {/* サマリーカード */}
                     <div style={{
                       display: 'grid',
                       gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
@@ -12212,16 +12212,33 @@ case 6: {
                       </div>
                     </div>
 
-                    {/* 区間ごとの詳細 */}
+                    {/* 区間ごとの詳細（サブアコーディオン） */}
                     <div style={{
                       marginTop: '20px'
                     }}>
                       <h4 style={{ 
                         margin: '0 0 12px 0',
-                        fontSize: '1.1rem'
-                      }}>
+                        fontSize: '1.1rem',
+                        cursor: 'pointer',
+                        padding: '8px',
+                        background: 'rgba(255,255,255,0.05)',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                      onClick={() => toggleAccordion('intervals')}>
+                        <span style={{ 
+                          fontSize: '1rem',
+                          transition: 'transform 0.2s',
+                          transform: accordionState.intervals ? 'rotate(90deg)' : 'rotate(0deg)'
+                        }}>
+                          ▶
+                        </span>
                         📏 区間データ
                       </h4>
+                      {accordionState.intervals && (
+                      <>
                       {panningSprintAnalysis.intervals.map((interval, idx) => (
                         <div key={idx} style={{
                           padding: '12px',
@@ -12253,7 +12270,91 @@ case 6: {
                           </div>
                         </div>
                       ))}
+                      </>
+                      )}
                     </div>
+                    
+                    {/* H-FVP分析（サブアコーディオン） */}
+                    {panningSprintAnalysis.hfvpData && (
+                    <div style={{ marginTop: '24px' }}>
+                      <h4 style={{ 
+                        margin: '0 0 12px 0',
+                        fontSize: '1.1rem',
+                        cursor: 'pointer',
+                        padding: '8px',
+                        background: 'rgba(255,255,255,0.05)',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                      onClick={() => toggleAccordion('hfvpAnalysis')}>
+                        <span style={{ 
+                          fontSize: '1rem',
+                          transition: 'transform 0.2s',
+                          transform: accordionState.hfvpAnalysis ? 'rotate(90deg)' : 'rotate(0deg)'
+                        }}>
+                          ▶
+                        </span>
+                        🔬 H-FVP分析
+                        {panningSprintAnalysis.hfvpData.quality && (
+                          <span style={{
+                            fontSize: '0.7rem',
+                            padding: '2px 6px',
+                            background: panningSprintAnalysis.hfvpData.quality.grade === '良' 
+                              ? 'rgba(16,185,129,0.3)' 
+                              : panningSprintAnalysis.hfvpData.quality.grade === '可'
+                              ? 'rgba(251,146,60,0.3)'
+                              : 'rgba(239,68,68,0.3)',
+                            borderRadius: '4px'
+                          }}>
+                            品質: {panningSprintAnalysis.hfvpData.quality.grade}
+                          </span>
+                        )}
+                      </h4>
+                      {accordionState.hfvpAnalysis && (
+                        <div style={{ marginTop: '12px' }}>
+                          {/* F0, V0, Pmax */}
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                            gap: '12px',
+                            marginBottom: '16px'
+                          }}>
+                            <div style={{ padding: '12px', background: 'rgba(255,255,255,0.1)', borderRadius: '8px' }}>
+                              <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>F0 (最大推進力)</div>
+                              <div style={{ fontSize: '1.3rem', fontWeight: 'bold' }}>{panningSprintAnalysis.hfvpData.F0.toFixed(1)} N</div>
+                            </div>
+                            <div style={{ padding: '12px', background: 'rgba(255,255,255,0.1)', borderRadius: '8px' }}>
+                              <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>V0 (理論最大速度)</div>
+                              <div style={{ fontSize: '1.3rem', fontWeight: 'bold' }}>{panningSprintAnalysis.hfvpData.v0.toFixed(2)} m/s</div>
+                            </div>
+                            <div style={{ padding: '12px', background: 'rgba(255,255,255,0.1)', borderRadius: '8px' }}>
+                              <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>Pmax (最大パワー)</div>
+                              <div style={{ fontSize: '1.3rem', fontWeight: 'bold' }}>{panningSprintAnalysis.hfvpData.Pmax.toFixed(0)} W</div>
+                            </div>
+                          </div>
+                          {/* 品質警告 */}
+                          {panningSprintAnalysis.hfvpData.quality && panningSprintAnalysis.hfvpData.quality.warnings.length > 0 && (
+                            <div style={{
+                              padding: '12px',
+                              background: 'rgba(251,146,60,0.2)',
+                              borderRadius: '8px',
+                              marginBottom: '12px',
+                              fontSize: '0.85rem'
+                            }}>
+                              <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>⚠️ 品質に関する注意</div>
+                              <ul style={{ margin: '0', paddingLeft: '20px' }}>
+                                {panningSprintAnalysis.hfvpData.quality.warnings.map((w, i) => (
+                                  <li key={i}>{w}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    )}
                     </>
                     )}
                     
@@ -13053,8 +13154,8 @@ case 6: {
                   </div>
                 )}
 
-                {/* パーン撮影モード: H-FVP分析 */}
-                {analysisMode === 'panning' && hfvpAnalysis && (
+                {/* パーン撮影モード: H-FVP分析 - 統合済みのため削除 */}
+                {false && analysisMode === 'panning' && hfvpAnalysis && (
                   <div style={{
                     background: 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)',
                     borderRadius: '16px',
