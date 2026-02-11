@@ -893,14 +893,14 @@ useEffect(() => {
   const [panningInputMode, setPanningInputMode] = useState<'video' | 'manual'>('video'); // 入力モード切り替え
   const [manualTimeInput, setManualTimeInput] = useState<string>(''); // 手動タイム入力
   
-  // アコーディオン用のstate
+  // アコーディオン用のstate（初期状態: 全て閉じる）
   const [accordionState, setAccordionState] = useState({
-    sprintAnalysis: true,      // スプリント分析
-    intervalData: true,         // 区間データ
-    hfvpAnalysis: true,         // H-FVP分析
-    goalAchievement: true,      // 目標達成
-    aiImprovements: true,       // AI改善提案
-    aiTrainingPlan: true        // AIトレーニングプラン
+    sprintAnalysis: false,      // スプリント分析
+    intervalData: false,         // 区間データ
+    hfvpAnalysis: false,         // H-FVP分析
+    goalAchievement: false,      // 目標達成
+    aiImprovements: false,       // AI改善提案
+    aiTrainingPlan: false        // AIトレーニングプラン
   });
   
   const toggleAccordion = (key: keyof typeof accordionState) => {
@@ -3518,10 +3518,23 @@ const clearMarksByButton = () => {
     setPlanError(null);
 
     try {
+      // APIキーのチェック
+      const apiKey = import.meta.env.VITE_OPENAI_API_KEY || '';
+      const baseURL = import.meta.env.VITE_OPENAI_BASE_URL || 'https://www.genspark.ai/api/llm_proxy/v1';
+      
+      if (!apiKey) {
+        throw new Error('OpenAI APIキーが設定されていません。環境変数 VITE_OPENAI_API_KEY を設定してください。');
+      }
+      
+      console.log('🔑 Using API:', {
+        baseURL,
+        hasKey: !!apiKey
+      });
+      
       // OpenAI client initialization
       const client = new OpenAI({
-        apiKey: import.meta.env.VITE_OPENAI_API_KEY || '',
-        baseURL: import.meta.env.VITE_OPENAI_BASE_URL || 'https://www.genspark.ai/api/llm_proxy/v1',
+        apiKey,
+        baseURL,
         dangerouslyAllowBrowser: true
       });
 
@@ -3658,9 +3671,27 @@ ${panningSprintAnalysis.intervals.map((int, idx) =>
 
     } catch (error) {
       console.error('❌ AI Training Plan Generation Error:', error);
-      const errorMessage = error instanceof Error ? error.message : '不明なエラー';
-      setPlanError(`トレーニングプラン生成エラー: ${errorMessage}`);
-      alert(`AIトレーニングプラン生成に失敗しました: ${errorMessage}`);
+      let errorMessage = '不明なエラー';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        
+        // 接続エラーの場合
+        if (errorMessage.includes('Connection error') || errorMessage.includes('Failed to fetch')) {
+          errorMessage = 'APIサーバーへの接続に失敗しました。ネットワーク接続を確認してください。';
+        }
+        // APIキーエラーの場合
+        else if (errorMessage.includes('APIキー') || errorMessage.includes('401') || errorMessage.includes('authentication')) {
+          errorMessage = 'APIキーの認証に失敗しました。管理者にお問い合わせください。';
+        }
+        // タイムアウトの場合
+        else if (errorMessage.includes('timeout')) {
+          errorMessage = 'リクエストがタイムアウトしました。もう一度お試しください。';
+        }
+      }
+      
+      setPlanError(errorMessage);
+      alert(`AIトレーニングプラン生成に失敗しました:\n${errorMessage}`);
     } finally {
       setIsGeneratingPlan(false);
     }
@@ -12515,7 +12546,8 @@ case 6: {
                               <li>進捗確認指標と注意事項</li>
                             </ul>
                             <p style={{ margin: '12px 0 0 0', fontSize: '0.85rem', opacity: 0.8 }}>
-                              ※ 生成には20-30秒かかります
+                              ※ 生成には20-30秒かかります<br/>
+                              ※ この機能は現在GenSpark APIプロキシを使用しています
                             </p>
                           </div>
                         )}
