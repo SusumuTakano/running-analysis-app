@@ -892,6 +892,23 @@ useEffect(() => {
   const [panningInputMode, setPanningInputMode] = useState<'video' | 'manual'>('video'); // 入力モード切り替え
   const [manualTimeInput, setManualTimeInput] = useState<string>(''); // 手動タイム入力
   
+  // アコーディオン用のstate
+  const [accordionState, setAccordionState] = useState({
+    sprintAnalysis: true,      // スプリント分析
+    intervalData: true,         // 区間データ
+    hfvpAnalysis: true,         // H-FVP分析
+    goalAchievement: true,      // 目標達成
+    aiImprovements: true,       // AI改善提案
+    aiTrainingPlan: true        // AIトレーニングプラン
+  });
+  
+  const toggleAccordion = (key: keyof typeof accordionState) => {
+    setAccordionState(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+  
   // ドラッグ用のstate
   const panningViewportRef = useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -12011,7 +12028,19 @@ case 6: {
                       display: 'flex', 
                       justifyContent: 'space-between', 
                       alignItems: 'center',
-                      marginBottom: '20px'
+                      marginBottom: '20px',
+                      cursor: 'pointer',
+                      padding: '12px',
+                      background: 'rgba(255,255,255,0.05)',
+                      borderRadius: '8px',
+                      transition: 'all 0.2s'
+                    }}
+                    onClick={() => toggleAccordion('sprintAnalysis')}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
                     }}>
                       <h3 style={{ 
                         margin: '0', 
@@ -12020,6 +12049,13 @@ case 6: {
                         alignItems: 'center',
                         gap: '12px'
                       }}>
+                        <span style={{ 
+                          fontSize: '1.5rem',
+                          transition: 'transform 0.2s',
+                          transform: accordionState.sprintAnalysis ? 'rotate(90deg)' : 'rotate(0deg)'
+                        }}>
+                          ▶
+                        </span>
                         📊 スプリント分析
                         <span style={{ 
                           fontSize: '0.75rem', 
@@ -12032,7 +12068,7 @@ case 6: {
                       </h3>
                       
                       {/* 自動微調整ボタンと元に戻すボタン */}
-                      <div style={{ display: 'flex', gap: '12px' }}>
+                      <div style={{ display: 'flex', gap: '12px' }} onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={autoAdjustSplits}
                           disabled={!panningSplits || panningSplits.length < 4}
@@ -12111,6 +12147,9 @@ case 6: {
                       </div>
                     </div>
                     
+                    {/* スプリント分析コンテンツ（アコーディオン） */}
+                    {accordionState.sprintAnalysis && (
+                    <>
                     {/* 区間データ表示 */}
                     <div style={{
                       display: 'grid',
@@ -12202,6 +12241,8 @@ case 6: {
                         </div>
                       ))}
                     </div>
+                    </>
+                    )}
                     
                     {/* ===== 目標達成カード（ADD）===== */}
                     {goalAchievement && (
@@ -12221,8 +12262,20 @@ case 6: {
                           fontSize: '1.2rem',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '8px'
-                        }}>
+                          gap: '8px',
+                          cursor: 'pointer',
+                          padding: '8px',
+                          background: 'rgba(255,255,255,0.05)',
+                          borderRadius: '8px'
+                        }}
+                        onClick={() => toggleAccordion('goalAchievement')}>
+                          <span style={{ 
+                            fontSize: '1.2rem',
+                            transition: 'transform 0.2s',
+                            transform: accordionState.goalAchievement ? 'rotate(90deg)' : 'rotate(0deg)'
+                          }}>
+                            ▶
+                          </span>
                           🎯 目標タイム達成への道
                           <span style={{ 
                             fontSize: '0.7rem', 
@@ -12233,6 +12286,9 @@ case 6: {
                             Goal Achievement
                           </span>
                         </h4>
+                        
+                        {accordionState.goalAchievement && (
+                        <>
                         
                         {/* タイム比較 */}
                         <div style={{
@@ -12364,6 +12420,8 @@ case 6: {
                             ))}
                           </ul>
                         </div>
+                        </>
+                        )}
                       </div>
                     )}
                     
@@ -12780,8 +12838,27 @@ case 6: {
                               fontSize: '1.2rem',
                               display: 'flex',
                               alignItems: 'center',
-                              gap: '8px'
+                              gap: '8px',
+                              cursor: 'pointer',
+                              padding: '12px',
+                              background: 'rgba(255,255,255,0.05)',
+                              borderRadius: '8px',
+                              transition: 'all 0.2s'
+                            }}
+                            onClick={() => toggleAccordion('aiImprovements')}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
                             }}>
+                              <span style={{ 
+                                fontSize: '1.2rem',
+                                transition: 'transform 0.2s',
+                                transform: accordionState.aiImprovements ? 'rotate(90deg)' : 'rotate(0deg)'
+                              }}>
+                                ▶
+                              </span>
                               🎯 AI改善提案
                               <span style={{ 
                                 fontSize: '0.7rem', 
@@ -12792,6 +12869,9 @@ case 6: {
                                 Improvement Goals
                               </span>
                             </h5>
+                            
+                            {accordionState.aiImprovements && (
+                            <>
                             
                             {/* 総合評価 */}
                             <div style={{
@@ -12950,6 +13030,8 @@ case 6: {
                                 </span>
                               </div>
                             )}
+                          </>
+                          )}
                           </div>
                         )}
                       </div>
@@ -12972,7 +13054,19 @@ case 6: {
                       display: 'flex', 
                       justifyContent: 'space-between', 
                       alignItems: 'center',
-                      marginBottom: '20px'
+                      marginBottom: '20px',
+                      cursor: 'pointer',
+                      padding: '12px',
+                      background: 'rgba(255,255,255,0.05)',
+                      borderRadius: '8px',
+                      transition: 'all 0.2s'
+                    }}
+                    onClick={() => toggleAccordion('hfvpAnalysis')}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
                     }}>
                       <h3 style={{ 
                         margin: '0', 
@@ -12981,6 +13075,13 @@ case 6: {
                         alignItems: 'center',
                         gap: '12px'
                       }}>
+                        <span style={{ 
+                          fontSize: '1.5rem',
+                          transition: 'transform 0.2s',
+                          transform: accordionState.hfvpAnalysis ? 'rotate(90deg)' : 'rotate(0deg)'
+                        }}>
+                          ▶
+                        </span>
                         🔬 H-FVP分析
                         <span style={{ 
                           fontSize: '0.75rem', 
@@ -12992,6 +13093,9 @@ case 6: {
                         </span>
                       </h3>
                     </div>
+                    
+                    {accordionState.hfvpAnalysis && (
+                    <>
                     
                     {/* 主要指標 */}
                     <div style={{
@@ -13209,6 +13313,8 @@ case 6: {
                       • <strong>Pmax</strong>: 最大パワー出力。F0とV0のバランスを示す<br/>
                       • <strong>DRF</strong>: 力指向性。100%に近いほど効率的に力を発揮している
                     </div>
+                    </>
+                    )}
                   </div>
                 )}
 
