@@ -3392,26 +3392,27 @@ const clearMarksByButton = () => {
     
     const currentTime = panningSprintAnalysis.totalTime;
     const currentDistance = panningSprintAnalysis.totalDistance;
+    const estimated100mTime = panningSprintAnalysis.estimated100mTime || currentTime;
     
-    // 目標タイムをパース（例: "6.50s" or "6.5" or "6秒50"）
+    // 目標タイムをパース（例: "10.5s" or "10.5" or "10秒50"）
     const targetRecordStr = athleteInfo.target_record?.trim() || '';
     if (!targetRecordStr) return null;
     
     let goalTime: number | null = null;
     
-    // パターン1: "6.50" or "6.5" (数値のみ)
+    // パターン1: "10.5" (数値のみ)
     const numMatch = targetRecordStr.match(/^(\d+(?:\.\d+)?)$/);
     if (numMatch) {
       goalTime = parseFloat(numMatch[1]);
     }
     
-    // パターン2: "6.50s" or "6.5秒"
+    // パターン2: "10.5s" or "10.5秒"
     const timeMatch = targetRecordStr.match(/(\d+(?:\.\d+)?)\s*[s秒]/i);
     if (timeMatch) {
       goalTime = parseFloat(timeMatch[1]);
     }
     
-    // パターン3: "6秒50" or "6'50"
+    // パターン3: "10秒50" or "10'50"
     const minSecMatch = targetRecordStr.match(/(\d+)\s*[秒']['""]?\s*(\d+)/);
     if (minSecMatch) {
       goalTime = parseInt(minSecMatch[1]) + parseInt(minSecMatch[2]) / 100;
@@ -3419,37 +3420,24 @@ const clearMarksByButton = () => {
     
     if (!goalTime || !isFiniteNumber(goalTime) || goalTime <= 0) return null;
     
-    // 距離を50mにスケーリング（測定距離が50mと異なる場合）
-    const targetDistance = 50;
+    // 50mタイムと100m予測タイムを取得
     let scaled50mTime = currentTime;
     
-    console.log('🎯 目標達成計算:', {
+    console.log('🎯 目標達成計算（100m基準）:', {
       '測定距離': currentDistance.toFixed(2) + 'm',
-      '測定タイム': currentTime.toFixed(3) + 's',
-      '目標距離': targetDistance + 'm',
-      '目標タイム': goalTime + 's'
+      '50mタイム': currentTime.toFixed(3) + 's',
+      '100m予測タイム': estimated100mTime.toFixed(3) + 's',
+      '目標タイム（100m）': goalTime + 's'
     });
     
-    if (Math.abs(currentDistance - targetDistance) > 0.1) {
-      // 平均速度で50mタイムを推定
-      const avgSpeed = currentDistance / currentTime;
-      scaled50mTime = targetDistance / avgSpeed;
-      console.log('⚠️ 距離が異なるため換算:', {
-        '平均速度': avgSpeed.toFixed(2) + ' m/s',
-        '換算後50mタイム': scaled50mTime.toFixed(3) + 's'
-      });
-    } else {
-      console.log('✅ 測定距離が50mなので換算不要');
-    }
+    // 目標は100mタイムなので、100m予測タイムと比較
+    const gap = estimated100mTime - goalTime;
     
-    // 不足分
-    const gap = scaled50mTime - goalTime;
+    // 達成度（%）- 100m予測タイムで評価
+    const achievement = goalTime > 0 ? Math.min(100, (goalTime / estimated100mTime) * 100) : 0;
     
-    // 達成度（%）
-    const achievement = goalTime > 0 ? Math.min(100, (goalTime / scaled50mTime) * 100) : 0;
-    
-    console.log('📊 目標達成結果:', {
-      '50mタイム（表示値）': scaled50mTime.toFixed(2) + 's',
+    console.log('📊 目標達成結果（100m基準）:', {
+      '100m予測タイム': estimated100mTime.toFixed(2) + 's',
       '目標タイム': goalTime + 's',
       '差分': gap.toFixed(3) + 's',
       '達成度': achievement.toFixed(1) + '%',
@@ -3466,20 +3454,25 @@ const clearMarksByButton = () => {
       const currentV0 = hfvpDashboard.v0;
       const currentF0Rel = hfvpDashboard.f0Rel;
       
-      // 必要な速度向上（簡易計算: Δt ≈ -Distance/V² × ΔV）
-      // より正確には: 50m / (V+ΔV) = goalTime → ΔV = 50/goalTime - V_avg
-      const currentAvgSpeed = currentDistance / scaled50mTime;
-      const neededAvgSpeed = targetDistance / goalTime;
-      const speedGap = neededAvgSpeed - currentAvgSpeed;
+      // 100m基準での速度向上計算
+      const current100mAvgSpeed = 100 / estimated100mTime;
+      const needed100mAvgSpeed = 100 / goalTime;
+      const speedGap = needed100mAvgSpeed - current100mAvgSpeed;
+      
+      console.log('💡 改善提案計算（100m基準）:', {
+        '現在の100m平均速度': current100mAvgSpeed.toFixed(2) + ' m/s',
+        '必要な100m平均速度': needed100mAvgSpeed.toFixed(2) + ' m/s',
+        '速度差': speedGap.toFixed(2) + ' m/s'
+      });
       
       if (speedGap > 0.2) {
         const v0Improvement = speedGap * 1.2; // V0は平均速度より高い
         suggestions.push(`V0を${v0Improvement.toFixed(2)} m/s向上させる（目標: ${(currentV0 + v0Improvement).toFixed(2)} m/s）`);
       }
       
-      // F0改善提案
+      // F0改善提案（100m基準の差分で調整）
       if (currentF0Rel < 4.5) {
-        const f0ImprovementPercent = Math.min(15, gap * 20);
+        const f0ImprovementPercent = Math.min(15, (gap / goalTime) * 100);
         suggestions.push(`F0を${f0ImprovementPercent.toFixed(0)}%向上させる（筋力トレーニング）`);
       }
       
@@ -3501,7 +3494,8 @@ const clearMarksByButton = () => {
     
     return {
       goalTime: round(goalTime, 2),
-      currentTime: round(scaled50mTime, 2),
+      currentTime: round(scaled50mTime, 2), // 50m実測タイム
+      estimated100mTime: round(estimated100mTime, 2), // 100m予測タイム
       gap: round(gap, 3),
       achievement: round(achievement, 1),
       isAchieved: gap <= 0,
