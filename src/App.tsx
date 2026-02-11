@@ -4655,7 +4655,7 @@ ${panningSprintAnalysis.intervals.map((int, idx) =>
     }
 
     ctx.strokeStyle = "#00ff00";  // より見やすい緑色
-    ctx.lineWidth = 10;  // 4 → 10に変更（さらに太く）
+    ctx.lineWidth = 5;  // スティックピクチャーの線の太さ
 
     const connections: [number, number][] = [
       [11, 12],
@@ -6163,7 +6163,7 @@ setUsedTargetFps(targetFps);
 
       // 垂直線を描画（太く目立つように）
       ctx.strokeStyle = color;
-      ctx.lineWidth = 8;  // 3 → 8に変更（より太く）
+      ctx.lineWidth = 4;  // スティックピクチャーの線の太さ
       ctx.setLineDash([15, 8]);  // 破線も大きく
       ctx.beginPath();
       ctx.moveTo(clampedX, height);
@@ -6336,7 +6336,7 @@ setUsedTargetFps(targetFps);
         const landmarks = poseResults[idx]!.landmarks;
 
         ctx.strokeStyle = "#00ff00";  // より見やすい緑色
-        ctx.lineWidth = 5;  // 3 → 5に変更（より太く）
+        ctx.lineWidth = 3;  // スティックピクチャーの線の太さ
 
         const connections: [number, number][] = [
           [11, 12],
