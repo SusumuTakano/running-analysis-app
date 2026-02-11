@@ -31,6 +31,7 @@ import MobileHeader from './components/MobileHeader';
 import MultiCameraAnalyzer from "./components/MultiCameraAnalyzer";
 import { parseMedia } from "@remotion/media-parser";
 import { calculateHFVP, calculateHFVPFromPanningSplits, type HFVPResult, type StepDataForHFVP, type PanningSplitDataForHFVP } from './utils/hfvpCalculator';
+import { computeHFVP, type HFVPResult as HFVPMixedResult } from './lib/hfvpMixed';
 
 // ===== H-FVP display helpers (ADD) =====
 type XY = { x: number; y: number };
@@ -2983,99 +2984,72 @@ const clearMarksByButton = () => {
     // 🔬 H-FVP計算（Horizontal Force-Velocity Profile）
     // 線形回帰により F0 (最大推進力) と V0 (理論最大速度) を推定
     // a = a0 - (a0/v0) × v の形で線形近似
+    // 新しい高精度計算: Huber回帰 + 外れ値除外 + 品質評価
     
     let hfvpData = null;
     
     if (athleteInfo.weight_kg > 0 && intervals.length >= 2) {
-      // 各区間の中間速度と加速度のデータポイントを収集
-      const velocities: number[] = [];
-      const accelerations: number[] = [];
-      
-      for (let i = 0; i < intervals.length; i++) {
-        const interval = intervals[i];
-        // 区間の中間速度を使用
-        const v_mid = (interval.v_start + interval.v_end) / 2;
-        velocities.push(v_mid);
-        accelerations.push(interval.acceleration);
-      }
-      
-      // 線形回帰: a = a0 - (a0/v0) * v
-      // 最小二乗法で a0 と v0 を推定
-      const n = velocities.length;
-      const sum_v = velocities.reduce((s, v) => s + v, 0);
-      const sum_a = accelerations.reduce((s, a) => s + a, 0);
-      const sum_vv = velocities.reduce((s, v) => s + v * v, 0);
-      const sum_va = velocities.reduce((s, v, i) => s + v * accelerations[i], 0);
-      
-      // 回帰係数の計算
-      const slope = (n * sum_va - sum_v * sum_a) / (n * sum_vv - sum_v * sum_v);
-      const intercept = (sum_a - slope * sum_v) / n;
-      
-      // a0 (v=0での加速度) と v0 (a=0での速度) を計算
-      const a0 = intercept;
-      const v0 = -intercept / slope; // a = a0 + slope*v = 0 → v = -a0/slope
-      
-      // F0 (最大推進力) = 体重 × a0
-      const F0 = athleteInfo.weight_kg * a0;
-      
-      // Pmax (最大パワー) = F0 × V0 / 4
-      const Pmax = F0 * v0 / 4;
-      
-      // 各地点でのH-FVP指標を計算
-      const hfvpPoints = intervalSplits.map((split, idx) => {
-        let v: number;
-        let a: number;
+      // 🆕 高精度H-FVP計算を使用
+      try {
+        const markerDistances = intervalSplits.map(s => s.distance);
+        const cumulativeTimes = intervalSplits.map(s => s.time);
         
-        if (idx === 0) {
-          // 開始地点（静止）
-          v = 0;
-          a = a0;
-        } else {
-          // 区間の終了時点での速度と加速度を使用
-          const interval = intervals[idx - 1];
-          v = interval.v_end;
-          a = interval.acceleration;
+        const hfvpResult = computeHFVP(
+          {
+            markerDistances,
+            cumulativeTimes,
+            massKg: athleteInfo.weight_kg
+          },
+          {
+            regression: 'huber',           // 外れ値耐性あり
+            firstSegmentModel: 'fromRest', // 静止スタート
+            removeOutliers: true,          // 外れ値除外
+            outlierSigma: 3.5              // 外れ値判定閾値
+          }
+        );
+        
+        // 既存フォーマットに変換
+        const F0 = hfvpResult.summary.f0N;
+        const v0 = hfvpResult.summary.v0;
+        const Pmax = hfvpResult.summary.pmaxW;
+        const a0 = hfvpResult.summary.f0RelNkg;
+        const DRF = hfvpResult.summary.drf;
+        const RF_max = hfvpResult.summary.rfMax;
+        
+        // 各地点のH-FVP指標（既存フォーマット）
+        const hfvpPoints = hfvpResult.segments.map((seg, idx) => ({
+          distance: seg.endDistance,
+          time: seg.cumulativeTime,
+          velocity: seg.speed,
+          acceleration: seg.acceleration,
+          force: seg.forceN,
+          power: seg.powerW,
+          rf: seg.rfPercent
+        }));
+        
+        // スタート地点(0m)を追加
+        hfvpPoints.unshift({
+          distance: 0,
+          time: 0,
+          velocity: 0,
+          acceleration: a0,
+          force: F0,
+          power: 0,
+          rf: 100
+        });
+        
+        console.log('✅ 高精度H-FVP計算完了:', {
+          '品質評価': hfvpResult.quality.grade,
+          'F-v回帰 R²': hfvpResult.summary.fvR2,
+          '使用点数': `${hfvpResult.summary.usedPoints}/${hfvpResult.summary.totalPoints}`,
+          '警告': hfvpResult.quality.warnings.length > 0 
+            ? hfvpResult.quality.warnings.join('; ') 
+            : 'なし'
+        });
+        
+        if (hfvpResult.quality.warnings.length > 0) {
+          console.warn('⚠️ H-FVP品質警告:', hfvpResult.quality.warnings);
         }
-        
-        // F (推進力) = 体重 × a
-        const F = athleteInfo.weight_kg * a;
-        
-        // P (パワー) = F × v
-        const P = F * v;
-        
-        // RF (Ratio of Force) = F / F0 × 100
-        // 各地点での力の比率
-        const RF = (F / F0) * 100;
-        
-        return {
-          distance: split.distance,
-          time: split.time,
-          velocity: v,
-          acceleration: a,
-          force: F,
-          power: P,
-          rf: RF  // DRFではなくRF
-        };
-      });
-      
-      // DRF（Decrease in Ratio of Force）の計算
-      // RF(v) = RF_max + DRF × v の線形回帰で傾きを求める
-      const rfValues = hfvpPoints.map(p => p.rf);
-      const velocities_rf = hfvpPoints.map(p => p.velocity);
-      
-      const n_rf = rfValues.length;
-      const sum_v_rf = velocities_rf.reduce((s, v) => s + v, 0);
-      const sum_rf = rfValues.reduce((s, rf) => s + rf, 0);
-      const sum_vv_rf = velocities_rf.reduce((s, v) => s + v * v, 0);
-      const sum_v_rf_product = velocities_rf.reduce((s, v, i) => s + v * rfValues[i], 0);
-      
-      // 線形回帰: RF = intercept + slope × v
-      const slope_rf = (n_rf * sum_v_rf_product - sum_v_rf * sum_rf) / (n_rf * sum_vv_rf - sum_v_rf * sum_v_rf);
-      const intercept_rf = (sum_rf - slope_rf * sum_v_rf) / n_rf;
-      
-      // DRF = slope（速度増加に伴うRF低下率）
-      const DRF = slope_rf; // %/(m/s)
-      const RF_max = intercept_rf; // 理論上の最大RF (%)
       
       // 🎯 AI改善提案の生成
       const generateImprovementGoals = () => {
@@ -3169,40 +3143,48 @@ const clearMarksByButton = () => {
         };
       };
       
-      const improvementGoals = generateImprovementGoals();
-      
-      hfvpData = {
-        F0,      // 最大推進力 (N)
-        v0,      // 理論最大速度 (m/s)
-        Pmax,    // 最大パワー (W)
-        a0,      // 初期加速度 (m/s²)
-        DRF,     // RF低下率 (%/(m/s))
-        RF_max,  // 理論最大RF (%)
-        points: hfvpPoints,
-        improvementGoals // AI改善提案を追加
-      };
-      
-      // デバッグログ
-      console.log('🔬 H-FVP Analysis:', {
-        'F0 (最大推進力)': F0.toFixed(2) + ' N',
-        'V0 (理論最大速度)': v0.toFixed(2) + ' m/s',
-        'Pmax (最大パワー)': Pmax.toFixed(2) + ' W',
-        'a0 (初期加速度)': a0.toFixed(2) + ' m/s²',
-        'DRF (RF低下率)': DRF.toFixed(2) + ' %/(m/s)',
-        'RF_max (理論最大RF)': RF_max.toFixed(1) + ' %',
-        '回帰式 (加速度)': `a = ${a0.toFixed(2)} - ${(a0/v0).toFixed(2)} × v`,
-        '回帰式 (RF)': `RF = ${RF_max.toFixed(1)} + ${DRF.toFixed(2)} × v`
-      });
-      
-      console.log('📊 H-FVP Points (各地点):');
-      hfvpPoints.forEach((point, idx) => {
-        console.log(`  ${point.distance.toFixed(0)}m:`, {
-          '速度 v': point.velocity.toFixed(2) + ' m/s',
-          '力 F': point.force.toFixed(0) + ' N',
-          'パワー P': point.power.toFixed(0) + ' W',
-          'RF (力比率)': point.rf.toFixed(1) + ' %'
+        const improvementGoals = generateImprovementGoals();
+        
+        hfvpData = {
+          F0,      // 最大推進力 (N)
+          v0,      // 理論最大速度 (m/s)
+          Pmax,    // 最大パワー (W)
+          a0,      // 初期加速度 (m/s²)
+          DRF,     // RF低下率 (%/(m/s))
+          RF_max,  // 理論最大RF (%)
+          points: hfvpPoints,
+          improvementGoals, // AI改善提案を追加
+          quality: hfvpResult.quality // 品質評価を追加
+        };
+        
+        // デバッグログ
+        console.log('🔬 H-FVP Analysis:', {
+          'F0 (最大推進力)': F0.toFixed(2) + ' N',
+          'V0 (理論最大速度)': v0.toFixed(2) + ' m/s',
+          'Pmax (最大パワー)': Pmax.toFixed(2) + ' W',
+          'a0 (初期加速度)': a0.toFixed(2) + ' m/s²',
+          'DRF (RF低下率)': DRF.toFixed(2) + ' %/(m/s)',
+          'RF_max (理論最大RF)': RF_max.toFixed(1) + ' %',
+          '回帰式 (加速度)': `a = ${a0.toFixed(2)} - ${(a0/v0).toFixed(2)} × v`,
+          '回帰式 (RF)': `RF = ${RF_max.toFixed(1)} + ${DRF.toFixed(2)} × v`,
+          '品質評価': hfvpResult.quality.grade,
+          'F-v回帰 R²': hfvpResult.summary.fvR2
         });
-      });
+        
+        console.log('📊 H-FVP Points (各地点):');
+        hfvpPoints.forEach((point, idx) => {
+          console.log(`  ${point.distance.toFixed(0)}m:`, {
+            '速度 v': point.velocity.toFixed(2) + ' m/s',
+            '力 F': point.force.toFixed(0) + ' N',
+            'パワー P': point.power.toFixed(0) + ' W',
+            'RF (力比率)': point.rf.toFixed(1) + ' %'
+          });
+        });
+      } catch (error) {
+        console.error('❌ H-FVP計算エラー:', error);
+        // エラー時は従来の計算を使用するか、nullにする
+        hfvpData = null;
+      }
     }
     
     // 🎯 100m推定タイム（AIベースの高精度予測）
