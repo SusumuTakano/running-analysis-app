@@ -901,7 +901,8 @@ useEffect(() => {
     goalAchievement: false,      // 目標達成
     aiImprovements: false,       // AI改善提案
     aiTrainingPlan: false,       // AIトレーニングプラン
-    poseAnalysis: false          // 姿勢分析
+    poseAnalysis: false,         // 姿勢分析
+    splitsList: false            // スプリット一覧
   });
   
   const toggleAccordion = (key: keyof typeof accordionState) => {
@@ -11716,10 +11717,31 @@ case 6: {
                         background: 'rgba(255,255,255,0.15)',
                         borderRadius: '8px'
                       }}>
-                        <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '0.95rem' }}>
+                        <div 
+                          onClick={() => toggleAccordion('splitsList')}
+                          style={{ 
+                            fontWeight: 'bold', 
+                            marginBottom: accordionState.splitsList ? '8px' : '0', 
+                            fontSize: '0.95rem',
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                          }}
+                        >
+                          <span style={{ 
+                            transition: 'transform 0.3s ease',
+                            display: 'inline-block',
+                            transform: accordionState.splitsList ? 'rotate(90deg)' : 'rotate(0deg)',
+                            fontSize: '0.8rem'
+                          }}>
+                            ▶
+                          </span>
                           📊 登録済みスプリット
                         </div>
-                        <div style={{ fontSize: '0.85rem' }}>
+                        {accordionState.splitsList && (
+                          <div style={{ fontSize: '0.85rem' }}>
                           {panningSplits.map((split, idx) => {
                             // スプリットタイム（前の地点からの区間タイム）
                             const splitTime = idx === 0 ? 0 : split.time - panningSplits[idx - 1].time;
@@ -11797,7 +11819,8 @@ case 6: {
                               </div>
                             );
                           })}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -12540,169 +12563,7 @@ case 6: {
                       </div>
                     )}
                     
-                    {/* ===== AIトレーニングプラン（ADD）===== */}
-                    {goalAchievement && hfvpDashboard && (
-                      <div style={{
-                        marginTop: '24px',
-                        padding: '20px',
-                        background: 'linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(79,70,229,0.2) 100%)',
-                        borderRadius: '12px',
-                        border: '2px solid rgba(99,102,241,0.4)'
-                      }}>
-                        <div style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          marginBottom: '16px'
-                        }}>
-                          <h4 style={{ 
-                            margin: '0',
-                            fontSize: '1.2rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px'
-                          }}>
-                            🤖 AI個別最適化トレーニングプラン
-                            <span style={{ 
-                              fontSize: '0.7rem', 
-                              padding: '2px 6px', 
-                              background: 'rgba(255,255,255,0.2)', 
-                              borderRadius: '4px' 
-                            }}>
-                              Powered by GPT-5
-                            </span>
-                          </h4>
-                          
-                          <button
-                            onClick={generateAITrainingPlan}
-                            disabled={isGeneratingPlan}
-                            style={{
-                              padding: '10px 20px',
-                              background: isGeneratingPlan 
-                                ? 'rgba(156,163,175,0.5)' 
-                                : 'rgba(99,102,241,0.8)',
-                              border: 'none',
-                              borderRadius: '8px',
-                              color: 'white',
-                              fontSize: '0.9rem',
-                              fontWeight: 'bold',
-                              cursor: isGeneratingPlan ? 'not-allowed' : 'pointer',
-                              transition: 'all 0.2s',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '8px'
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!isGeneratingPlan) {
-                                e.currentTarget.style.background = 'rgba(99,102,241,1)';
-                                e.currentTarget.style.transform = 'translateY(-2px)';
-                                e.currentTarget.style.boxShadow = '0 4px 12px rgba(99,102,241,0.4)';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = isGeneratingPlan 
-                                ? 'rgba(156,163,175,0.5)' 
-                                : 'rgba(99,102,241,0.8)';
-                              e.currentTarget.style.transform = 'translateY(0)';
-                              e.currentTarget.style.boxShadow = 'none';
-                            }}
-                          >
-                            {isGeneratingPlan ? (
-                              <>
-                                <span style={{
-                                  display: 'inline-block',
-                                  width: '16px',
-                                  height: '16px',
-                                  border: '2px solid white',
-                                  borderTop: '2px solid transparent',
-                                  borderRadius: '50%',
-                                  animation: 'spin 1s linear infinite'
-                                }}></span>
-                                生成中...
-                              </>
-                            ) : (
-                              <>
-                                🚀 プラン生成
-                              </>
-                            )}
-                          </button>
-                        </div>
-                        
-                        {/* 説明 */}
-                        {!aiTrainingPlan && !planError && (
-                          <div style={{
-                            padding: '16px',
-                            background: 'rgba(255,255,255,0.1)',
-                            borderRadius: '8px',
-                            fontSize: '0.9rem',
-                            lineHeight: '1.6'
-                          }}>
-                            <p style={{ margin: '0 0 8px 0' }}>
-                              <strong>🎯 AIが科学的根拠に基づいた個別最適化トレーニングプランを生成します</strong>
-                            </p>
-                            <ul style={{ margin: '0', paddingLeft: '20px' }}>
-                              <li>H-FVP分析結果を考慮した課題特定</li>
-                              <li>目標達成までの期間別トレーニング（8週間）</li>
-                              <li>具体的なメニュー（セット数・レップ数・負荷）</li>
-                              <li>各トレーニングの科学的根拠と論文引用</li>
-                              <li>進捗確認指標と注意事項</li>
-                            </ul>
-                            <p style={{ margin: '12px 0 0 0', fontSize: '0.85rem', opacity: 0.8 }}>
-                              ※ 生成には20-30秒かかります<br/>
-                              ※ この機能は現在GenSpark APIプロキシを使用しています
-                            </p>
-                          </div>
-                        )}
-                        
-                        {/* エラー表示 */}
-                        {planError && (
-                          <div style={{
-                            padding: '16px',
-                            background: 'rgba(239,68,68,0.2)',
-                            border: '2px solid rgba(239,68,68,0.4)',
-                            borderRadius: '8px',
-                            color: 'white',
-                            fontSize: '0.9rem'
-                          }}>
-                            ⚠️ {planError}
-                          </div>
-                        )}
-                        
-                        {/* AIトレーニングプラン表示 */}
-                        {aiTrainingPlan && (
-                          <div style={{
-                            padding: '20px',
-                            background: 'rgba(255,255,255,0.95)',
-                            borderRadius: '8px',
-                            color: '#1f2937',
-                            fontSize: '0.95rem',
-                            lineHeight: '1.8',
-                            maxHeight: '600px',
-                            overflowY: 'auto'
-                          }}>
-                            <style>{`
-                              @keyframes spin {
-                                0% { transform: rotate(0deg); }
-                                100% { transform: rotate(360deg); }
-                              }
-                            `}</style>
-                            <div 
-                              style={{ whiteSpace: 'pre-wrap' }}
-                              dangerouslySetInnerHTML={{
-                                __html: aiTrainingPlan
-                                  .replace(/^## (.*$)/gim, '<h2 style="font-size: 1.3rem; font-weight: bold; margin: 24px 0 12px 0; color: #4f46e5;">$1</h2>')
-                                  .replace(/^### (.*$)/gim, '<h3 style="font-size: 1.1rem; font-weight: bold; margin: 20px 0 10px 0; color: #6366f1;">$1</h3>')
-                                  .replace(/^\*\*(.*?)\*\*/gim, '<strong style="font-weight: bold; color: #1f2937;">$1</strong>')
-                                  .replace(/^- (.*$)/gim, '<li style="margin-left: 20px;">$1</li>')
-                                  .replace(/^\d+\. (.*$)/gim, '<li style="margin-left: 20px; list-style-type: decimal;">$1</li>')
-                                  .replace(/\n\n/g, '<br/><br/>')
-                              }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    
+
                     {/* ===== H-FVP結果パネル（ADD/REPLACE）===== */}
                     {hfvpDashboard && (
                       <div style={{
