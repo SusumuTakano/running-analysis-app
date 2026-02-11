@@ -3084,13 +3084,13 @@ const clearMarksByButton = () => {
         
         if (v0 < V0_target) {
           goals.push({
-            category: '最大速度',
+            category: 'V0（理論最大速度）',
             current: v0.toFixed(2) + ' m/s',
             target: V0_target.toFixed(2) + ' m/s',
             excellent: V0_excellent.toFixed(2) + ' m/s',
             improvement: ((V0_target - v0) / v0 * 100).toFixed(1) + '%',
             level: V0_percent < 70 ? '初級' : V0_percent < 90 ? '中級' : '上級',
-            recommendation: '最大速度走（30-40m）を週2回。フライングスタートや風抵抗走も効果的。'
+            recommendation: '※V0は理論値です。最大速度走（30-40m）を週2回実施。フライングスタートや風抵抗走も効果的。'
           });
         }
         
@@ -12229,9 +12229,12 @@ case 6: {
                         background: 'rgba(255,255,255,0.15)',
                         borderRadius: '8px'
                       }}>
-                        <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>最高速度</div>
+                        <div style={{ fontSize: '0.85rem', opacity: 0.9, marginBottom: '4px' }}>実測最高速度</div>
                         <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
                           {panningSprintAnalysis.maxSpeed.toFixed(2)} m/s
+                        </div>
+                        <div style={{ fontSize: '0.7rem', opacity: 0.7, marginTop: '4px' }}>
+                          区間平均の最大値
                         </div>
                       </div>
                     </div>
@@ -12615,11 +12618,11 @@ case 6: {
                             background: 'rgba(255,255,255,0.15)',
                             borderRadius: '8px'
                           }}>
-                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>V0</div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>V0（理論最大速度）</div>
                             <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
                               {hfvpDashboard.v0}
                             </div>
-                            <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>m/s</div>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>m/s ※理論値</div>
                           </div>
                           
                           <div style={{
@@ -13286,7 +13289,8 @@ case 6: {
                     }}>
                       <strong>📖 H-FVP指標の見方:</strong><br/>
                       • <strong>F0</strong>: スタート時の最大推進力。高いほどスタートダッシュが強い<br/>
-                      • <strong>V0</strong>: 理論上の最高速度。実際の最高速度より高い値が望ましい<br/>
+                      • <strong>V0（理論最大速度）</strong>: 加速度がゼロになる理論値。実測最高速度より20-30%高い値が正常<br/>
+                      • <strong>実測最高速度</strong>: 実際に記録した区間平均速度の最大値。一般ランナー: 6-8m/s、競技者: 9-11m/s<br/>
                       • <strong>Pmax</strong>: 最大パワー出力。F0とV0のバランスを示す<br/>
                       • <strong>DRF</strong>: 力指向性。100%に近いほど効率的に力を発揮している
                     </div>
