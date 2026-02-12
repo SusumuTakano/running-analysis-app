@@ -17,9 +17,16 @@ import type {
   HFVPMeasurement,
   QualityMetrics,
   ManualCorrection,
+  AttemptStatus,
 } from '../../types/certificationTypes';
 import { calculateCertificationScore } from '../../utils/certificationScoring';
 import CertificationService from '../../lib/certificationService';
+import { determineJudgmentMode, determineFinalStatus, canApplyCertificate } from '../../utils/gradeRouter';
+import { AutoJudgment } from './AutoJudgment';
+import { ReviewRequired } from './ReviewRequired';
+import { CertificateApplication } from './CertificateApplication';
+import type { JudgmentMode } from '../../types/reviewTypes';
+import type { CertificateApplicationInput } from '../../types/reviewTypes';
 
 // =====================================================
 // Props
@@ -70,6 +77,13 @@ export default function CertificationMode({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [attemptId, setAttemptId] = useState<string | null>(null);
 
+  // 二層判定用
+  const [judgmentMode, setJudgmentMode] = useState<JudgmentMode | null>(null);
+  const [attemptStatus, setAttemptStatus] = useState<AttemptStatus>('draft');
+  const [fixedVideoUrl, setFixedVideoUrl] = useState<string | null>(null);
+  const [panningVideoUrl, setPanningVideoUrl] = useState<string | null>(null);
+  const [showCertificateForm, setShowCertificateForm] = useState(false);
+
   // ローディング・エラー
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +112,11 @@ export default function CertificationMode({
 
   const handleGradeSelect = async (gradeCode: GradeCode) => {
     setSelectedGrade(gradeCode);
+    
+    // 判定モードを決定
+    const mode = determineJudgmentMode(gradeCode);
+    setJudgmentMode(mode);
+    
     try {
       const grade = await CertificationService.fetchGradeByCode(gradeCode);
       if (!grade) {
@@ -209,6 +228,19 @@ export default function CertificationMode({
       if (result.hfvp_details?.v0.is_near_threshold) reviewItems.push('V0');
 
       setRequiresReviewItems(reviewItems);
+
+      // 判定モードに基づいてステータスを決定（自動判定の場合）
+      if (judgmentMode === 'AUTO_FINAL') {
+        const finalStatus = determineFinalStatus(
+          result.total_score,
+          result.pass_threshold,
+          judgmentMode
+        );
+        setAttemptStatus(finalStatus);
+      } else {
+        // REVIEW_REQUIRED: draft のまま（提出後に submitted へ遷移）
+        setAttemptStatus('draft');
+      }
     } catch (err) {
       console.error('Scoring failed:', err);
       setError('採点に失敗しました');
@@ -302,6 +334,69 @@ export default function CertificationMode({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // =====================================================
+  // 二層判定用ハンドラー
+  // =====================================================
+
+  const handleSubmitForReview = async (fixedUrl: string, panningUrl: string) => {
+    if (!attemptId) {
+      setError('試行IDが見つかりません');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // 動画URLを保存し、ステータスを submitted に更新
+      // NOTE: この部分は実際のバックエンドAPIが実装されたら差し替える
+      setFixedVideoUrl(fixedUrl);
+      setPanningVideoUrl(panningUrl);
+      setAttemptStatus('submitted');
+      
+      console.log('動画提出:', { fixedUrl, panningUrl, attemptId });
+      alert('審査に提出しました。検定員による審査をお待ちください。');
+    } catch (err) {
+      console.error('Failed to submit for review:', err);
+      setError('提出に失敗しました');
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleApplyCertificate = () => {
+    setShowCertificateForm(true);
+  };
+
+  const handleCertificateApplicationSubmit = async (application: CertificateApplicationInput) => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // NOTE: この部分は実際のバックエンドAPIが実装されたら差し替える
+      console.log('合格証申請:', application);
+      alert('合格証の申請を受け付けました。発行までしばらくお待ちください。');
+      setShowCertificateForm(false);
+    } catch (err) {
+      console.error('Failed to apply certificate:', err);
+      setError('申請に失敗しました');
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRetry = () => {
+    // 再受検：設定画面に戻る
+    setStep('setup');
+    setAttemptStatus('draft');
+    setScoringResult(null);
+    setScoringInput(null);
+    setManualCorrections([]);
+    setRequiresReviewItems([]);
   };
 
   // =====================================================
@@ -733,8 +828,46 @@ export default function CertificationMode({
         </div>
       )}
 
-      {/* Step 4: 合否結果 */}
-      {step === 'result' && scoringResult && (
+      {/* Step 4: 合否結果（級別分岐） */}
+      {step === 'result' && scoringResult && selectedGrade && (
+        <div>
+          {/* 合格証申請フォーム表示 */}
+          {showCertificateForm && attemptId && (
+            <CertificateApplication
+              attemptId={attemptId}
+              gradeCode={selectedGrade}
+              onSubmit={handleCertificateApplicationSubmit}
+              onCancel={() => setShowCertificateForm(false)}
+            />
+          )}
+
+          {/* 級別結果表示 */}
+          {!showCertificateForm && judgmentMode === 'AUTO_FINAL' && (
+            <AutoJudgment
+              gradeCode={selectedGrade}
+              scoringResult={scoringResult}
+              status={attemptStatus}
+              onApplyCertificate={canApplyCertificate(attemptStatus) ? handleApplyCertificate : undefined}
+              onRetry={handleRetry}
+            />
+          )}
+
+          {!showCertificateForm && judgmentMode === 'REVIEW_REQUIRED' && (
+            <ReviewRequired
+              gradeCode={selectedGrade}
+              scoringResult={scoringResult}
+              status={attemptStatus}
+              fixedVideoUrl={fixedVideoUrl}
+              panningVideoUrl={panningVideoUrl}
+              onSubmitForReview={attemptStatus === 'draft' || attemptStatus === 'needs_resubmission' ? handleSubmitForReview : undefined}
+              onApplyCertificate={canApplyCertificate(attemptStatus) ? handleApplyCertificate : undefined}
+            />
+          )}
+        </div>
+      )}
+
+      {/* 旧UI（バックアップ、後で削除予定） */}
+      {step === 'result' && scoringResult && false && (
         <div>
           <h2 style={{ fontSize: 20, marginBottom: 16 }}>検定結果</h2>
 

@@ -104,10 +104,10 @@ export const AutoJudgment: React.FC<AutoJudgmentProps> = ({
   // 項目別得点表示
   const renderItemScores = () => {
     const items = [
-      { label: '膝屈曲角度', score: scoringResult.angle_score, maxScore: scoringResult.angle_max_score || 30 },
-      { label: 'ストライド', score: scoringResult.stride_score, maxScore: scoringResult.stride_max_score || 25 },
-      { label: '接地時間', score: scoringResult.contact_time_score, maxScore: scoringResult.contact_time_max_score || 20 },
-      { label: 'テクニック', score: scoringResult.technique_score, maxScore: scoringResult.technique_max_score || 10 },
+      { label: '膝屈曲角度', score: scoringResult.angle_score, maxScore: 30 },
+      { label: 'ストライド', score: scoringResult.stride_score, maxScore: 25 },
+      { label: '接地時間', score: scoringResult.contact_time_score, maxScore: 20 },
+      { label: 'テクニック', score: scoringResult.technique_score, maxScore: 10 },
     ];
 
     return (
@@ -165,10 +165,22 @@ export const AutoJudgment: React.FC<AutoJudgmentProps> = ({
 
   // 改善ポイント表示（不合格時）
   const renderImprovementAdvice = () => {
-    if (isPassed || !scoringResult.feedback) return null;
+    if (isPassed) return null;
 
-    const feedback = scoringResult.feedback;
-    if (!feedback.improvements || feedback.improvements.length === 0) {
+    // 簡易的な改善ポイント（今後、フィードバック機能を実装する際に拡張）
+    const improvements: string[] = [];
+    
+    if (scoringResult.angle_score < 24) { // 30点満点の80%未満
+      improvements.push('膝屈曲角度を理想値に近づけましょう');
+    }
+    if (scoringResult.stride_score < 20) { // 25点満点の80%未満
+      improvements.push('ストライド長とピッチのバランスを改善しましょう');
+    }
+    if (scoringResult.contact_time_score < 16) { // 20点満点の80%未満
+      improvements.push('接地時間を短縮し、効率的な走りを目指しましょう');
+    }
+
+    if (improvements.length === 0) {
       return null;
     }
 
@@ -178,11 +190,9 @@ export const AutoJudgment: React.FC<AutoJudgmentProps> = ({
           📋 改善ポイント
         </h3>
         <ul style={{ paddingLeft: '20px', color: '#78350f' }}>
-          {feedback.improvements.map((improvement, idx) => (
+          {improvements.map((improvement, idx) => (
             <li key={idx} style={{ marginBottom: '8px', lineHeight: '1.6' }}>
-              <strong>{improvement.category === 'angle' ? '角度' : improvement.category === 'stride' ? 'ストライド' : improvement.category === 'contact_time' ? '接地時間' : improvement.category}:</strong>
-              {' '}
-              {improvement.recommendations.join('、')}
+              {improvement}
             </li>
           ))}
         </ul>
