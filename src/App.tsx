@@ -16190,7 +16190,7 @@ case 6: {
           position: 'fixed',
           top: 20,
           right: 20,
-          zIndex: 1000,
+          zIndex: 10001,
           display: 'flex',
           gap: 8,
           background: 'white',
