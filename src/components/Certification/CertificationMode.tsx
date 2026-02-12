@@ -33,9 +33,16 @@ import type { CertificateApplicationInput } from '../../types/reviewTypes';
 // =====================================================
 
 interface AthleteOption {
-  value: string;
-  label: string;
+  id: string;
   full_name: string;
+  gender: "male" | "female" | "other" | null;
+  affiliation: string | null;
+  birthdate: string | null;
+  age: number | null;
+  height_cm: number | null;
+  weight_kg: number | null;
+  current_record_s: number | null;
+  target_record_s: number | null;
 }
 
 interface CertificationModeProps {
@@ -82,7 +89,7 @@ export default function CertificationMode({
   // 選手選択時に名前を設定
   useEffect(() => {
     if (selectedAthleteId) {
-      const athlete = athleteOptions.find(a => a.value === selectedAthleteId);
+      const athlete = athleteOptions.find(a => a.id === selectedAthleteId);
       if (athlete) {
         setAthleteteName(athlete.full_name);
       }
@@ -594,8 +601,8 @@ export default function CertificationMode({
             >
               <option value="">選択してください</option>
               {athleteOptions.map((athlete) => (
-                <option key={athlete.value} value={athlete.value}>
-                  {athlete.label}
+                <option key={athlete.id} value={athlete.id}>
+                  {athlete.full_name} {athlete.affiliation ? `(${athlete.affiliation})` : ''}
                 </option>
               ))}
             </select>
