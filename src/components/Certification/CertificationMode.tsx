@@ -133,10 +133,12 @@ export default function CertificationMode({
 
   const loadGrades = async () => {
     try {
+      console.log('[CertificationMode] Loading grades...');
       const data = await CertificationService.fetchAllGrades();
+      console.log('[CertificationMode] Grades loaded:', data);
       setGrades(data);
     } catch (err) {
-      console.error('Failed to load grades:', err);
+      console.error('[CertificationMode] Failed to load grades:', err);
       setError('級マスタの取得に失敗しました。データベースマイグレーションが未実施の可能性があります。Supabase SQL Editorで migrations/001_certification_schema_up.sql を実行してください。');
     }
   };
@@ -513,6 +515,8 @@ export default function CertificationMode({
 
   const requiresHFVP = selectedGrade === '1級' || selectedGrade === '2級';
 
+  console.log('[CertificationMode] Render - step:', step, 'grades:', grades.length, 'athleteOptions:', athleteOptions.length, 'currentUser:', currentUser);
+
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: 20 }}>
       {/* ヘッダー */}
@@ -533,6 +537,15 @@ export default function CertificationMode({
         <h1 style={{ marginTop: 16, fontSize: 28, fontWeight: 'bold' }}>
           🏃 ランニング技能検定モード
         </h1>
+      </div>
+
+      {/* デバッグ情報 */}
+      <div style={{ padding: 10, background: '#f0f0f0', marginBottom: 16, fontSize: 12, fontFamily: 'monospace' }}>
+        <div>Step: {step}</div>
+        <div>Grades loaded: {grades.length}</div>
+        <div>Athletes loaded: {athleteOptions.length}</div>
+        <div>Current user: {currentUser?.email || 'null'}</div>
+        <div>Error: {error || 'none'}</div>
       </div>
 
       {/* エラー表示 */}
