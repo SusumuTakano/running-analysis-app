@@ -69,6 +69,8 @@ export default function CertificationMode({
   currentUser,
   analysisData,
 }: CertificationModeProps) {
+  console.log('[CertificationMode] Component mounted/updated, analysisData:', analysisData);
+  
   // ステップ管理
   const [step, setStep] = useState<'setup' | 'analysis' | 'review' | 'result'>('setup');
 
@@ -82,6 +84,7 @@ export default function CertificationMode({
   // 検定者名を自動入力（ユーザー情報から）
   useEffect(() => {
     if (currentUser?.email) {
+      console.log('[CertificationMode] Setting evaluator name:', currentUser.email);
       setEvaluatorName(currentUser.email);
     }
   }, [currentUser]);
@@ -91,10 +94,16 @@ export default function CertificationMode({
     if (selectedAthleteId) {
       const athlete = athleteOptions.find(a => a.id === selectedAthleteId);
       if (athlete) {
+        console.log('[CertificationMode] Setting athlete name:', athlete.full_name);
         setAthleteteName(athlete.full_name);
       }
     }
   }, [selectedAthleteId, athleteOptions]);
+  
+  // stepが勝手に変更されないようにログ出力
+  useEffect(() => {
+    console.log('[CertificationMode] Step changed to:', step);
+  }, [step]);
 
   // 級・ルールデータ
   const [grades, setGrades] = useState<CertificationGrade[]>([]);
@@ -689,7 +698,31 @@ export default function CertificationMode({
         </div>
       )}
 
-      {/* Step 2: 自動採点表示 */}
+      {/* Step 2: 分析待機 / 自動採点表示 */}
+      {step === 'analysis' && !scoringResult && (
+        <div style={{ textAlign: 'center', padding: 40 }}>
+          <h2 style={{ fontSize: 20, marginBottom: 16 }}>分析データ待機中...</h2>
+          <p style={{ color: '#666' }}>
+            通常分析モードで測定を実施してください。<br />
+            測定完了後、自動的に採点結果が表示されます。
+          </p>
+          <button
+            onClick={() => setStep('setup')}
+            style={{
+              marginTop: 20,
+              padding: '10px 20px',
+              fontSize: 14,
+              cursor: 'pointer',
+              borderRadius: 6,
+              border: '1px solid #ccc',
+              background: 'white',
+            }}
+          >
+            ← 検定設定に戻る
+          </button>
+        </div>
+      )}
+
       {step === 'analysis' && scoringResult && (
         <div>
           <h2 style={{ fontSize: 20, marginBottom: 16 }}>自動採点結果</h2>
