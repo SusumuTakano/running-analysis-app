@@ -20,8 +20,22 @@ export type PassThreshold = 70 | 80;
 /** データ品質ランク */
 export type QualityGrade = '良' | '可' | '参考';
 
-/** 検定状態 */
+/** 検定状態（既存のセッションステータス） */
 export type CertificationStatus = 'in_progress' | 'completed' | 'failed' | 'cancelled';
+
+/** 判定モード（二層判定用） */
+export type JudgmentMode = 'AUTO_FINAL' | 'REVIEW_REQUIRED';
+
+/** 試行ステータス（二層判定用） */
+export type AttemptStatus = 
+  | 'draft'                 // 下書き
+  | 'submitted'             // 提出済み（2・1級）
+  | 'auto_pass'             // 自動合格（10〜3級）
+  | 'auto_fail'             // 自動不合格（10〜3級）
+  | 'under_review'          // 審査中（2・1級）
+  | 'certified_pass'        // 認定合格（2・1級）
+  | 'certified_fail'        // 認定不合格（2・1級）
+  | 'needs_resubmission';   // 再提出要求（2・1級）
 
 /** 評価項目 */
 export type EvaluationItem = 'angle' | 'stride' | 'contact_time' | 'hfvp' | 'technique';
@@ -321,7 +335,7 @@ export interface EvaluationFeedback {
 // 監査ログ
 // =====================================================
 
-/** 監査イベント種別 */
+/** 監査イベント種別（二層判定用の追加イベント含む） */
 export type AuditEventType =
   | 'session_started'
   | 'session_completed'
@@ -333,7 +347,17 @@ export type AuditEventType =
   | 'result_issued'
   | 'certificate_generated'
   | 'rule_updated'
-  | 'manual_override';
+  | 'manual_override'
+  // 二層判定用の追加イベント
+  | 'attempt_submitted'
+  | 'review_assigned'
+  | 'review_started'
+  | 'review_completed'
+  | 'certificate_applied'
+  | 'certificate_issued'
+  | 'certificate_rejected'
+  | 'video_uploaded'
+  | 'status_changed';
 
 /** 監査ログエントリ */
 export interface AuditLogEntry {
@@ -382,7 +406,7 @@ export interface CertificationSession {
   updated_at: string;
 }
 
-/** 検定試行 */
+/** 検定試行（二層判定モデル対応） */
 export interface CertificationAttempt {
   id: string;
   session_id: string;
@@ -391,6 +415,16 @@ export interface CertificationAttempt {
   raw_metrics: Record<string, any> | null;
   started_at: string;
   completed_at: string | null;
+  
+  // 二層判定モデルフィールド
+  status?: AttemptStatus;
+  judgment_mode?: JudgmentMode;
+  grade_code?: string | null;
+  fixed_video_url?: string | null;
+  panning_video_url?: string | null;
+  submitted_at?: string | null;
+  reviewed_at?: string | null;
+  reviewer_id?: string | null;
 }
 
 /** 検定結果 */
