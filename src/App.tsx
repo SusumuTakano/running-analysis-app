@@ -654,6 +654,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     gradeCode: string;
     athleteName: string;
     evaluatorName: string;
+    athleteId?: string; // 選手IDを追加
   } | null>(null);
 
 const [wizardStep, setWizardStep] = useState<WizardStep>(0);
@@ -3348,6 +3349,39 @@ const clearMarksByButton = () => {
       setAppMode('certification');
     }
   }, [panningSprintAnalysis, pendingCertification, appMode]);
+
+  // ===== 検定モード：選手情報を自動入力 =====
+  useEffect(() => {
+    if (pendingCertification?.athleteId && appMode === 'normal') {
+      const selectedAthlete = athleteOptions.find(
+        (ath) => ath.id === pendingCertification.athleteId
+      );
+      if (selectedAthlete) {
+        console.log('[App] Auto-filling athlete info from pending certification:', selectedAthlete);
+        setAthleteInfo({
+          name: selectedAthlete.full_name ?? "",
+          age: selectedAthlete.age ?? null,
+          gender:
+            (selectedAthlete.gender as
+              | "male"
+              | "female"
+              | "other"
+              | null) ?? null,
+          affiliation: selectedAthlete.affiliation ?? "",
+          height_cm: selectedAthlete.height_cm ?? null,
+          weight_kg: selectedAthlete.weight_kg ?? null,
+          current_record:
+            selectedAthlete.current_record_s != null
+              ? String(selectedAthlete.current_record_s)
+              : "",
+          target_record:
+            selectedAthlete.target_record_s != null
+              ? String(selectedAthlete.target_record_s)
+              : "",
+        });
+      }
+    }
+  }, [pendingCertification, appMode, athleteOptions]);
 
   // ===== H-FVP dashboard values (ADD) =====
   const hfvpDashboard = useMemo(() => {

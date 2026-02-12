@@ -56,6 +56,7 @@ interface CertificationModeProps {
     gradeCode: string;
     athleteName: string;
     evaluatorName: string;
+    athleteId?: string;
   }) => void;
   // 保存された検定情報
   pendingCertification?: {
@@ -64,6 +65,7 @@ interface CertificationModeProps {
     gradeCode: string;
     athleteName: string;
     evaluatorName: string;
+    athleteId?: string;
   } | null;
   // 検定情報をクリアするコールバック
   onClearPendingCertification?: () => void;
@@ -283,6 +285,7 @@ export default function CertificationMode({
             gradeCode: selectedGrade,
             athleteName: athleteName.trim(),
             evaluatorName: evaluatorName.trim(),
+            athleteId: selectedAthleteId || undefined, // 選手IDを追加
           });
         } else {
           // コールバックがない場合は従来通り分析待機画面を表示
