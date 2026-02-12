@@ -4,7 +4,7 @@
 // 説明: 検定モードのUI統合（Phase 4）
 // =====================================================
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type {
   GradeCode,
   CertificationGrade,
@@ -162,10 +162,13 @@ export default function CertificationMode({
     loadGrades();
   }, []);
 
-  // 保存された検定情報を復元
+  // 保存された検定情報を復元（一度だけ）
+  const restoredRef = useRef(false);
   useEffect(() => {
-    if (pendingCertification) {
+    if (pendingCertification && !restoredRef.current) {
       console.log('[CertificationMode] Restoring pending certification:', pendingCertification);
+      restoredRef.current = true; // 復元済みフラグを立てる
+      
       setSessionId(pendingCertification.sessionId);
       setAttemptId(pendingCertification.attemptId);
       setSelectedGrade(pendingCertification.gradeCode as GradeCode);
@@ -178,8 +181,13 @@ export default function CertificationMode({
         console.log('[CertificationMode] Analysis data available, preparing scoring...');
         prepareScoringInput();
       }
+      
+      // 復元が完了したらpendingCertificationをクリア
+      if (onClearPendingCertification) {
+        onClearPendingCertification();
+      }
     }
-  }, [pendingCertification, analysisData]);
+  }, [pendingCertification, analysisData, onClearPendingCertification]);
 
   const loadGrades = async () => {
     try {

@@ -3339,6 +3339,11 @@ const clearMarksByButton = () => {
       // ユーザーに通知
       alert('✅ 測定完了！\n\n検定モードに戻って採点結果を確認します。');
       
+      // ⚠️ 重要：pendingCertificationをクリアしてからモード切り替え
+      // これをしないと、検定モードで再度useEffectが発火してループする
+      const certInfoForProcessing = { ...pendingCertification };
+      setPendingCertification(null); // 先にクリア
+      
       // 検定モードに戻る
       setAppMode('certification');
     }
