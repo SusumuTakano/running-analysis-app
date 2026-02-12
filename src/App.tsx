@@ -646,6 +646,15 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
 
 // ===== 検定モード切り替え (Phase 4) =====
   const [appMode, setAppMode] = useState<'normal' | 'certification'>('normal');
+  
+  // 検定モードで保存された情報
+  const [pendingCertification, setPendingCertification] = useState<{
+    sessionId: string;
+    attemptId: string;
+    gradeCode: string;
+    athleteName: string;
+    evaluatorName: string;
+  } | null>(null);
 
 const [wizardStep, setWizardStep] = useState<WizardStep>(0);
   const [selectedFps, setSelectedFps] = useState<number>(120); 
@@ -3320,6 +3329,18 @@ const clearMarksByButton = () => {
       hfvpData // H-FVPデータを追加
     };
   }, [analysisMode, panningSplits, panningStartIndex, panningEndIndex, athleteInfo.weight_kg]);
+
+  // ===== 検定モード：測定完了時に自動的に戻る =====
+  useEffect(() => {
+    // 検定待ちの状態で、パンニング分析が完了したら自動的に検定モードに戻る
+    if (pendingCertification && panningSprintAnalysis && appMode === 'normal') {
+      console.log('✅ 測定完了！検定モードに自動的に戻ります', panningSprintAnalysis);
+      // 少し遅延させてUIがスムーズに見えるように
+      setTimeout(() => {
+        setAppMode('certification');
+      }, 500);
+    }
+  }, [panningSprintAnalysis, pendingCertification, appMode]);
 
   // ===== H-FVP dashboard values (ADD) =====
   const hfvpDashboard = useMemo(() => {
@@ -16249,6 +16270,13 @@ case 6: {
           onBack={() => setAppMode('normal')} 
           athleteOptions={athleteOptions}
           currentUser={currentUser}
+          onStartMeasurement={(certInfo) => {
+            // 検定情報を保存して分析モードへ
+            setPendingCertification(certInfo);
+            setAppMode('normal');
+          }}
+          pendingCertification={pendingCertification}
+          onClearPendingCertification={() => setPendingCertification(null)}
         />
       )}
 

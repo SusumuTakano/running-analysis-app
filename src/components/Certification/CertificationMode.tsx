@@ -49,6 +49,24 @@ interface CertificationModeProps {
   onBack: () => void;
   athleteOptions: AthleteOption[];
   currentUser: { id: string; email: string | null } | null;
+  // 測定開始時のコールバック（検定情報を保存して分析モードへ）
+  onStartMeasurement?: (certInfo: {
+    sessionId: string;
+    attemptId: string;
+    gradeCode: string;
+    athleteName: string;
+    evaluatorName: string;
+  }) => void;
+  // 保存された検定情報
+  pendingCertification?: {
+    sessionId: string;
+    attemptId: string;
+    gradeCode: string;
+    athleteName: string;
+    evaluatorName: string;
+  } | null;
+  // 検定情報をクリアするコールバック
+  onClearPendingCertification?: () => void;
   // 通常分析からのデータ連携
   analysisData?: {
     angle?: AngleMeasurement;
@@ -67,9 +85,13 @@ export default function CertificationMode({
   onBack,
   athleteOptions,
   currentUser,
+  onStartMeasurement,
+  pendingCertification,
+  onClearPendingCertification,
   analysisData,
 }: CertificationModeProps) {
   console.log('[CertificationMode] Component mounted/updated, analysisData:', analysisData);
+  console.log('[CertificationMode] pendingCertification:', pendingCertification);
   
   // ステップ管理
   const [step, setStep] = useState<'setup' | 'analysis' | 'review' | 'result'>('setup');
@@ -139,6 +161,25 @@ export default function CertificationMode({
   useEffect(() => {
     loadGrades();
   }, []);
+
+  // 保存された検定情報を復元
+  useEffect(() => {
+    if (pendingCertification) {
+      console.log('[CertificationMode] Restoring pending certification:', pendingCertification);
+      setSessionId(pendingCertification.sessionId);
+      setAttemptId(pendingCertification.attemptId);
+      setSelectedGrade(pendingCertification.gradeCode as GradeCode);
+      setAthleteteName(pendingCertification.athleteName);
+      setEvaluatorName(pendingCertification.evaluatorName);
+      setStep('analysis'); // 分析ステップに進む
+      
+      // 測定データがあれば採点を実行
+      if (analysisData) {
+        console.log('[CertificationMode] Analysis data available, preparing scoring...');
+        prepareScoringInput();
+      }
+    }
+  }, [pendingCertification, analysisData]);
 
   const loadGrades = async () => {
     try {
@@ -223,9 +264,23 @@ export default function CertificationMode({
       // 分析データがあれば採点入力を準備
       if (analysisData) {
         prepareScoringInput();
+        setStep('analysis');
+      } else {
+        // 分析データがない場合は、検定情報を保存して分析モードへ
+        if (onStartMeasurement) {
+          console.log('[CertificationMode] Saving certification info and switching to analysis mode');
+          onStartMeasurement({
+            sessionId: session.id,
+            attemptId: attempt.id,
+            gradeCode: selectedGrade,
+            athleteName: athleteName.trim(),
+            evaluatorName: evaluatorName.trim(),
+          });
+        } else {
+          // コールバックがない場合は従来通り分析待機画面を表示
+          setStep('analysis');
+        }
       }
-
-      setStep('analysis');
     } catch (err) {
       console.error('Failed to start certification:', err);
       setError('検定開始に失敗しました');
