@@ -3335,10 +3335,12 @@ const clearMarksByButton = () => {
     // 検定待ちの状態で、パンニング分析が完了したら自動的に検定モードに戻る
     if (pendingCertification && panningSprintAnalysis && appMode === 'normal') {
       console.log('✅ 測定完了！検定モードに自動的に戻ります', panningSprintAnalysis);
-      // 少し遅延させてUIがスムーズに見えるように
-      setTimeout(() => {
-        setAppMode('certification');
-      }, 500);
+      
+      // ユーザーに通知
+      alert('✅ 測定完了！\n\n検定モードに戻って採点結果を確認します。');
+      
+      // 検定モードに戻る
+      setAppMode('certification');
     }
   }, [panningSprintAnalysis, pendingCertification, appMode]);
 
@@ -16283,6 +16285,40 @@ case 6: {
       {/* ===== 通常分析モード（既存UI） ===== */}
       {appMode === 'normal' && (
         <>
+      {/* 検定待ちバナー */}
+      {pendingCertification && (
+        <div style={{
+          position: 'fixed',
+          top: 80,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 9999,
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          color: 'white',
+          padding: '16px 24px',
+          borderRadius: '12px',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+          maxWidth: '90%',
+          animation: 'slideDown 0.3s ease-out'
+        }}>
+          <div style={{ fontSize: 24 }}>🏃</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 4 }}>
+              検定測定中
+            </div>
+            <div style={{ fontSize: 14, opacity: 0.9 }}>
+              {pendingCertification.gradeCode} - {pendingCertification.athleteName}
+            </div>
+          </div>
+          <div style={{ fontSize: 14, opacity: 0.8 }}>
+            測定完了後、自動的に検定モードに戻ります
+          </div>
+        </div>
+      )}
+      
       {/* チュートリアルモーダル */}
       {showTutorial && (
         <div style={{
