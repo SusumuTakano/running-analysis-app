@@ -102,7 +102,7 @@ export default function CertificationMode({
       setGrades(data);
     } catch (err) {
       console.error('Failed to load grades:', err);
-      setError('級マスタの取得に失敗しました');
+      setError('級マスタの取得に失敗しました。データベースマイグレーションが未実施の可能性があります。Supabase SQL Editorで migrations/001_certification_schema_up.sql を実行してください。');
     }
   };
 
