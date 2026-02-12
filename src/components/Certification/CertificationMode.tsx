@@ -32,8 +32,16 @@ import type { CertificateApplicationInput } from '../../types/reviewTypes';
 // Props
 // =====================================================
 
+interface AthleteOption {
+  value: string;
+  label: string;
+  full_name: string;
+}
+
 interface CertificationModeProps {
   onBack: () => void;
+  athleteOptions: AthleteOption[];
+  currentUser: { id: string; email: string | null } | null;
   // 通常分析からのデータ連携
   analysisData?: {
     angle?: AngleMeasurement;
@@ -50,6 +58,8 @@ interface CertificationModeProps {
 
 export default function CertificationMode({
   onBack,
+  athleteOptions,
+  currentUser,
   analysisData,
 }: CertificationModeProps) {
   // ステップ管理
@@ -58,8 +68,26 @@ export default function CertificationMode({
   // 検定設定
   const [selectedGrade, setSelectedGrade] = useState<GradeCode | null>(null);
   const [evaluatorName, setEvaluatorName] = useState('');
+  const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null);
   const [athleteName, setAthleteteName] = useState('');
   const [measurementConditions, setMeasurementConditions] = useState('');
+  
+  // 検定者名を自動入力（ユーザー情報から）
+  useEffect(() => {
+    if (currentUser?.email) {
+      setEvaluatorName(currentUser.email);
+    }
+  }, [currentUser]);
+  
+  // 選手選択時に名前を設定
+  useEffect(() => {
+    if (selectedAthleteId) {
+      const athlete = athleteOptions.find(a => a.value === selectedAthleteId);
+      if (athlete) {
+        setAthleteteName(athlete.full_name);
+      }
+    }
+  }, [selectedAthleteId, athleteOptions]);
 
   // 級・ルールデータ
   const [grades, setGrades] = useState<CertificationGrade[]>([]);
@@ -547,35 +575,46 @@ export default function CertificationMode({
             </select>
           </div>
 
-          {/* 受検者名 */}
+          {/* 受検者選択 */}
           <div style={{ marginBottom: 20 }}>
             <label style={{ display: 'block', marginBottom: 8, fontWeight: 'bold' }}>
-              受検者名 <span style={{ color: 'red' }}>*</span>
+              受検者（登録済み選手から選択） <span style={{ color: 'red' }}>*</span>
+            </label>
+            <select
+              value={selectedAthleteId || ''}
+              onChange={(e) => setSelectedAthleteId(e.target.value || null)}
+              style={{
+                padding: 12,
+                fontSize: 16,
+                borderRadius: 6,
+                border: '1px solid #ccc',
+                width: '100%',
+                maxWidth: 400,
+              }}
+            >
+              <option value="">選択してください</option>
+              {athleteOptions.map((athlete) => (
+                <option key={athlete.value} value={athlete.value}>
+                  {athlete.label}
+                </option>
+              ))}
+            </select>
+            {selectedAthleteId && athleteName && (
+              <div style={{ marginTop: 8, fontSize: 14, color: '#666' }}>
+                選択された受検者: {athleteName}
+              </div>
+            )}
+          </div>
+
+          {/* 検定員名（自動入力） */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ display: 'block', marginBottom: 8, fontWeight: 'bold' }}>
+              検定員（自動入力）
             </label>
             <input
               type="text"
-              value={athleteName}
-              onChange={(e) => setAthleteteName(e.target.value)}
-              placeholder="例: 山田太郎"
-              style={{
-                padding: 12,
-                fontSize: 16,
-                borderRadius: 6,
-                border: '1px solid #ccc',
-                width: '100%',
-                maxWidth: 400,
-              }}
-            />
-          </div>
-
-          {/* 検定員名 */}
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'block', marginBottom: 8, fontWeight: 'bold' }}>検定員名</label>
-            <input
-              type="text"
               value={evaluatorName}
-              onChange={(e) => setEvaluatorName(e.target.value)}
-              placeholder="例: 鈴木花子"
+              readOnly
               style={{
                 padding: 12,
                 fontSize: 16,
@@ -583,8 +622,13 @@ export default function CertificationMode({
                 border: '1px solid #ccc',
                 width: '100%',
                 maxWidth: 400,
+                background: '#f5f5f5',
+                cursor: 'not-allowed',
               }}
             />
+            <div style={{ marginTop: 4, fontSize: 12, color: '#999' }}>
+              ログイン中のユーザー情報が自動的に設定されます
+            </div>
           </div>
 
           {/* 測定条件 */}

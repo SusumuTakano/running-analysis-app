@@ -711,6 +711,9 @@ const [athleteInfo, setAthleteInfo] =
 const [athleteOptions, setAthleteOptions] = useState<AthleteOption[]>([]);
 const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(null);
 
+// ------------- ユーザー情報（検定用） -------------------
+const [currentUser, setCurrentUser] = useState<{ id: string; email: string | null } | null>(null);
+
 // ログイン中ユーザーの選手一覧を読み込む
 useEffect(() => {
   const loadAthletes = async () => {
@@ -731,6 +734,12 @@ useEffect(() => {
 
     const authUserId = sessionData.session.user.id;
     console.log('✅ ユーザーID:', authUserId);
+    
+    // ユーザー情報を保存（検定用）
+    setCurrentUser({
+      id: authUserId,
+      email: sessionData.session.user.email || null
+    });
 
     // 一時的に weight_kg を除外（カラムが存在しない場合のフォールバック）
     let { data, error } = await supabase
@@ -16185,7 +16194,7 @@ case 6: {
       {/* モバイル用の修正を適用 */}
 
       {/* ===== Phase 4: 検定モード切り替えUI ===== */}
-      {!isMobile && wizardStep === 0 && (
+      {!isMobile && (
         <div style={{
           position: 'fixed',
           top: 20,
@@ -16236,7 +16245,11 @@ case 6: {
 
       {/* ===== Phase 4: 検定モード表示 ===== */}
       {appMode === 'certification' && (
-        <CertificationMode onBack={() => setAppMode('normal')} />
+        <CertificationMode 
+          onBack={() => setAppMode('normal')} 
+          athleteOptions={athleteOptions}
+          currentUser={currentUser}
+        />
       )}
 
       {/* ===== 通常分析モード（既存UI） ===== */}
