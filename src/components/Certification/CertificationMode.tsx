@@ -700,26 +700,73 @@ export default function CertificationMode({
 
       {/* Step 2: 分析待機 / 自動採点表示 */}
       {step === 'analysis' && !scoringResult && (
-        <div style={{ textAlign: 'center', padding: 40 }}>
-          <h2 style={{ fontSize: 20, marginBottom: 16 }}>分析データ待機中...</h2>
-          <p style={{ color: '#666' }}>
-            通常分析モードで測定を実施してください。<br />
-            測定完了後、自動的に採点結果が表示されます。
-          </p>
-          <button
-            onClick={() => setStep('setup')}
-            style={{
-              marginTop: 20,
-              padding: '10px 20px',
-              fontSize: 14,
-              cursor: 'pointer',
-              borderRadius: 6,
-              border: '1px solid #ccc',
-              background: 'white',
-            }}
-          >
-            ← 検定設定に戻る
-          </button>
+        <div style={{ textAlign: 'center', padding: 40, maxWidth: 600, margin: '0 auto' }}>
+          <h2 style={{ fontSize: 24, marginBottom: 24, color: '#2196F3' }}>✅ 検定セッション作成完了</h2>
+          
+          <div style={{ 
+            background: '#f5f5f5', 
+            padding: 24, 
+            borderRadius: 12,
+            marginBottom: 24,
+            textAlign: 'left'
+          }}>
+            <h3 style={{ fontSize: 18, marginBottom: 16, color: '#333' }}>📊 検定情報</h3>
+            <div style={{ fontSize: 16, lineHeight: 1.8 }}>
+              <div><strong>級:</strong> {selectedGrade}</div>
+              <div><strong>受検者:</strong> {athleteName}</div>
+              <div><strong>検定員:</strong> {evaluatorName}</div>
+              <div><strong>判定方式:</strong> {judgmentMode === 'AUTO_FINAL' ? '自動判定（3〜10級）' : '審査必須（1〜2級）'}</div>
+            </div>
+          </div>
+
+          <div style={{
+            background: '#fff3cd',
+            border: '2px solid #ffc107',
+            padding: 24,
+            borderRadius: 12,
+            marginBottom: 24,
+            textAlign: 'left'
+          }}>
+            <h3 style={{ fontSize: 18, marginBottom: 16, color: '#856404' }}>📝 次の手順</h3>
+            <ol style={{ fontSize: 16, lineHeight: 2, paddingLeft: 24, margin: 0 }}>
+              <li>下の「通常分析モードへ」ボタンをクリック</li>
+              <li>動画をアップロードして測定を実施</li>
+              <li>測定完了後、再度「検定モード」ボタンで戻る</li>
+              <li>自動的に採点結果が表示されます</li>
+            </ol>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+            <button
+              onClick={onBack}
+              style={{
+                padding: '14px 28px',
+                fontSize: 16,
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                borderRadius: 8,
+                border: 'none',
+                background: '#2196F3',
+                color: 'white',
+              }}
+            >
+              📊 通常分析モードへ
+            </button>
+            <button
+              onClick={() => setStep('setup')}
+              style={{
+                padding: '14px 28px',
+                fontSize: 16,
+                cursor: 'pointer',
+                borderRadius: 8,
+                border: '1px solid #ccc',
+                background: 'white',
+                color: '#666',
+              }}
+            >
+              ← 検定設定に戻る
+            </button>
+          </div>
         </div>
       )}
 
