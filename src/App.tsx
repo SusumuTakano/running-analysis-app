@@ -32,6 +32,8 @@ import MultiCameraAnalyzer from "./components/MultiCameraAnalyzer";
 import { parseMedia } from "@remotion/media-parser";
 import { calculateHFVP, calculateHFVPFromPanningSplits, type HFVPResult, type StepDataForHFVP, type PanningSplitDataForHFVP } from './utils/hfvpCalculator';
 import { computeHFVP, type HFVPResult as HFVPMixedResult } from './lib/hfvpMixed';
+// ===== 検定モード (Phase 4) =====
+import CertificationMode from './components/Certification/CertificationMode';
 
 // ===== H-FVP display helpers (ADD) =====
 type XY = { x: number; y: number };
@@ -641,6 +643,9 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     window.addEventListener('resize', checkDevice);
     return () => window.removeEventListener('resize', checkDevice);
   }, []);
+
+// ===== 検定モード切り替え (Phase 4) =====
+  const [appMode, setAppMode] = useState<'normal' | 'certification'>('normal');
 
 const [wizardStep, setWizardStep] = useState<WizardStep>(0);
   const [selectedFps, setSelectedFps] = useState<number>(120); 
@@ -16179,6 +16184,64 @@ case 6: {
       )}
       {/* モバイル用の修正を適用 */}
 
+      {/* ===== Phase 4: 検定モード切り替えUI ===== */}
+      {!isMobile && wizardStep === 0 && (
+        <div style={{
+          position: 'fixed',
+          top: 20,
+          right: 20,
+          zIndex: 1000,
+          display: 'flex',
+          gap: 8,
+          background: 'white',
+          padding: '8px',
+          borderRadius: 12,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          border: '2px solid #e0e0e0'
+        }}>
+          <button
+            onClick={() => setAppMode('normal')}
+            style={{
+              padding: '10px 20px',
+              fontSize: 14,
+              fontWeight: appMode === 'normal' ? 'bold' : 'normal',
+              cursor: 'pointer',
+              borderRadius: 8,
+              border: appMode === 'normal' ? '2px solid #4CAF50' : '1px solid #ccc',
+              background: appMode === 'normal' ? '#4CAF50' : 'white',
+              color: appMode === 'normal' ? 'white' : '#333',
+              transition: 'all 0.2s'
+            }}
+          >
+            📊 通常分析
+          </button>
+          <button
+            onClick={() => setAppMode('certification')}
+            style={{
+              padding: '10px 20px',
+              fontSize: 14,
+              fontWeight: appMode === 'certification' ? 'bold' : 'normal',
+              cursor: 'pointer',
+              borderRadius: 8,
+              border: appMode === 'certification' ? '2px solid #FF9800' : '1px solid #ccc',
+              background: appMode === 'certification' ? '#FF9800' : 'white',
+              color: appMode === 'certification' ? 'white' : '#333',
+              transition: 'all 0.2s'
+            }}
+          >
+            🏃 検定モード
+          </button>
+        </div>
+      )}
+
+      {/* ===== Phase 4: 検定モード表示 ===== */}
+      {appMode === 'certification' && (
+        <CertificationMode onBack={() => setAppMode('normal')} />
+      )}
+
+      {/* ===== 通常分析モード（既存UI） ===== */}
+      {appMode === 'normal' && (
+        <>
       {/* チュートリアルモーダル */}
       {showTutorial && (
         <div style={{
@@ -16482,6 +16545,9 @@ case 6: {
         />
         <canvas ref={canvasRef} />
       </div>
+        </>
+      )}
+      {/* ===== 通常分析モード終了 ===== */}
     </div>
   );
 };
