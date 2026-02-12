@@ -66,6 +66,7 @@ interface CertificationModeProps {
     athleteName: string;
     evaluatorName: string;
     athleteId?: string;
+    measurementCompleted?: boolean;
   } | null;
   // 検定情報をクリアするコールバック
   onClearPendingCertification?: () => void;
@@ -176,20 +177,23 @@ export default function CertificationMode({
       setSelectedGrade(pendingCertification.gradeCode as GradeCode);
       setAthleteteName(pendingCertification.athleteName);
       setEvaluatorName(pendingCertification.evaluatorName);
-      setStep('analysis'); // 分析ステップに進む
       
-      // 測定データがあれば採点を実行
-      if (analysisData) {
-        console.log('[CertificationMode] Analysis data available, preparing scoring...');
-        prepareScoringInput();
-      }
-      
-      // 復元が完了したらpendingCertificationをクリア
-      if (onClearPendingCertification) {
-        onClearPendingCertification();
+      // 測定完了済みの場合は分析ステップへ、そうでなければsetupへ
+      if (pendingCertification.measurementCompleted) {
+        console.log('[CertificationMode] Measurement completed, going to analysis step');
+        setStep('analysis');
+        
+        // 測定データがあれば採点を実行
+        if (analysisData) {
+          console.log('[CertificationMode] Analysis data available, preparing scoring...');
+          prepareScoringInput();
+        }
+      } else {
+        console.log('[CertificationMode] Measurement not completed yet, staying on setup');
+        setStep('setup');
       }
     }
-  }, [pendingCertification, analysisData, onClearPendingCertification]);
+  }, [pendingCertification, analysisData]);
 
   const loadGrades = async () => {
     try {

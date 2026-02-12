@@ -655,6 +655,7 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
     athleteName: string;
     evaluatorName: string;
     athleteId?: string; // 選手IDを追加
+    measurementCompleted?: boolean; // 測定完了フラグ
   } | null>(null);
 
 const [wizardStep, setWizardStep] = useState<WizardStep>(0);
@@ -3334,16 +3335,17 @@ const clearMarksByButton = () => {
   // ===== 検定モード：測定完了時に自動的に戻る =====
   useEffect(() => {
     // 検定待ちの状態で、パンニング分析が完了したら自動的に検定モードに戻る
-    if (pendingCertification && panningSprintAnalysis && appMode === 'normal') {
+    if (pendingCertification && panningSprintAnalysis && appMode === 'normal' && !pendingCertification.measurementCompleted) {
       console.log('✅ 測定完了！検定モードに自動的に戻ります', panningSprintAnalysis);
       
       // ユーザーに通知
       alert('✅ 測定完了！\n\n検定モードに戻って採点結果を確認します。');
       
-      // ⚠️ 重要：pendingCertificationをクリアしてからモード切り替え
-      // これをしないと、検定モードで再度useEffectが発火してループする
-      const certInfoForProcessing = { ...pendingCertification };
-      setPendingCertification(null); // 先にクリア
+      // 測定完了フラグを立てる（pendingCertificationは保持）
+      setPendingCertification({
+        ...pendingCertification,
+        measurementCompleted: true
+      });
       
       // 検定モードに戻る
       setAppMode('certification');
@@ -16318,6 +16320,27 @@ case 6: {
           }}
           pendingCertification={pendingCertification}
           onClearPendingCertification={() => setPendingCertification(null)}
+          analysisData={
+            pendingCertification?.measurementCompleted && panningSprintAnalysis?.hfvpData
+              ? {
+                  hfvp: {
+                    f0: panningSprintAnalysis.hfvpData.F0 / (athleteInfo.weight_kg || 60),
+                    v0: panningSprintAnalysis.hfvpData.v0,
+                    pmax: panningSprintAnalysis.hfvpData.Pmax / (athleteInfo.weight_kg || 60),
+                    drf: panningSprintAnalysis.hfvpData.DRF,
+                    rf_max: panningSprintAnalysis.hfvpData.RF_max,
+                    fv_r2: panningSprintAnalysis.hfvpData.summary?.fvR2 || 0,
+                    pos_r2: panningSprintAnalysis.hfvpData.summary?.posR2 || 0,
+                  },
+                  quality: panningSprintAnalysis.hfvpData.quality
+                    ? {
+                        grade: panningSprintAnalysis.hfvpData.quality.grade as 'excellent' | 'good' | 'acceptable' | 'poor',
+                        warnings: panningSprintAnalysis.hfvpData.quality.warnings || [],
+                      }
+                    : undefined,
+                }
+              : undefined
+          }
         />
       )}
 
