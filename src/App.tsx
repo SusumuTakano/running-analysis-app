@@ -11585,7 +11585,11 @@ case 6: {
                             type="number"
                             value={distanceInput}
                             onChange={(e) => setDistanceInput(e.target.value)}
-                            placeholder={`推奨: ${panningSplits[panningSplits.length - 1].distance + 10}m`}
+                            placeholder={(() => {
+                              const lastDist = panningSplits[panningSplits.length - 1].distance;
+                              const recommended = lastDist < 10 ? lastDist + 5 : lastDist + 10;
+                              return `推奨: ${recommended}m`;
+                            })()}
                             step="0.1"
                             min="0.1"
                             style={{
@@ -11739,8 +11743,16 @@ case 6: {
                         });
                         setPanningSplits(newSplits);
                         
-                        // 次の推奨距離を自動入力（10m間隔）
-                        const nextDistance = distance + 10;
+                        // 次の推奨距離を自動入力
+                        // 0-5m, 5-10m の最初の2区間は5m間隔、以降は10m間隔
+                        let nextDistance: number;
+                        if (distance < 10) {
+                          // まだ10m未満 → 次は5m刻み
+                          nextDistance = distance + 5;
+                        } else {
+                          // 10m以降 → 10m刻み
+                          nextDistance = distance + 10;
+                        }
                         setDistanceInput(nextDistance.toString());
                         
                         // 手動入力の場合は次の推奨タイムも設定
