@@ -11549,7 +11549,7 @@ case 6: {
                     </div>
 
                     <div style={{ marginBottom: '12px', fontWeight: 'bold', fontSize: '1.1rem' }}>
-                      {panningSplits.length === 0 ? '🏁 スタート地点を登録（0m地点）' : '⏱️ スプリット地点を登録'}
+                      {panningSplits.length === 0 ? '🏁 スタート登録（手が地面を離れた瞬間）' : '⏱️ スプリット地点を登録'}
                     </div>
                     
                     {/* スタート地点の説明 */}
@@ -11562,9 +11562,9 @@ case 6: {
                         fontSize: '0.85rem',
                         lineHeight: '1.5'
                       }}>
-                        📍 スタート地点（0m）を登録してください。<br/>
+                        🖐️ <strong>手が地面から離れた瞬間</strong>がt=0になります。<br/>
                         {panningInputMode === 'video' 
-                          ? 'ビデオをスタート位置に移動してから「登録」ボタンを押してください。'
+                          ? 'ビデオで手が離れた瞬間のフレームに合わせてから「登録」ボタンを押してください。以降のタイムはこのフレームからの経過時間で自動計算されます。'
                           : 'タイムは自動的に0秒になります。「登録」ボタンを押してください。'}
                       </div>
                     )}
@@ -11652,9 +11652,12 @@ case 6: {
                       onClick={() => {
                         // スタート地点（0m）の登録
                         if (panningSplits.length === 0) {
+                          // ビデオモード: 現在のフレームをt=0の基準フレームとして記録
+                          // 手動モード: frame=0, time=0で固定
+                          const startFrame = panningInputMode === 'video' ? currentFrame : 0;
                           const newSplits: PanningSplit[] = [{ 
-                            frame: 0, 
-                            time: 0, 
+                            frame: startFrame, 
+                            time: 0,   // t=0（手が離れた瞬間）
                             distance: 0 
                           }];
                           setPanningSplits(newSplits);
@@ -11710,7 +11713,9 @@ case 6: {
                         } else {
                           // 動画モード
                           frame = currentFrame;
-                          time = usedTargetFps ? frame / usedTargetFps : 0;
+                          // タイムは「0mフレーム（手が離れた瞬間）からの差分」で計算
+                          const startFrame = panningSplits[0].frame;
+                          time = usedTargetFps ? (frame - startFrame) / usedTargetFps : 0;
                           
                           // 前の地点より大きいかチェック
                           const lastTime = panningSplits[panningSplits.length - 1].time;
