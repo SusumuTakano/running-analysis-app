@@ -16351,8 +16351,12 @@ case 6: {
                   },
                   quality: panningSprintAnalysis.hfvpData.quality
                     ? {
-                        grade: panningSprintAnalysis.hfvpData.quality.grade as 'excellent' | 'good' | 'acceptable' | 'poor',
-                        warnings: panningSprintAnalysis.hfvpData.quality.warnings || [],
+                        pose_confidence_avg: 1,
+                        pose_confidence_min: 1,
+                        frame_drop_rate: 0,
+                        measurement_points: panningSprintAnalysis.hfvpData.summary?.usedPoints || 0,
+                        fv_r2: panningSprintAnalysis.hfvpData.summary?.fvR2 || 0,
+                        pos_r2: panningSprintAnalysis.hfvpData.summary?.posR2 || 0,
                       }
                     : undefined,
                 }
