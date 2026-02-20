@@ -300,14 +300,47 @@ export const computeHFVP = (
   const forces = accels.map((a) => massKg * a);
   const powers = forces.map((f, i) => f * speeds[i]);
 
-  // F-v 回帰（点: 各区間の v, F）
+  // ---- F-v 回帰に使う点を物理フィルタで絞る ----
+  // 条件: 加速度 > 0（F > 0）かつ 速度 <= vmaxMeasured のピーク区間まで
+  // 減速区間（加速度 <= 0）が混入すると F が負になり V0 が崩れるため除外する
+  const vmaxMeasuredRaw = Math.max(...speeds);
+  const vmaxIdx = speeds.indexOf(vmaxMeasuredRaw);
+
+  // 加速フェーズ（速度がピークに達するまで、かつ F > 0）のインデックスを取得
+  const accelPhaseIdx: number[] = [];
+  for (let i = 0; i < nSeg; i++) {
+    if (accels[i] > 0 && i <= vmaxIdx) {
+      accelPhaseIdx.push(i);
+    }
+  }
+
+  // 加速フェーズが極端に少ない場合は全点使用（フォールバック）
+  const useFilteredPoints = accelPhaseIdx.length >= 3;
+  const fvSpeeds = useFilteredPoints ? accelPhaseIdx.map((i) => speeds[i]) : speeds;
+  const fvForces = useFilteredPoints ? accelPhaseIdx.map((i) => forces[i]) : forces;
+  const excludedByPhaseIdx = useFilteredPoints
+    ? speeds.map((_, i) => !accelPhaseIdx.includes(i) ? i : -1).filter((i) => i >= 0)
+    : [];
+
+  // F-v 回帰（点: 加速フェーズのみ）
   const fitFV = fitWithOptionalOutlierRemoval(
-    speeds,
-    forces,
+    fvSpeeds,
+    fvForces,
     regression,
     removeOutliers,
     outlierSigma
   );
+
+  // keepIdx / removedIdx を全区間インデックスに変換し直す
+  const fvKeepIdxGlobal = useFilteredPoints
+    ? fitFV.keepIdx.map((ki) => accelPhaseIdx[ki])
+    : fitFV.keepIdx;
+  const fvRemovedIdxGlobal = [
+    ...excludedByPhaseIdx,
+    ...(useFilteredPoints
+      ? fitFV.removedIdx.map((ri) => accelPhaseIdx[ri])
+      : fitFV.removedIdx),
+  ];
 
   const slope = fitFV.fit.slope;
   const intercept = fitFV.fit.intercept; // F0
@@ -324,16 +357,16 @@ export const computeHFVP = (
   // RF（簡易） = F/F0*100
   const rfPercent = forces.map((f) => (Math.abs(f0N) > EPS ? (f / f0N) * 100 : Number.NaN));
 
-  // DRF: RF-v の傾き（使う点はF-vで採用された点に合わせる）
+  // DRF: RF-v の傾き（使う点はF-vで採用されたグローバルインデックスに合わせる）
   let drf = Number.NaN;
-  if (fitFV.keepIdx.length >= 2) {
-    const xv = fitFV.keepIdx.map((i) => speeds[i]);
-    const yrf = fitFV.keepIdx.map((i) => rfPercent[i]);
+  if (fvKeepIdxGlobal.length >= 2) {
+    const xv = fvKeepIdxGlobal.map((i) => speeds[i]);
+    const yrf = fvKeepIdxGlobal.map((i) => rfPercent[i]);
     const fitRF = fitLine(xv, yrf, regression);
     drf = fitRF.slope; // % per (m/s)
   }
 
-  const removedSet = new Set(fitFV.removedIdx);
+  const removedSet = new Set(fvRemovedIdxGlobal);
 
   const segments: SegmentMetrics[] = [];
   for (let i = 0; i < nSeg; i++) {
@@ -362,13 +395,17 @@ export const computeHFVP = (
   if (fitFV.removedIdx.length > 0) {
     warnings.push(`外れ値として ${fitFV.removedIdx.length} 点を除外して再推定しました。`);
   }
+  if (excludedByPhaseIdx.length > 0) {
+    warnings.push(`減速区間 ${excludedByPhaseIdx.length} 点をF-v回帰から除外しました（加速フェーズのみ使用）。`);
+  }
 
   // 中盤(30m以降)で負の力がある場合の警告
   const hasNegativeMidForce = segments.some((s) => s.endDistance >= 30 && s.forceN < 0);
-  if (hasNegativeMidForce) warnings.push("30m以降に負の力が含まれています（減速/打点誤差の可能性）。");
+  if (hasNegativeMidForce) warnings.push("30m以降に負の力が含まれています（減速区間混入の可能性）。");
 
+  // Vmax > V0 の警告（推定が実測より低い）
   if (Number.isFinite(v0) && v0 <= vmaxMeasured * 1.01) {
-    warnings.push("V0が実測Vmaxに非常に近い/下回っています（推定不安定の可能性）。");
+    warnings.push(`⚠️ V0（理論: ${round(v0,2)} m/s）が実測Vmax（${round(vmaxMeasured,2)} m/s）以下です。減速区間の混入またはノイズの可能性があります。`);
   }
   if (Number.isFinite(drf) && drf >= 0) {
     warnings.push("DRFが正です（通常は負値）。データ品質を確認してください。");
@@ -390,7 +427,7 @@ export const computeHFVP = (
       drf: round(drf, 3),
       rfMax: 100,
       fvR2: round(fvR2, 3),
-      usedPoints: fitFV.keepIdx.length,
+      usedPoints: fvKeepIdxGlobal.length,
       totalPoints: speeds.length,
     },
     segments,

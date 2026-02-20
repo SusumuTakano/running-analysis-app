@@ -12664,14 +12664,14 @@ case 6: {
                             borderRadius: '8px'
                           }}>
                             <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>
-                              {goalAchievement.isAchieved ? '超過分' : '不足分'}
+                              {goalAchievement.isAchieved ? '目標より速い' : 'あと（不足）'}
                             </div>
                             <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
                               {goalAchievement.isAchieved 
-                                ? `+${Math.abs(goalAchievement.gap).toFixed(3)}`
-                                : `-${Math.abs(goalAchievement.gap).toFixed(3)}`}
+                                ? `-${Math.abs(goalAchievement.gap).toFixed(3)}`
+                                : `+${Math.abs(goalAchievement.gap).toFixed(3)}`}
                             </div>
-                            <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>秒</div>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>秒（予測 − 目標）</div>
                           </div>
                         </div>
                         
