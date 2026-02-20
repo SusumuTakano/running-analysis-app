@@ -917,6 +917,7 @@ useEffect(() => {
   const [panningZoomLevel, setPanningZoomLevel] = useState<number>(1); // ズームレベル (1=100%, 2=200%, etc.)
   const [panningInputMode, setPanningInputMode] = useState<'video' | 'manual'>('video'); // 入力モード切り替え
   const [manualTimeInput, setManualTimeInput] = useState<string>(''); // 手動タイム入力
+  const [showPanningGuide, setShowPanningGuide] = useState<boolean>(false); // 使い方ガイド開閉
   
   // アコーディオン用のstate（初期状態: 全て閉じる）
   const [accordionState, setAccordionState] = useState({
@@ -11257,23 +11258,108 @@ case 6: {
                     ⏱️ パーン撮影 - スプリットタイマー
                   </h3>
                   
-                  {/* 使い方説明 */}
-                  <div style={{
-                    marginBottom: '16px',
-                    padding: '12px',
-                    background: 'rgba(255,255,255,0.15)',
-                    borderRadius: '8px',
-                    fontSize: '0.9rem',
-                    lineHeight: '1.6'
-                  }}>
-                    <div><strong>📌 使い方:</strong></div>
-                    <div>1. 動画モードまたは手動入力モードを選択</div>
-                    <div>2. 最初にスタート地点（0m）を登録</div>
-                    <div>3. 次にスプリット地点（10m, 20m...）を登録</div>
-                    <div>4. スプリント分析と姿勢分析が自動表示されます</div>
-                    <div style={{ marginTop: '8px', fontSize: '0.85rem', opacity: 0.9 }}>
-                      💡 姿勢データカードをクリックすると、その地点の動画に自動ジャンプします
-                    </div>
+                  {/* 使い方ガイド（折りたたみ式） */}
+                  <div style={{ marginBottom: '16px' }}>
+                    {/* トグルボタン */}
+                    <button
+                      onClick={() => setShowPanningGuide(v => !v)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        background: 'rgba(255,255,255,0.15)',
+                        border: '1px solid rgba(255,255,255,0.3)',
+                        borderRadius: showPanningGuide ? '8px 8px 0 0' : '8px',
+                        color: 'white',
+                        fontSize: '0.9rem',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        transition: 'background 0.2s'
+                      }}
+                    >
+                      <span>📌 使い方・測定手順</span>
+                      <span style={{ fontSize: '0.8rem', opacity: 0.8 }}>
+                        {showPanningGuide ? '▲ 閉じる' : '▼ 開く'}
+                      </span>
+                    </button>
+
+                    {/* ガイド本文（開いているときだけ表示） */}
+                    {showPanningGuide && (
+                      <div style={{
+                        padding: '16px',
+                        background: 'rgba(255,255,255,0.12)',
+                        border: '1px solid rgba(255,255,255,0.3)',
+                        borderTop: 'none',
+                        borderRadius: '0 0 8px 8px',
+                        fontSize: '0.88rem',
+                        lineHeight: '1.8'
+                      }}>
+                        {/* STEP 1 */}
+                        <div style={{ marginBottom: '12px' }}>
+                          <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
+                            STEP 1 ── 入力モードを選択
+                          </div>
+                          <div style={{ paddingLeft: '12px', opacity: 0.9 }}>
+                            🎬 <strong>動画モード</strong>：ビデオを再生しながらフレームを指定<br/>
+                            ⌨️ <strong>手動入力モード</strong>：タイム計測値を直接入力
+                          </div>
+                        </div>
+
+                        {/* STEP 2 */}
+                        <div style={{ marginBottom: '12px' }}>
+                          <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
+                            STEP 2 ── スタート登録（t=0）
+                          </div>
+                          <div style={{ paddingLeft: '12px', opacity: 0.9 }}>
+                            🖐️ <strong>手が地面から離れた瞬間</strong>のフレームで「登録」ボタンを押す<br/>
+                            → 0m / 0秒 として記録されます<br/>
+                            ※ 手の位置は0mライン上に固定
+                          </div>
+                        </div>
+
+                        {/* STEP 3 */}
+                        <div style={{ marginBottom: '12px' }}>
+                          <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
+                            STEP 3 ── スプリット地点を登録
+                          </div>
+                          <div style={{ paddingLeft: '12px', opacity: 0.9 }}>
+                            📏 最初の2区間は <strong>5m間隔</strong>（0→5→10m）<br/>
+                            📏 以降は <strong>10m間隔</strong>（10→20→30m…）<br/>
+                            各バー通過の瞬間に「登録」ボタンを押す<br/>
+                            → タイムはt=0からの経過時間で自動計算
+                          </div>
+                        </div>
+
+                        {/* STEP 4 */}
+                        <div style={{ marginBottom: '12px' }}>
+                          <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
+                            STEP 4 ── 結果を確認
+                          </div>
+                          <div style={{ paddingLeft: '12px', opacity: 0.9 }}>
+                            📊 区間タイム・速度・加速度が自動計算<br/>
+                            ⚡ H-FVP（力－速度プロファイル）が自動生成<br/>
+                            🧍 各地点の姿勢データが表示されます
+                          </div>
+                        </div>
+
+                        {/* Tips */}
+                        <div style={{
+                          marginTop: '12px',
+                          padding: '10px',
+                          background: 'rgba(255,255,255,0.1)',
+                          borderRadius: '6px',
+                          fontSize: '0.82rem',
+                          opacity: 0.9
+                        }}>
+                          💡 <strong>Tips</strong><br/>
+                          • 姿勢データカードをクリック → その地点の動画フレームに自動ジャンプ<br/>
+                          • 登録ミスは「削除」ボタンで取り消し可能<br/>
+                          • 公式タイム（ピストル基準）はそのまま使わず、手が離れた瞬間を基準にしてください
+                        </div>
+                      </div>
+                    )}
                   </div>
                   
                   {/* 動画情報 */}
