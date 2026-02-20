@@ -16305,6 +16305,8 @@ case 6: {
           >
             📊 通常分析
           </button>
+          {/* 検定モードボタン: 一時非表示（実装継続中） */}
+          {false && (
           <button
             onClick={() => setAppMode('certification')}
             style={{
@@ -16321,6 +16323,7 @@ case 6: {
           >
             🏃 検定モード
           </button>
+          )}
         </div>
       )}
 
