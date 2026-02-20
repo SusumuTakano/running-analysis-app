@@ -11752,7 +11752,7 @@ case 6: {
                           }];
                           setPanningSplits(newSplits);
                           setPanningStartIndex(0); // 自動的に開始点に設定
-                          setDistanceInput('10'); // 次の推奨距離（10m）を自動入力
+                          setDistanceInput('5'); // 次の推奨距離（0m→5m）
                           setManualTimeInput(''); // 手動タイム入力をクリア
                           return;
                         }
