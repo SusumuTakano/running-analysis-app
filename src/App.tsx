@@ -3181,8 +3181,9 @@ const clearMarksByButton = () => {
           DRF,     // RF低下率 (%/(m/s))
           RF_max,  // 理論最大RF (%)
           points: hfvpPoints,
-          improvementGoals, // AI改善提案を追加
-          quality: hfvpResult.quality // 品質評価を追加
+          improvementGoals,
+          quality: hfvpResult.quality,
+          summary: hfvpResult.summary, // usedSections / excludedSections / posR2 を含む
         };
         
         // デバッグログ
@@ -12922,7 +12923,43 @@ case 6: {
                             </div>
                           </div>
                         </div>
-                        
+
+                        {/* 回帰採用点・除外点の表示 */}
+                        {panningSprintAnalysis.hfvpData?.summary && (
+                          <div style={{
+                            marginTop: '16px',
+                            padding: '12px',
+                            background: 'rgba(255,255,255,0.08)',
+                            borderRadius: '8px',
+                            fontSize: '0.82rem',
+                            lineHeight: '1.7'
+                          }}>
+                            <div style={{ fontWeight: 'bold', marginBottom: '6px', fontSize: '0.88rem' }}>
+                              🔬 F-v回帰の採用点・除外点
+                            </div>
+                            <div style={{ marginBottom: '4px' }}>
+                              <span style={{ color: '#86efac', fontWeight: 'bold' }}>✅ 採用（{panningSprintAnalysis.hfvpData.summary.usedPoints}点）：</span>
+                              <span style={{ opacity: 0.9 }}>
+                                {panningSprintAnalysis.hfvpData.summary.usedSections.length > 0
+                                  ? panningSprintAnalysis.hfvpData.summary.usedSections.join('、')
+                                  : '—'}
+                              </span>
+                            </div>
+                            {panningSprintAnalysis.hfvpData.summary.excludedSections.length > 0 && (
+                              <div>
+                                <span style={{ color: '#fca5a5', fontWeight: 'bold' }}>❌ 除外（{panningSprintAnalysis.hfvpData.summary.excludedSections.length}点）：</span>
+                                <span style={{ opacity: 0.9 }}>
+                                  {panningSprintAnalysis.hfvpData.summary.excludedSections.join('、')}
+                                  <span style={{ opacity: 0.7, marginLeft: '6px' }}>（減速/低加速）</span>
+                                </span>
+                              </div>
+                            )}
+                            <div style={{ marginTop: '6px', opacity: 0.7, fontSize: '0.78rem' }}>
+                              採用条件: 加速度 &gt; 0.2 m/s² かつ 速度が維持/増加（許容幅 ±0.10 m/s）かつ Vmax区間以前
+                            </div>
+                          </div>
+                        )}
+
                         {/* 各区間代表値のH-FVP指標 */}
                         <div style={{ marginTop: '20px' }}>
                           <h5 style={{ 

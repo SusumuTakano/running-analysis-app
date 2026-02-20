@@ -48,8 +48,11 @@ export interface HFVPSummary {
   drf: number;               // % per (m/s)
   rfMax: number;             // %（定義上100）
   fvR2: number;
+  posR2: number;             // 位置フィットR²
   usedPoints: number;
   totalPoints: number;
+  usedSections: string[];    // 回帰採用区間ラベル（例: ["0-5m","5-10m"]）
+  excludedSections: string[]; // 除外区間ラベル（例: ["30-40m","40-50m"]）
 }
 
 export interface HFVPResult {
@@ -58,6 +61,7 @@ export interface HFVPResult {
   quality: {
     grade: "良" | "可" | "参考";
     warnings: string[];
+    isPhysicallyValid: boolean; // F0>0, V0>0, slope<0, Pmax>0 がすべて満たされているか
   };
 }
 
@@ -306,12 +310,13 @@ export const computeHFVP = (
   // フィルタ条件（AND）:
   //   A) a > ACCEL_EPS (閾値: 0.2 m/s²)
   //      → "ほぼゼロ"の加速度（ノイズ由来の a=+0.05 など）を除外
-  //   B) v[i] > v[i-1] + SPEED_DELTA (δ: 0.05 m/s) ← 速度単調増加チェック
-  //      → 速度が実質増えていない区間を除外（Aと組み合わせで二重ガード）
+  //   B) v[i] >= v[i-1] - SPEED_ALLOW (許容幅: 0.10 m/s) ← 速度単調増加チェック（緩和版）
+  //      → 現場ノイズで小さな上下が出ても本来使うべき点を落とさない
+  //      → 明確な減速（0.10m/s超の低下）のみ除外
   //   C) i <= vmaxIdx（速度ピーク区間まで）
   //      → ピーク以降の区間を確実にカット
-  const ACCEL_EPS = 0.2;   // m/s²: これ未満の加速度はノイズとして除外
-  const SPEED_DELTA = 0.05; // m/s: 速度増加がこれ未満の区間は除外
+  const ACCEL_EPS = 0.2;    // m/s²: これ未満の加速度はノイズとして除外
+  const SPEED_ALLOW = 0.10; // m/s: この幅までの速度低下は許容（ノイズ対策）
 
   const vmaxMeasuredRaw = Math.max(...speeds);
   const vmaxIdx = speeds.indexOf(vmaxMeasuredRaw);
@@ -319,11 +324,11 @@ export const computeHFVP = (
   // 加速フェーズ判定（A + B + C の AND）
   const accelPhaseIdx: number[] = [];
   for (let i = 0; i < nSeg; i++) {
-    const aOk = accels[i] > ACCEL_EPS;                               // A
+    const aOk = accels[i] > ACCEL_EPS;                                    // A
     const vOk = i === 0
-      ? speeds[i] > SPEED_DELTA                                       // B: 1区間目は0比較
-      : speeds[i] > speeds[i - 1] + SPEED_DELTA;                     // B: 前区間より十分速い
-    const peakOk = i <= vmaxIdx;                                      // C
+      ? speeds[i] > 0                                                      // B: 1区間目は正であればOK
+      : speeds[i] >= speeds[i - 1] - SPEED_ALLOW;                         // B: 許容幅内なら採用
+    const peakOk = i <= vmaxIdx;                                           // C
     if (aOk && vOk && peakOk) accelPhaseIdx.push(i);
   }
 
@@ -367,6 +372,29 @@ export const computeHFVP = (
   const vmaxMeasured = Math.max(...speeds);
   const tau = Number.isFinite(v0) && f0RelNkg > 0 ? v0 / f0RelNkg : Number.NaN;
 
+  // ---- 健全性チェック ----
+  // 物理的に意味のある推定かを検証（slope<0, F0>0, V0>0, Pmax>0）
+  const isPhysicallyValid =
+    slope < 0 &&
+    Number.isFinite(f0N) && f0N > 0 &&
+    Number.isFinite(v0)  && v0  > 0 &&
+    Number.isFinite(pmaxW) && pmaxW > 0;
+
+  // 位置フィットR²: x(t) = V0*(t - tau*(1-exp(-t/tau))) で実測位置を再現できるか
+  let posR2 = Number.NaN;
+  if (isPhysicallyValid && Number.isFinite(tau) && tau > 0) {
+    const tCum = t.slice(1); // 各区間終端の累積タイム
+    const xActual = d.slice(1); // 実測累積距離
+    const xPred = tCum.map((tc) => v0 * (tc - tau * (1 - Math.exp(-tc / tau))));
+    let ssRes = 0, ssTot = 0;
+    const xMean = xActual.reduce((s, v) => s + v, 0) / xActual.length;
+    for (let i = 0; i < xActual.length; i++) {
+      ssRes += (xActual[i] - xPred[i]) ** 2;
+      ssTot += (xActual[i] - xMean) ** 2;
+    }
+    posR2 = ssTot < EPS ? 1 : Math.max(0, 1 - ssRes / ssTot);
+  }
+
   // RF（簡易） = F/F0*100
   const rfPercent = forces.map((f) => (Math.abs(f0N) > EPS ? (f / f0N) * 100 : Number.NaN));
 
@@ -399,6 +427,10 @@ export const computeHFVP = (
     });
   }
 
+  // ---- 採用区間・除外区間のラベルを生成 ----
+  const usedSections   = fvKeepIdxGlobal.map((i) => `${round(d[i],0)}-${round(d[i+1],0)}m`);
+  const excludedSections = fvRemovedIdxGlobal.map((i) => `${round(d[i],0)}-${round(d[i+1],0)}m`);
+
   const warnings: string[] = [];
 
   // 回帰点数チェック（少ないほど推定精度が低下する）
@@ -408,32 +440,58 @@ export const computeHFVP = (
     warnings.push(`回帰使用点が ${fvKeepIdxGlobal.length} 点と少ないため推定精度が低めです。`);
   }
 
-  if (!Number.isFinite(v0) || v0 <= 0) {
-    warnings.push("V0が物理的に不正です（F-v傾きが正/ゼロの可能性）。");
+  // 健全性チェック警告
+  if (!isPhysicallyValid) {
+    if (slope >= 0)  warnings.push("F-v回帰の傾きが正/ゼロです（V0を推定できません）。");
+    if (f0N <= 0)    warnings.push("F0が負/ゼロです（データ異常の可能性）。");
+    if (!Number.isFinite(v0) || v0 <= 0) warnings.push("V0が物理的に不正です（F-v傾きが正/ゼロの可能性）。");
+    if (!Number.isFinite(pmaxW) || pmaxW <= 0) warnings.push("Pmaxが不正です。");
   }
+
   if (fvR2 < 0.8) warnings.push(`F-v回帰のR²が低めです（${round(fvR2, 3)}）。`);
+  if (Number.isFinite(posR2) && posR2 < 0.85) {
+    warnings.push(`位置フィットR²が低めです（${round(posR2, 3)}）。計測ノイズの可能性があります。`);
+  }
   if (fitFV.removedIdx.length > 0) {
     warnings.push(`外れ値として ${fitFV.removedIdx.length} 点を除外して再推定しました。`);
   }
   if (excludedByPhaseIdx.length > 0) {
-    warnings.push(`減速/低加速区間 ${excludedByPhaseIdx.length} 点をF-v回帰から除外しました（a≤0.2 m/s² または速度増加≤0.05 m/s）。`);
+    warnings.push(`減速/低加速区間 ${excludedByPhaseIdx.length} 点をF-v回帰から除外しました（a≤0.2 m/s² または明確な減速）。`);
   }
 
   // 中盤(30m以降)で負の力がある場合の警告
   const hasNegativeMidForce = segments.some((s) => s.endDistance >= 30 && s.forceN < 0);
   if (hasNegativeMidForce) warnings.push("30m以降に負の力が含まれています（減速区間混入の可能性）。");
 
-  // Vmax > V0 の警告（推定が実測より低い）
-  if (Number.isFinite(v0) && v0 <= vmaxMeasured * 1.01) {
-    warnings.push(`⚠️ V0（理論: ${round(v0,2)} m/s）が実測Vmax（${round(vmaxMeasured,2)} m/s）以下です。減速区間の混入またはノイズの可能性があります。`);
+  // Vmax > V0 の警告（V0が実測付近/以下 = 推定が不安定）
+  if (isPhysicallyValid && v0 < vmaxMeasured + 0.05) {
+    warnings.push(`⚠️ V0（理論: ${round(v0,2)} m/s）が実測Vmax（${round(vmaxMeasured,2)} m/s）に近い/下回っています。推定不安定の可能性があります。`);
   }
   if (Number.isFinite(drf) && drf >= 0) {
     warnings.push("DRFが正です（通常は負値）。データ品質を確認してください。");
   }
 
+  // ---- 品質グレード判定 ----
+  // F-v R², 位置フィットR², 回帰点数, 健全性 を総合的に評価
   let grade: "良" | "可" | "参考" = "良";
-  if (fvR2 < 0.8 || warnings.length >= 3 || !useFilteredPoints || fvKeepIdxGlobal.length < 3) grade = "参考";
-  else if (fvR2 < 0.9 || warnings.length >= 1 || fvKeepIdxGlobal.length < 4) grade = "可";
+  const posR2Bad  = Number.isFinite(posR2) && posR2 < 0.85;
+  const posR2Warn = Number.isFinite(posR2) && posR2 < 0.92;
+  if (
+    !isPhysicallyValid ||
+    fvR2 < 0.8 ||
+    posR2Bad ||
+    !useFilteredPoints ||
+    fvKeepIdxGlobal.length < 3
+  ) {
+    grade = "参考";
+  } else if (
+    fvR2 < 0.9 ||
+    posR2Warn ||
+    fvKeepIdxGlobal.length < 4 ||
+    warnings.length >= 1
+  ) {
+    grade = "可";
+  }
 
   return {
     summary: {
@@ -447,10 +505,13 @@ export const computeHFVP = (
       drf: round(drf, 3),
       rfMax: 100,
       fvR2: round(fvR2, 3),
+      posR2: Number.isFinite(posR2) ? round(posR2, 3) : Number.NaN,
       usedPoints: fvKeepIdxGlobal.length,
       totalPoints: speeds.length,
+      usedSections,
+      excludedSections,
     },
     segments,
-    quality: { grade, warnings },
+    quality: { grade, warnings, isPhysicallyValid },
   };
 };
