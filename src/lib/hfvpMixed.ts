@@ -301,20 +301,33 @@ export const computeHFVP = (
   const powers = forces.map((f, i) => f * speeds[i]);
 
   // ---- F-v 回帰に使う点を物理フィルタで絞る ----
-  // 条件: 加速度 > 0（F > 0）かつ 速度 <= vmaxMeasured のピーク区間まで
-  // 減速区間（加速度 <= 0）が混入すると F が負になり V0 が崩れるため除外する
+  // 目的: 減速区間が混入すると F が負→回帰直線が崩れ V0 が実測速度付近に収束する問題を防ぐ
+  //
+  // フィルタ条件（AND）:
+  //   A) a > ACCEL_EPS (閾値: 0.2 m/s²)
+  //      → "ほぼゼロ"の加速度（ノイズ由来の a=+0.05 など）を除外
+  //   B) v[i] > v[i-1] + SPEED_DELTA (δ: 0.05 m/s) ← 速度単調増加チェック
+  //      → 速度が実質増えていない区間を除外（Aと組み合わせで二重ガード）
+  //   C) i <= vmaxIdx（速度ピーク区間まで）
+  //      → ピーク以降の区間を確実にカット
+  const ACCEL_EPS = 0.2;   // m/s²: これ未満の加速度はノイズとして除外
+  const SPEED_DELTA = 0.05; // m/s: 速度増加がこれ未満の区間は除外
+
   const vmaxMeasuredRaw = Math.max(...speeds);
   const vmaxIdx = speeds.indexOf(vmaxMeasuredRaw);
 
-  // 加速フェーズ（速度がピークに達するまで、かつ F > 0）のインデックスを取得
+  // 加速フェーズ判定（A + B + C の AND）
   const accelPhaseIdx: number[] = [];
   for (let i = 0; i < nSeg; i++) {
-    if (accels[i] > 0 && i <= vmaxIdx) {
-      accelPhaseIdx.push(i);
-    }
+    const aOk = accels[i] > ACCEL_EPS;                               // A
+    const vOk = i === 0
+      ? speeds[i] > SPEED_DELTA                                       // B: 1区間目は0比較
+      : speeds[i] > speeds[i - 1] + SPEED_DELTA;                     // B: 前区間より十分速い
+    const peakOk = i <= vmaxIdx;                                      // C
+    if (aOk && vOk && peakOk) accelPhaseIdx.push(i);
   }
 
-  // 加速フェーズが極端に少ない場合は全点使用（フォールバック）
+  // 有効点数チェック: 3点未満はフォールバック（全点使用）
   const useFilteredPoints = accelPhaseIdx.length >= 3;
   const fvSpeeds = useFilteredPoints ? accelPhaseIdx.map((i) => speeds[i]) : speeds;
   const fvForces = useFilteredPoints ? accelPhaseIdx.map((i) => forces[i]) : forces;
@@ -388,6 +401,13 @@ export const computeHFVP = (
 
   const warnings: string[] = [];
 
+  // 回帰点数チェック（少ないほど推定精度が低下する）
+  if (!useFilteredPoints) {
+    warnings.push(`⚠️ 加速フェーズのデータ点が3点未満のため全点で回帰しました（精度低・参考値扱い）。`);
+  } else if (fvKeepIdxGlobal.length < 4) {
+    warnings.push(`回帰使用点が ${fvKeepIdxGlobal.length} 点と少ないため推定精度が低めです。`);
+  }
+
   if (!Number.isFinite(v0) || v0 <= 0) {
     warnings.push("V0が物理的に不正です（F-v傾きが正/ゼロの可能性）。");
   }
@@ -396,7 +416,7 @@ export const computeHFVP = (
     warnings.push(`外れ値として ${fitFV.removedIdx.length} 点を除外して再推定しました。`);
   }
   if (excludedByPhaseIdx.length > 0) {
-    warnings.push(`減速区間 ${excludedByPhaseIdx.length} 点をF-v回帰から除外しました（加速フェーズのみ使用）。`);
+    warnings.push(`減速/低加速区間 ${excludedByPhaseIdx.length} 点をF-v回帰から除外しました（a≤0.2 m/s² または速度増加≤0.05 m/s）。`);
   }
 
   // 中盤(30m以降)で負の力がある場合の警告
@@ -412,8 +432,8 @@ export const computeHFVP = (
   }
 
   let grade: "良" | "可" | "参考" = "良";
-  if (fvR2 < 0.8 || warnings.length >= 3) grade = "参考";
-  else if (fvR2 < 0.9 || warnings.length >= 1) grade = "可";
+  if (fvR2 < 0.8 || warnings.length >= 3 || !useFilteredPoints || fvKeepIdxGlobal.length < 3) grade = "参考";
+  else if (fvR2 < 0.9 || warnings.length >= 1 || fvKeepIdxGlobal.length < 4) grade = "可";
 
   return {
     summary: {
