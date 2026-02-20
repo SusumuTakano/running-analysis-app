@@ -373,11 +373,15 @@ export const computeHFVP = (
   const tau = Number.isFinite(v0) && f0RelNkg > 0 ? v0 / f0RelNkg : Number.NaN;
 
   // ---- 健全性チェック ----
-  // 物理的に意味のある推定かを検証（slope<0, F0>0, V0>0, Pmax>0）
+  // 物理的に意味のある推定かを検証
+  // slope < 0 かつ abs(slope) > SLOPE_EPS（小さすぎるとV0が巨大化・発散する）
+  // F0, V0, Pmax が有限正値であること
+  const SLOPE_EPS = 1e-6; // これ未満の|slope|は「ほぼゼロ」として不正扱い
   const isPhysicallyValid =
     slope < 0 &&
-    Number.isFinite(f0N) && f0N > 0 &&
-    Number.isFinite(v0)  && v0  > 0 &&
+    Math.abs(slope) > SLOPE_EPS &&          // 傾きが小さすぎない（V0暴走防止）
+    Number.isFinite(f0N)   && f0N   > 0 &&
+    Number.isFinite(v0)    && v0    > 0 &&
     Number.isFinite(pmaxW) && pmaxW > 0;
 
   // 位置フィットR²: x(t) = V0*(t - tau*(1-exp(-t/tau))) で実測位置を再現できるか
@@ -440,12 +444,18 @@ export const computeHFVP = (
     warnings.push(`回帰使用点が ${fvKeepIdxGlobal.length} 点と少ないため推定精度が低めです。`);
   }
 
-  // 健全性チェック警告
+  // 健全性チェック警告（個別に理由を出す）
   if (!isPhysicallyValid) {
-    if (slope >= 0)  warnings.push("F-v回帰の傾きが正/ゼロです（V0を推定できません）。");
-    if (f0N <= 0)    warnings.push("F0が負/ゼロです（データ異常の可能性）。");
-    if (!Number.isFinite(v0) || v0 <= 0) warnings.push("V0が物理的に不正です（F-v傾きが正/ゼロの可能性）。");
-    if (!Number.isFinite(pmaxW) || pmaxW <= 0) warnings.push("Pmaxが不正です。");
+    if (slope >= 0)
+      warnings.push("F-v回帰の傾きが正/ゼロです（V0を推定できません）。");
+    else if (Math.abs(slope) <= SLOPE_EPS)
+      warnings.push(`F-v回帰の傾きが極小です（|slope|=${Math.abs(slope).toExponential(2)}）。V0が発散する可能性があります。`);
+    if (!Number.isFinite(f0N) || f0N <= 0)
+      warnings.push("F0が負/ゼロ/非数です（データ異常の可能性）。");
+    if (!Number.isFinite(v0) || v0 <= 0)
+      warnings.push("V0が物理的に不正です（F-v傾きが正/極小/ゼロの可能性）。");
+    if (!Number.isFinite(pmaxW) || pmaxW <= 0)
+      warnings.push("Pmaxが不正です（F0またはV0の異常に起因）。");
   }
 
   if (fvR2 < 0.8) warnings.push(`F-v回帰のR²が低めです（${round(fvR2, 3)}）。`);
@@ -463,9 +473,11 @@ export const computeHFVP = (
   const hasNegativeMidForce = segments.some((s) => s.endDistance >= 30 && s.forceN < 0);
   if (hasNegativeMidForce) warnings.push("30m以降に負の力が含まれています（減速区間混入の可能性）。");
 
-  // Vmax > V0 の警告（V0が実測付近/以下 = 推定が不安定）
-  if (isPhysicallyValid && v0 < vmaxMeasured + 0.05) {
-    warnings.push(`⚠️ V0（理論: ${round(v0,2)} m/s）が実測Vmax（${round(vmaxMeasured,2)} m/s）に近い/下回っています。推定不安定の可能性があります。`);
+  // V0 ≈ Vmax 警告（許容幅 0.05 m/s を持たせる）
+  // V0 < Vmax - 0.05 のときだけ警告（わずかな差は許容）
+  const V0_VMAX_MARGIN = 0.05; // m/s: この幅以内は許容
+  if (isPhysicallyValid && v0 < vmaxMeasured - V0_VMAX_MARGIN) {
+    warnings.push(`⚠️ V0（理論: ${round(v0,2)} m/s）が実測Vmax（${round(vmaxMeasured,2)} m/s）を下回っています（差: ${round(vmaxMeasured - v0, 2)} m/s）。減速区間混入またはノイズの可能性があります。`);
   }
   if (Number.isFinite(drf) && drf >= 0) {
     warnings.push("DRFが正です（通常は負値）。データ品質を確認してください。");
