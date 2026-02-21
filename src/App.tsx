@@ -11579,7 +11579,74 @@ case 6: {
                   </div>
 
                 </div>
-                
+
+                {/* 関節角度リアルタイムモニター（パンニングモード） */}
+                {analysisMode === 'panning' && currentAngles && (
+                  <div style={{
+                    marginTop: '10px',
+                    padding: '10px 12px',
+                    background: 'rgba(0,0,0,0.55)',
+                    borderRadius: '8px',
+                    color: 'white',
+                    fontSize: '0.78rem'
+                  }}>
+                    <div style={{
+                      fontWeight: 'bold',
+                      fontSize: '0.8rem',
+                      marginBottom: '6px',
+                      opacity: 0.85
+                    }}>
+                      🦵 関節角度モニター（フレーム {currentFrame}）
+                    </div>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gap: '4px 8px'
+                    }}>
+                      <div>
+                        <span style={{ opacity: 0.7 }}>体幹 </span>
+                        <strong>{currentAngles.trunkAngle?.toFixed(1)}°</strong>
+                        <span style={{ opacity: 0.6, fontSize: '0.72rem', marginLeft: '3px' }}>
+                          {currentAngles.trunkAngle && currentAngles.trunkAngle < 85 ? '前傾'
+                            : currentAngles.trunkAngle && currentAngles.trunkAngle > 95 ? '後傾'
+                            : '垂直'}
+                        </span>
+                      </div>
+                      <div>
+                        <span style={{ opacity: 0.7 }}>左膝 </span>
+                        <strong>{currentAngles.kneeFlex.left?.toFixed(1) ?? '—'}°</strong>
+                      </div>
+                      <div>
+                        <span style={{ opacity: 0.7 }}>右膝 </span>
+                        <strong>{currentAngles.kneeFlex.right?.toFixed(1) ?? '—'}°</strong>
+                      </div>
+                      <div>
+                        <span style={{ opacity: 0.7 }}>左大腿 </span>
+                        <strong>{currentAngles.thighAngle.left?.toFixed(1) ?? '—'}°</strong>
+                      </div>
+                      <div>
+                        <span style={{ opacity: 0.7 }}>右大腿 </span>
+                        <strong>{currentAngles.thighAngle.right?.toFixed(1) ?? '—'}°</strong>
+                      </div>
+                      <div>
+                        <span style={{ opacity: 0.7 }}>左足首 </span>
+                        <strong>{currentAngles.ankleFlex.left?.toFixed(1) ?? '—'}°</strong>
+                      </div>
+                      <div>
+                        <span style={{ opacity: 0.7 }}>右足首 </span>
+                        <strong>{currentAngles.ankleFlex.right?.toFixed(1) ?? '—'}°</strong>
+                      </div>
+                      <div>
+                        <span style={{ opacity: 0.7 }}>左肘 </span>
+                        <strong>{currentAngles.elbowAngle.left?.toFixed(1) ?? '—'}°</strong>
+                      </div>
+                      <div>
+                        <span style={{ opacity: 0.7 }}>右肘 </span>
+                        <strong>{currentAngles.elbowAngle.right?.toFixed(1) ?? '—'}°</strong>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* パーン撮影モード: スプリット登録ボタン（動画の下） */}
                 {analysisMode === 'panning' && (
