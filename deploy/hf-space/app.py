@@ -24,10 +24,10 @@ CORS(app)  # 全 origin 許可（必要に応じて allowed_origins で絞る）
 BODY: Body | None = None
 
 # halpe26 形式（26 キーポイント）のモデル URL。ローカル版と同じ keypoint 定義。
-# CPU 推論速度とのバランスで rtmpose-m (256x192) を採用。
+# rtmpose-l (200MB, 256x192) — rtmpose-m より精度 +1.7 AP (72.1 → 73.8)、ローカル rtmpose-x に近い
 # rtmlib は .zip URL を渡すと自動ダウンロード + 解凍 (Dockerfile で事前取得済み)
 DET_URL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_tiny_8xb8-300e_humanart-6f3252f9.zip"
-POSE_URL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-m_simcc-body7_pt-body7-halpe26_700e-256x192-4d3e73dd_20230605.zip"
+POSE_URL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-l_simcc-body7_pt-body7-halpe26_700e-256x192-2abb7558_20230605.zip"
 
 
 def get_body() -> Body:
@@ -37,13 +37,13 @@ def get_body() -> Body:
             det=DET_URL,
             det_input_size=(416, 416),
             pose=POSE_URL,
-            pose_input_size=(192, 256),  # (w, h) rtmpose-m は 256x192
+            pose_input_size=(192, 256),  # (w, h) rtmpose-l 256x192
             to_openpose=False,
             mode="performance",
             backend="onnxruntime",
             device="cpu",
         )
-        print("RTMPose initialized (device=cpu, rtmpose-m halpe26)")
+        print("RTMPose initialized (device=cpu, rtmpose-l halpe26)")
     return BODY
 
 
