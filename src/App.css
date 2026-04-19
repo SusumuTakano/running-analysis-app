@@ -1146,3 +1146,150 @@ body {
 .wizard-step-7 .results-layout {
   display: none !important;
 }
+
+/* ============================================================
+   📱 Mobile Optimization Pass (2026-04-19)
+   - 接地/離地マーカー調整ボタンを大きく（タッチ前提）
+   - 結果テーブルの横スクロールに視覚インジケータ
+   - 各種カード/パネルのはみ出し対策
+   ============================================================ */
+
+/* 📱 マーカー一覧の +1/-1 調整ボタン: スマホで確実にタップできるサイズに */
+@media (max-width: 768px) {
+  /* マーカー一覧内の未定義 <button> をタッチ前提に統一 */
+  .step6-body button:not([class]),
+  .step6-body button[type="button"]:not(.btn-primary):not(.btn-primary-large):not(.btn-ghost-small):not(.toggle-btn) {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    cursor: pointer;
+    line-height: 1;
+    touch-action: manipulation;
+  }
+
+  .step6-body button:not([class]):active,
+  .step6-body button[type="button"]:not(.btn-primary):not(.btn-primary-large):not(.btn-ghost-small):not(.toggle-btn):active {
+    background: #f3f4f6;
+    transform: scale(0.97);
+  }
+
+  .step6-body button:disabled {
+    opacity: 0.4;
+    background: #f9fafb;
+    cursor: not-allowed;
+  }
+
+  /* マーカー一覧の各ステップカードを少しゆったり */
+  .step6-body [style*="border-radius: 8"][style*="padding"] {
+    font-size: 0.9rem;
+  }
+}
+
+/* 📊 結果テーブル: 横スクロール + 右端に fade インジケータ */
+.table-scroll {
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  /* ネイティブスクロールバー表示 */
+  scrollbar-width: thin;
+}
+
+.table-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+.table-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.table-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+/* 右端に「→ スクロール可能」を示すグラデーション */
+.table-scroll {
+  background:
+    linear-gradient(to right, white 30%, rgba(255, 255, 255, 0)),
+    linear-gradient(to right, rgba(255, 255, 255, 0), white 70%) 100% 0,
+    radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0)),
+    radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0)) 100% 0;
+  background-repeat: no-repeat;
+  background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+
+/* 📱 モバイル: テーブルの文字サイズ縮小で情報密度 UP */
+@media (max-width: 768px) {
+  .metrics-table,
+  .phase-table-compact {
+    font-size: 0.75rem;
+    min-width: 680px; /* コンテンツを潰さずスクロールで見せる */
+  }
+
+  .metrics-table th,
+  .metrics-table td,
+  .phase-table-compact th,
+  .phase-table-compact td {
+    padding: 6px 8px;
+    white-space: nowrap;
+  }
+
+  /* 1 列目（#/ペア番号）を sticky で常時可視化 */
+  .metrics-table th:first-child,
+  .metrics-table td:first-child {
+    position: sticky;
+    left: 0;
+    background: inherit;
+    z-index: 2;
+    box-shadow: 2px 0 4px -2px rgba(0, 0, 0, 0.1);
+  }
+  .metrics-table thead th:first-child {
+    background: var(--gray-100);
+  }
+  .metrics-table tbody td:first-child {
+    background: white;
+  }
+
+  /* input フィールド（接地✏️/離地✏️）は幅固定 */
+  .metrics-table input[type="number"] {
+    width: 62px;
+    font-size: 0.85rem;
+    padding: 4px 6px;
+  }
+
+  /* 結果画面の meter-summary グリッドを 2 列に */
+  .metrics-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px;
+  }
+  .metric-item { padding: 8px; }
+  .metric-label { font-size: 0.7rem; }
+  .metric-value { font-size: 1rem; }
+}
+
+/* 📱 結果画面のカード類の横はみ出し対策 */
+@media (max-width: 768px) {
+  /* inline style で大きな padding を持つパネル群 */
+  .wizard-content.step-6 .step6-body > div[style*="padding"] {
+    padding: 12px !important;
+  }
+
+  /* アンカー/ペア平均パネル内のグリッドを 1 列に */
+  .wizard-content.step-6 div[style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* 黄色枠 (10m タイム) を縦並びに */
+  .wizard-content.step-6 div[style*="linear-gradient(135deg, #fef3c7"] {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+}
