@@ -661,7 +661,20 @@ const App: React.FC<AppProps> = ({ userProfile }) => {
   } | null>(null);
 
 const [wizardStep, setWizardStep] = useState<WizardStep>(0);
-  const [selectedFps, setSelectedFps] = useState<number>(120); 
+
+  // 📱 ステップ遷移時に画面トップへスクロール（スマホで下部表示になる問題対策）
+  //    次のペイントで実行するため requestAnimationFrame を使う
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      // フォールバック: behavior 未対応ブラウザ向け
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    });
+  }, [wizardStep]);
+
+  const [selectedFps, setSelectedFps] = useState<number>(120);
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('single');
   const [currentRun, setCurrentRun] = useState<Run | null>(null);
   const [runSegments, setRunSegments] = useState<RunSegment[]>([]);
