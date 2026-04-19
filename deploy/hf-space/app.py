@@ -23,16 +23,35 @@ CORS(app)  # 全 origin 許可（必要に応じて allowed_origins で絞る）
 
 BODY: Body | None = None
 
+# rtmlib のモデルキャッシュ先（Dockerfile で事前 DL 済み）
+CACHE = "/root/.cache/rtmlib/hub/checkpoints"
+
+# halpe26 形式（26 キーポイント）のモデル。ローカル版と同じ keypoint 定義。
+# CPU 推論速度とのバランスで rtmpose-m (256x192) を採用。
+POSE_MODEL = os.path.join(
+    CACHE,
+    "rtmpose-m_simcc-body7_pt-body7-halpe26_700e-256x192-4d3e73dd_20230605.onnx",
+)
+DET_MODEL = os.path.join(
+    CACHE,
+    "yolox_tiny_8xb8-300e_humanart-6f3252f9.onnx",
+)
+
 
 def get_body() -> Body:
     global BODY
     if BODY is None:
         BODY = Body(
-            mode="performance",       # rtmpose-x + yolox-x 相当、rtmlib が自動 DL
+            det=DET_MODEL,
+            det_input_size=(416, 416),
+            pose=POSE_MODEL,
+            pose_input_size=(192, 256),  # (w, h) rtmpose-m は 256x192
+            to_openpose=False,
+            mode="performance",
             backend="onnxruntime",
-            device="cpu",              # HF Spaces 無料枠は CPU のみ
+            device="cpu",
         )
-        print("RTMPose initialized (device=cpu, mode=performance)")
+        print("RTMPose initialized (device=cpu, rtmpose-m halpe26)")
     return BODY
 
 
