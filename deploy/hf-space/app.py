@@ -23,28 +23,20 @@ CORS(app)  # 全 origin 許可（必要に応じて allowed_origins で絞る）
 
 BODY: Body | None = None
 
-# rtmlib のモデルキャッシュ先（Dockerfile で事前 DL 済み）
-CACHE = "/root/.cache/rtmlib/hub/checkpoints"
-
-# halpe26 形式（26 キーポイント）のモデル。ローカル版と同じ keypoint 定義。
+# halpe26 形式（26 キーポイント）のモデル URL。ローカル版と同じ keypoint 定義。
 # CPU 推論速度とのバランスで rtmpose-m (256x192) を採用。
-POSE_MODEL = os.path.join(
-    CACHE,
-    "rtmpose-m_simcc-body7_pt-body7-halpe26_700e-256x192-4d3e73dd_20230605.onnx",
-)
-DET_MODEL = os.path.join(
-    CACHE,
-    "yolox_tiny_8xb8-300e_humanart-6f3252f9.onnx",
-)
+# rtmlib は .zip URL を渡すと自動ダウンロード + 解凍 (Dockerfile で事前取得済み)
+DET_URL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_tiny_8xb8-300e_humanart-6f3252f9.zip"
+POSE_URL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-m_simcc-body7_pt-body7-halpe26_700e-256x192-4d3e73dd_20230605.zip"
 
 
 def get_body() -> Body:
     global BODY
     if BODY is None:
         BODY = Body(
-            det=DET_MODEL,
+            det=DET_URL,
             det_input_size=(416, 416),
-            pose=POSE_MODEL,
+            pose=POSE_URL,
             pose_input_size=(192, 256),  # (w, h) rtmpose-m は 256x192
             to_openpose=False,
             mode="performance",
