@@ -175,6 +175,8 @@ type StepMetric = {
   leg?: "left" | "right";      // どちらの足のステップか（現時点では未使用でOK）
   quality?: "good" | "warning" | "bad"; // 解析の信頼度（色分けに使用）
   isInterpolated?: boolean;    // 補間ステップかどうか（ストライド再計算から除外）
+  strideOutlier?: boolean;     // 🎯 3点移動平均から 12% 以上乖離している step（pose ノイズ疑い）
+  strideDeviationPct?: number; // 3点移動平均からの乖離率 [%]（正負付き）
   // 🎯 ステップごとの姿勢データ（加速局面の段階的評価用）
   trunkAngleAtContact?: number | null;  // 接地時の体幹角度
   kneeFlexAtContact?: number | null;    // 接地時の膝角度（支持脚）
@@ -1119,7 +1121,7 @@ const handleStartNewAnalysis = () => {
 };
 
 // ------------- 距離・速度・ラベル -------------
-const [distanceInput, setDistanceInput] = useState<string>("0");
+const [distanceInput, setDistanceInput] = useState<string>("10");
 const [labelInput, setLabelInput] = useState<string>("");
 const [notesInput, setNotesInput] = useState<string>("");
 
@@ -1327,7 +1329,121 @@ const [notesInput, setNotesInput] = useState<string>("");
   const [isCalibrating, setIsCalibrating] = useState<boolean>(false);
   const [coneClicks, setConeClicks] = useState<Array<{ x: number; y: number }>>([]);
   const [calibrationInstructions, setCalibrationInstructions] = useState<string>('');
-  
+
+  // 🎯 単一カメラ用4コーンホモグラフィ（パースペクティブ補正でストライド左右差を抑制）
+  // 座標系: x=レーン幅方向(カメラ側=0, 奥=laneWidth), y=走行方向(スタート=0, フィニッシュ=sectionLengthM)
+  const [singleCamH, setSingleCamH] = useState<number[][] | null>(null);
+  const [singleCones, setSingleCones] = useState<Array<{ x: number; y: number }>>([]);
+  const [singleConeMode, setSingleConeMode] = useState<boolean>(false);
+  const [singleConeLaneWidth, setSingleConeLaneWidth] = useState<number>(1.22); // 標準レーン幅[m]
+
+  // 🎯 N 点マーカー校正（2025 年追加、推奨方式）
+  // トラック上の既知距離点（1m or 2m 間隔推奨）を複数クリックし、
+  // 地面接地点ピクセル → 地面沿い距離 をポリライン投影で求める。
+  // 4 コーンのような数値的不安定性がなく、冗長性でクリック誤差を平均化。
+  // pixel はキャンバス内部ピクセル（= 抽出フレームピクセル）、distanceM はスタートからの距離 [m]。
+  const [trackMarkers, setTrackMarkers] = useState<Array<{ pixel: { x: number; y: number }; distanceM: number }>>([]);
+  const [trackMarkerMode, setTrackMarkerMode] = useState<boolean>(false);
+  const [trackMarkerIntervalM, setTrackMarkerIntervalM] = useState<number>(2); // マーカー間隔 [m]
+  const [trackMarkerCount, setTrackMarkerCount] = useState<number>(6); // 期待するマーカー数（例: 0,2,4,6,8,10m = 6点）
+
+  // 📏 マーカー経由で地面ピクセル → スタートからの距離 [m] を返す。
+  //    マーカー列をポリラインとみなし、問い合わせピクセルを最近傍セグメントに
+  //    射影 → そのセグメント上のパラメータ t から距離を線形補間。
+  //    両端セグメントは外挿を許容（t < 0 または t > 1 でも計算を続ける）。
+  //    マーカーが 2 点未満なら null を返す。
+  const distanceAtGroundPixel = useMemo(() => {
+    return (px: number, py: number): number | null => {
+      if (trackMarkers.length < 2) return null;
+      // 距離順にソート（念のため。UI で順番にクリックさせるので通常はソート済み）
+      const pts = [...trackMarkers].sort((a, b) => a.distanceM - b.distanceM);
+
+      let best: { perpSq: number; distanceM: number } | null = null;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i].pixel;
+        const b = pts[i + 1].pixel;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const len2 = dx * dx + dy * dy;
+        if (len2 < 1e-9) continue;
+        // 射影パラメータ t。両端セグメントは外挿許容、中間はセグメント内に clamp。
+        const tRaw = ((px - a.x) * dx + (py - a.y) * dy) / len2;
+        const isFirst = i === 0;
+        const isLast = i === pts.length - 2;
+        let t: number;
+        if (isFirst && isLast) {
+          t = tRaw; // 2 点しかない場合は全範囲で外挿
+        } else if (isFirst) {
+          t = tRaw < 0 ? tRaw : Math.min(1, tRaw);
+        } else if (isLast) {
+          t = tRaw > 1 ? tRaw : Math.max(0, tRaw);
+        } else {
+          t = Math.max(0, Math.min(1, tRaw));
+        }
+        const projX = a.x + t * dx;
+        const projY = a.y + t * dy;
+        const perpSq = (px - projX) * (px - projX) + (py - projY) * (py - projY);
+        const distM = pts[i].distanceM + t * (pts[i + 1].distanceM - pts[i].distanceM);
+        if (best === null || perpSq < best.perpSq) {
+          best = { perpSq, distanceM: distM };
+        }
+      }
+      return best?.distanceM ?? null;
+    };
+  }, [trackMarkers]);
+
+  // 🎯 身長ベース自動校正（ユーザ操作ゼロ）
+  //    選手の身長 (athleteInfo.height_cm) と、姿勢推定で得られる
+  //    身体のピクセル高さ（鼻→最下足）から meters/pixel スケールを算出。
+  //    サイドビュー撮影ではピクセルは等方的なので、同じスケールで
+  //    水平方向（走行方向）の距離も換算できる。
+  //    マーカーも4コーンもない場合の既定校正として機能する。
+  const bodyAutoScale = useMemo(() => {
+    const heightCm = athleteInfo?.height_cm;
+    if (!heightCm || heightCm <= 0) return null;
+    if (!poseResults.length) return null;
+    const heightM = heightCm / 100;
+
+    // 身体縦比率（normalized Y で鼻→最下足）を全フレームから集める
+    const bodyYs: number[] = [];
+    for (const pose of poseResults) {
+      if (!pose?.landmarks) continue;
+      const nose = pose.landmarks[0];
+      const lAnkle = pose.landmarks[27];
+      const rAnkle = pose.landmarks[28];
+      if (!nose || !lAnkle || !rAnkle) continue;
+      // visibility チェック
+      if ((nose.visibility ?? 1) < 0.3) continue;
+      if ((lAnkle.visibility ?? 1) < 0.2 && (rAnkle.visibility ?? 1) < 0.2) continue;
+      const footY = Math.max(lAnkle.y, rAnkle.y); // 画面下=大きい Y
+      const bodyY = footY - nose.y;
+      // 常識的範囲（normalized 0.25〜0.95）以外は外れ値としてスキップ
+      if (bodyY < 0.25 || bodyY > 0.95) continue;
+      bodyYs.push(bodyY);
+    }
+    if (bodyYs.length < 5) return null;
+
+    // 外れ値耐性のため中央値ではなく 75 パーセンタイル（身体が伸びた瞬間＝走行姿勢）を採用
+    bodyYs.sort((a, b) => a - b);
+    const p75 = bodyYs[Math.floor(bodyYs.length * 0.75)];
+
+    // 鼻の位置は頭頂より ~5% 下なので補正（経験値）
+    const bodyY_fullHead = p75 * 1.05;
+
+    // フレーム高さ（ピクセル）
+    const frameH = framesRef.current[0]?.height ?? 1080;
+    const bodyPixels = bodyY_fullHead * frameH;
+    if (bodyPixels <= 0) return null;
+
+    const metersPerPixel = heightM / bodyPixels;
+    return {
+      metersPerPixel,
+      bodyPixels,
+      heightM,
+      sampleCount: bodyYs.length,
+    };
+  }, [athleteInfo?.height_cm, poseResults]);
+
   // 🎓 1歩目学習データ（検出精度向上）
   const [learnedStepPattern, setLearnedStepPattern] = useState<{
     contactDuration: number;  // 接地時間（フレーム数）
@@ -1673,15 +1789,67 @@ const [notesInput, setNotesInput] = useState<string>("");
           ctx.beginPath();
           ctx.arc(click.x, click.y, 10, 0, 2 * Math.PI);
           ctx.fill();
-          
+
           // 番号を表示
           ctx.fillStyle = '#ffffff';
           ctx.font = 'bold 16px Arial';
           ctx.fillText(`${index + 1}`, click.x - 5, click.y + 5);
         });
       }
+
+      // 4 コーン（単一カメラホモグラフィ校正）のクリック位置を描画
+      if (singleCones.length > 0) {
+        singleCones.forEach((c, i) => {
+          ctx.fillStyle = i < 2 ? '#f59e0b' : '#ef4444'; // スタート側=オレンジ、フィニッシュ側=赤
+          ctx.beginPath();
+          ctx.arc(c.x, c.y, 9, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 14px Arial';
+          ctx.fillText(`${i + 1}`, c.x - 4, c.y + 5);
+        });
+      }
+
+      // トラックマーカー（N 点校正）のクリック位置を描画
+      if (trackMarkers.length > 0) {
+        // マーカーを結ぶポリラインを描画（距離順に）
+        const sorted = [...trackMarkers].sort((a, b) => a.distanceM - b.distanceM);
+        ctx.strokeStyle = 'rgba(59,130,246,0.8)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        sorted.forEach((m, i) => {
+          if (i === 0) ctx.moveTo(m.pixel.x, m.pixel.y);
+          else ctx.lineTo(m.pixel.x, m.pixel.y);
+        });
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 各マーカーに丸 + 距離ラベル
+        sorted.forEach((m) => {
+          ctx.fillStyle = '#3b82f6';
+          ctx.beginPath();
+          ctx.arc(m.pixel.x, m.pixel.y, 8, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          // 距離ラベル背景
+          const label = `${m.distanceM}m`;
+          ctx.font = 'bold 13px Arial';
+          const textW = ctx.measureText(label).width;
+          ctx.fillStyle = 'rgba(59,130,246,0.9)';
+          ctx.fillRect(m.pixel.x + 10, m.pixel.y - 10, textW + 8, 18);
+          ctx.fillStyle = '#fff';
+          ctx.fillText(label, m.pixel.x + 14, m.pixel.y + 3);
+        });
+      }
     }
-  }, [wizardStep, analysisMode, currentFrame, sectionStartFrame, sectionEndFrame, contactFrames, showSkeleton, isCalibrating, coneClicks]);
+  }, [wizardStep, analysisMode, currentFrame, sectionStartFrame, sectionEndFrame, contactFrames, showSkeleton, isCalibrating, coneClicks, singleCones, trackMarkers]);
 
   // 完全自動検出：全フレームから接地と離地を検出（つま先の動き検出方式）
   // 新方式では閾値不要、つま先の速度変化のみで判定
@@ -2458,49 +2626,96 @@ const clearMarksByButton = () => {
       }
     };
     
-    // 🎯 ビデオの実際の解像度を取得（キャリブレーションと一致させる）
-    const actualVideoWidth = videoRef.current?.videoWidth || 1920;
-    const actualVideoHeight = videoRef.current?.videoHeight || 1080;
-    
-    // 接地時の足のピクセル座標を取得（左右の足首・つま先から判定）
-    const getContactFootPixel = (frame: number): { x: number; y: number } | null => {
+    // 🎯 CRITICAL: キャリブレーション(コーンクリック)はcanvas内部ピクセル=抽出フレーム解像度で
+    //    保存されるため、足ピクセルも同じ解像度系で計算する必要がある。
+    //    videoRef.videoWidth はネイティブ解像度で、フレーム抽出時にダウンスケール
+    //    されるとズレるため使わない。
+    const frameWidth = framesRef.current[0]?.width
+      ?? canvasRef.current?.width
+      ?? videoRef.current?.videoWidth
+      ?? 1920;
+    const frameHeight = framesRef.current[0]?.height
+      ?? canvasRef.current?.height
+      ?? videoRef.current?.videoHeight
+      ?? 1080;
+
+    // 接地足の「地面レベルピクセル」= 踵(29/30)とつま先(31/32)の中点を使う。
+    // 足首(27/28)は地面から ~10cm 上にあり、地面平面ホモグラフィで射影すると
+    // 位置依存の系統誤差（進行方向にストライドが単調変化する症状）を引き起こす。
+    // 踵・つま先は接地時にどちらも地面レベルにあるため、その中点は
+    // 地面平面上の1点として一貫し、ホモグラフィ射影が正しい地面座標を返す。
+    const getContactFootPixel = (frame: number): { x: number; y: number; side: 'L' | 'R' } | null => {
       if (!poseResults[frame]?.landmarks) return null;
-      
+
       const landmarks = poseResults[frame]!.landmarks;
-      // 左足: 足首27, つま先31
-      const leftAnkle = landmarks[27];
+      // 左足: 踵29, つま先31 / 右足: 踵30, つま先32
+      const leftHeel = landmarks[29];
       const leftToe = landmarks[31];
-      // 右足: 足首28, つま先32
-      const rightAnkle = landmarks[28];
+      const rightHeel = landmarks[30];
       const rightToe = landmarks[32];
-      
-      // 接地している方の足（Y座標が大きい = 画面下側）を選択
-      const leftY = Math.max(leftAnkle.y, leftToe.y);
-      const rightY = Math.max(rightAnkle.y, rightToe.y);
-      
+      // 足首(27/28)は visibility が低い時の簡易フォールバック用
+      const leftAnkle = landmarks[27];
+      const rightAnkle = landmarks[28];
+
+      // visibility 閾値（MediaPipe の confidence）: 低い場合はフォールバック
+      const VIS_MIN = 0.3;
+      const leftHeelOk = (leftHeel?.visibility ?? 1) >= VIS_MIN;
+      const leftToeOk = (leftToe?.visibility ?? 1) >= VIS_MIN;
+      const rightHeelOk = (rightHeel?.visibility ?? 1) >= VIS_MIN;
+      const rightToeOk = (rightToe?.visibility ?? 1) >= VIS_MIN;
+
+      // 接地足の判定: 踵・つま先のうち地面に近い方（Y 最大 = 画面下）で比較
+      const leftGroundY = Math.max(
+        leftHeelOk ? leftHeel.y : -Infinity,
+        leftToeOk ? leftToe.y : -Infinity,
+      );
+      const rightGroundY = Math.max(
+        rightHeelOk ? rightHeel.y : -Infinity,
+        rightToeOk ? rightToe.y : -Infinity,
+      );
+      // 両足とも低 visibility の場合は足首にフォールバック
+      const leftEffY = Number.isFinite(leftGroundY) ? leftGroundY : leftAnkle.y;
+      const rightEffY = Number.isFinite(rightGroundY) ? rightGroundY : rightAnkle.y;
+
+      // 接地足を選択（Y が大きい = 画面下 = 地面に近い方）
+      const useLeft = leftEffY > rightEffY;
+      const heel = useLeft ? leftHeel : rightHeel;
+      const toe = useLeft ? leftToe : rightToe;
+      const heelOk = useLeft ? leftHeelOk : rightHeelOk;
+      const toeOk = useLeft ? leftToeOk : rightToeOk;
+      const ankle = useLeft ? leftAnkle : rightAnkle;
+
+      // 地面レベル点: 両 OK なら踵+つま先の中点、片方欠落なら残り一方、全欠落なら足首
       let footX: number, footY: number;
-      if (leftY > rightY) {
-        // 左足が接地
-        footX = (leftAnkle.x + leftToe.x) / 2;
-        footY = leftY;
+      if (heelOk && toeOk) {
+        footX = (heel.x + toe.x) / 2;
+        footY = (heel.y + toe.y) / 2;
+      } else if (toeOk) {
+        footX = toe.x;
+        footY = toe.y;
+      } else if (heelOk) {
+        footX = heel.x;
+        footY = heel.y;
       } else {
-        // 右足が接地
-        footX = (rightAnkle.x + rightToe.x) / 2;
-        footY = rightY;
+        footX = ankle.x;
+        footY = ankle.y;
       }
-      
-      // 🎯 CRITICAL FIX: キャリブレーションと同じ解像度を使用
-      // 正規化座標(0-1)をピクセル座標に変換（videoRef.currentから取得）
-      const pixelX = footX * actualVideoWidth;
-      const pixelY = footY * actualVideoHeight;
-      
-      // 🔍 デバッグ: 初回のみビデオサイズとサンプル座標を出力
+
+      // 正規化座標(0-1) → 抽出フレームのピクセル座標
+      const pixelX = footX * frameWidth;
+      const pixelY = footY * frameHeight;
+
+      // 🔍 デバッグ: 初回のみフレームサイズとサンプル座標を出力
       if (frame === (contactFrames[0] || 0)) {
-        console.log(`🔍 [DEBUG] Video dimensions for pixel conversion: ${actualVideoWidth}x${actualVideoHeight} (from videoRef.current)`);
-        console.log(`🔍 [DEBUG] Sample: normalized(${footX.toFixed(3)}, ${footY.toFixed(3)}) → pixel(${pixelX.toFixed(0)}, ${pixelY.toFixed(0)})`);
+        const srcLabel = heelOk && toeOk ? '踵+つま先中点'
+          : toeOk ? 'つま先のみ'
+          : heelOk ? '踵のみ'
+          : '足首フォールバック';
+        console.log(`🔍 [DEBUG] Frame dimensions for pixel conversion: ${frameWidth}x${frameHeight} (from framesRef/canvas) — videoRef native: ${videoRef.current?.videoWidth}x${videoRef.current?.videoHeight}`);
+        console.log(`🔍 [DEBUG] Foot source: ${srcLabel} (${useLeft ? '左' : '右'}足), normalized(${footX.toFixed(3)}, ${footY.toFixed(3)}) → pixel(${pixelX.toFixed(0)}, ${pixelY.toFixed(0)})`);
       }
-      
-      return { x: pixelX, y: pixelY };
+
+      return { x: pixelX, y: pixelY, side: useLeft ? 'L' : 'R' };
     };
     
     // スタートライン・フィニッシュラインの正規化x座標を取得
@@ -2532,35 +2747,221 @@ const clearMarksByButton = () => {
     const distancePerNormalized = sectionLengthM / Math.abs(finishLineX - startLineX);
     const isLeftToRight = finishLineX > startLineX; // 走行方向
     
-    // 各フレームでのスタートラインからの距離[m]を計算
+    // 各フレームでのスタートラインからの距離[m]を計算（胴体X線形スケーリング: フォールバック用）
     const distanceAtFrame = (frame: number): number | null => {
       const torsoX = getTorsoX(frame);
       if (torsoX == null) return null;
-      const rawDistance = isLeftToRight 
+      const rawDistance = isLeftToRight
         ? (torsoX - startLineX) * distancePerNormalized
         : (startLineX - torsoX) * distancePerNormalized;
       return rawDistance;
     };
-    
+
+    // 🎯 接地フレームに対応する離地フレームを取得
+    //    モード2: manualContactFrames[i] ↔ autoToeOffFrames[i]
+    //    モード1/3: contactFrames[2i] ↔ contactFrames[2i+1]
+    const toeOffOf = (contactFrame: number): number | null => {
+      if (calibrationType === 2) {
+        const idx = manualContactFrames.indexOf(contactFrame);
+        if (idx >= 0 && idx < autoToeOffFrames.length) {
+          const t = autoToeOffFrames[idx];
+          return typeof t === 'number' ? t : null;
+        }
+      } else {
+        const idx = contactFrames.indexOf(contactFrame);
+        if (idx >= 0 && idx % 2 === 0 && idx + 1 < contactFrames.length) {
+          return contactFrames[idx + 1];
+        }
+      }
+      return null;
+    };
+
+    // 🎯 接地期平均化: 接地フレーム〜離地フレームの中央数フレームで足ピクセルを平均。
+    //    接地中は足が地面で静止しているので、pose ノイズを √N で低減できる。
+    //    端 2 フレームは touchdown/pushoff の transient でピクセルが動くのでスキップ。
+    const getFootPixelAveraged = (contactFrame: number, toeOffFrame: number | null) => {
+      // 離地が不明 or 接地期が短すぎなら単フレーム（フォールバック）
+      if (toeOffFrame == null || toeOffFrame - contactFrame < 4) {
+        return getContactFootPixel(contactFrame);
+      }
+      const startF = contactFrame + 2;
+      const endF = toeOffFrame - 2;
+      const samples: Array<{ x: number; y: number; side: 'L' | 'R' }> = [];
+      for (let f = startF; f <= endF; f++) {
+        const p = getContactFootPixel(f);
+        if (p) samples.push(p);
+      }
+      if (samples.length === 0) {
+        return getContactFootPixel(contactFrame);
+      }
+      // 多数決で足側を決定（通常は全フレーム同じ足）
+      const leftCount = samples.filter(s => s.side === 'L').length;
+      const side: 'L' | 'R' = leftCount * 2 >= samples.length ? 'L' : 'R';
+      const matching = samples.filter(s => s.side === side);
+      return {
+        x: matching.reduce((s, p) => s + p.x, 0) / matching.length,
+        y: matching.reduce((s, p) => s + p.y, 0) / matching.length,
+        side,
+      };
+    };
+
+    // 🎯 接地足のピクセル → スタートからの距離 [m]
+    //    優先順位:
+    //      1. トラックマーカー校正（N 点、最高精度）
+    //      2. 4 コーンホモグラフィ（中精度）
+    //      3. 身長ベース自動校正（ユーザ操作ゼロ、サイドビュー向け）
+    //      4. 胴体 X 線形スケーリング（最終フォールバック）
+    //    足ピクセルは「接地期平均」を優先使用（per-step ノイズを √N で低減）。
+    //    離地フレームが不明な場合は接地フレーム単独（従来通り）。
+    const firstContactFootX = (() => {
+      if (!bodyAutoScale) return null;
+      const list: number[] = calibrationType === 2
+        ? [...manualContactFrames]
+        : contactFrames.filter((_, i) => i % 2 === 0);
+      list.sort((a, b) => a - b);
+      for (const f of list) {
+        const px = getFootPixelAveraged(f, toeOffOf(f));
+        if (px) return px.x;
+      }
+      return null;
+    })();
+
+    const distanceAtContactFoot = (frame: number): number | null => {
+      const footPx = getFootPixelAveraged(frame, toeOffOf(frame));
+      // [1] マーカー方式（最推奨）
+      if (trackMarkers.length >= 2 && footPx) {
+        const d = distanceAtGroundPixel(footPx.x, footPx.y);
+        if (d != null && Number.isFinite(d)) return d;
+      }
+      // [2] 4 コーンホモグラフィ
+      if (singleCamH && footPx) {
+        const world = applyHomography(footPx.x, footPx.y, singleCamH);
+        if (world && Number.isFinite(world.y)) return world.y;
+      }
+      // [3] 身長ベース自動校正（サイドビュー前提）
+      if (bodyAutoScale && firstContactFootX != null && footPx) {
+        const dx = footPx.x - firstContactFootX;
+        const signed = isLeftToRight ? dx : -dx;
+        return signed * bodyAutoScale.metersPerPixel;
+      }
+      // [4] 胴体 X 線形スケーリング
+      return distanceAtFrame(frame);
+    };
+
     console.log(`📏 ストライド計算（新仕様）:`);
     console.log(`   入力距離: ${sectionLengthM}m`);
     console.log(`   スタートラインX: ${startLineX?.toFixed(4)}, フィニッシュラインX: ${finishLineX?.toFixed(4)}`);
     console.log(`   走行方向: ${isLeftToRight ? '左→右' : '右→左'}`);
     console.log(`   距離変換係数: ${distancePerNormalized.toFixed(4)} m/正規化単位`);
     console.log(`   走行タイプ: ${runType === 'dash' ? 'スタートダッシュ' : '加速走（フライング）'}`);
-    
+    const scaleSource = trackMarkers.length >= 2
+      ? `N点マーカー校正（${trackMarkers.length}点）`
+      : singleCamH
+      ? '4コーンホモグラフィ'
+      : bodyAutoScale
+      ? `身長ベース自動校正（身長 ${bodyAutoScale.heightM.toFixed(2)}m, 身体 ${bodyAutoScale.bodyPixels.toFixed(0)}px, ${bodyAutoScale.metersPerPixel.toFixed(5)} m/px, n=${bodyAutoScale.sampleCount}）`
+      : '胴体X線形スケーリング（最終フォールバック）';
+    console.log(`   🎯 ストライド座標系: ${scaleSource}`);
+
+    // 🩺 校正整合性の診断: 4コーンが意図通りの world 座標に射影されるか逆算確認
+    if (singleCamH && singleCones.length === 4) {
+      console.log(`🩺 校正診断:`);
+      console.log(`   フレームサイズ: ${frameWidth} × ${frameHeight}`);
+      console.log(`   distanceValue = ${distanceValue}m, laneWidth = ${singleConeLaneWidth}m`);
+      console.log(`   コーン ピクセル座標:`);
+      const coneLabels = ['start-near', 'start-far ', 'finish-near', 'finish-far '];
+      const expectedWorld: Array<[number, number]> = [
+        [0, 0],
+        [singleConeLaneWidth, 0],
+        [0, distanceValue ?? 10],
+        [singleConeLaneWidth, distanceValue ?? 10],
+      ];
+      singleCones.forEach((cone, i) => {
+        const projected = applyHomography(cone.x, cone.y, singleCamH);
+        const [ex, ey] = expectedWorld[i];
+        const dx = projected ? projected.x - ex : NaN;
+        const dy = projected ? projected.y - ey : NaN;
+        console.log(
+          `     [${i}] ${coneLabels[i]}: pixel(${cone.x.toFixed(1)}, ${cone.y.toFixed(1)}) → world(${projected?.x?.toFixed(3) ?? 'NaN'}, ${projected?.y?.toFixed(3) ?? 'NaN'}) 期待値(${ex}, ${ey}) 誤差(${dx.toFixed(3)}, ${dy.toFixed(3)})`
+        );
+      });
+      // スタート側コーンのピクセル間距離 vs フィニッシュ側コーンのピクセル間距離
+      // （カメラ側視点でどのくらい遠近差があるかのヒント）
+      const startPxDist = Math.hypot(singleCones[0].x - singleCones[1].x, singleCones[0].y - singleCones[1].y);
+      const finishPxDist = Math.hypot(singleCones[2].x - singleCones[3].x, singleCones[2].y - singleCones[3].y);
+      const nearSidePxSpan = Math.hypot(singleCones[0].x - singleCones[2].x, singleCones[0].y - singleCones[2].y);
+      const farSidePxSpan = Math.hypot(singleCones[1].x - singleCones[3].x, singleCones[1].y - singleCones[3].y);
+      console.log(`   ピクセル長チェック:`);
+      console.log(`     レーン幅(${singleConeLaneWidth}m) の見かけ: start側=${startPxDist.toFixed(0)}px, finish側=${finishPxDist.toFixed(0)}px`);
+      console.log(`     セクション長(${distanceValue ?? 10}m) の見かけ: near側=${nearSidePxSpan.toFixed(0)}px, far側=${farSidePxSpan.toFixed(0)}px`);
+      // ピクセル長の比から素朴なスケール係数を見る（平均 px/m）
+      const avgLaneWidthPx = (startPxDist + finishPxDist) / 2;
+      const avgSectionPx = (nearSidePxSpan + farSidePxSpan) / 2;
+      console.log(`     推定スケール: レーン幅=${(avgLaneWidthPx / singleConeLaneWidth).toFixed(1)}px/m, セクション=${(avgSectionPx / (distanceValue ?? 10)).toFixed(1)}px/m`);
+    }
+
     // 接地フレームリストを取得
-    const contactFrameList: number[] = calibrationType === 2 
+    const contactFrameList: number[] = calibrationType === 2
       ? [...manualContactFrames]
       : contactFrames.filter((_, i) => i % 2 === 0); // 偶数インデックス = 接地
-    
+
     // 🔴 CRITICAL FIX: 接地フレームを昇順にソート（時系列順に並べる）
     console.log(`   ⚠️ BEFORE SORT: 接地フレーム: ${contactFrameList.join(', ')}`);
     contactFrameList.sort((a, b) => a - b);
     console.log(`   ✅ AFTER SORT: 接地フレーム: ${contactFrameList.join(', ')}`);
-    
-    // 各接地時のスタートラインからの距離を計算
-    const sContacts = contactFrameList.map(f => distanceAtFrame(f));
+
+    // 各接地時のスタートラインからの距離を計算（足接地点+ホモグラフィ、なければ胴体Xフォールバック）
+    const sContacts = contactFrameList.map(f => distanceAtContactFoot(f));
+    if (singleCamH) {
+      const torsoSeries = contactFrameList.map(f => distanceAtFrame(f));
+      console.log(`   🦶 足接地(ホモグラフィ)[m]: ${sContacts.map(d => d?.toFixed(2) ?? 'N/A').join(', ')}`);
+      console.log(`   🫃 胴体X(参考)[m]:          ${torsoSeries.map(d => d?.toFixed(2) ?? 'N/A').join(', ')}`);
+    }
+
+    // 🔬 Per-step 詳細診断: 各接地フレームで採用した keypoint・足側・ピクセル座標・distance を全て出す。
+    //    ストライド異常値の原因（pose 推定ノイズ or 本当の biomechanical な伸び）を切り分けるため。
+    console.log(`🔬 Per-step 詳細診断:`);
+    console.log(`   # | frame | 足 | source      | heel vis | toe vis | pixel(x,y)     | distance[m] | Δpixel | Δdistance(stride)`);
+    let prevPx: number | null = null;
+    let prevDist: number | null = null;
+    for (let i = 0; i < contactFrameList.length; i++) {
+      const frame = contactFrameList[i];
+      const pose = poseResults[frame];
+      if (!pose?.landmarks) {
+        console.log(`   ${i + 1} | ${frame} | ?  | (no pose)`);
+        continue;
+      }
+      const lm = pose.landmarks;
+      const lH = lm[29], rH = lm[30], lT = lm[31], rT = lm[32];
+      const lHOk = (lH?.visibility ?? 1) >= 0.3;
+      const lTOk = (lT?.visibility ?? 1) >= 0.3;
+      const rHOk = (rH?.visibility ?? 1) >= 0.3;
+      const rTOk = (rT?.visibility ?? 1) >= 0.3;
+      const lY = Math.max(lHOk ? lH.y : -Infinity, lTOk ? lT.y : -Infinity);
+      const rY = Math.max(rHOk ? rH.y : -Infinity, rTOk ? rT.y : -Infinity);
+      const useLeft = (Number.isFinite(lY) ? lY : lm[27].y) > (Number.isFinite(rY) ? rY : lm[28].y);
+      const side = useLeft ? 'L' : 'R';
+      const H = useLeft ? lH : rH;
+      const T = useLeft ? lT : rT;
+      const HOk = useLeft ? lHOk : rHOk;
+      const TOk = useLeft ? lTOk : rTOk;
+      const source = HOk && TOk ? '踵+つま先中点' : TOk ? 'つま先のみ' : HOk ? '踵のみ' : '足首FB';
+      const footPx = getContactFootPixel(frame);
+      const distM = sContacts[i];
+
+      const hVis = H?.visibility?.toFixed(2) ?? 'N/A';
+      const tVis = T?.visibility?.toFixed(2) ?? 'N/A';
+      const pxStr = footPx ? `(${footPx.x.toFixed(0)}, ${footPx.y.toFixed(0)})` : 'null';
+      const distStr = distM != null ? distM.toFixed(3) : 'null';
+      const dPx = prevPx != null && footPx ? (footPx.x - prevPx).toFixed(0) : '—';
+      const dDist = prevDist != null && distM != null ? (distM - prevDist).toFixed(3) : '—';
+
+      console.log(
+        `   ${i + 1} | ${frame.toString().padEnd(5)} | ${side}  | ${source.padEnd(11)} | ${hVis.padEnd(8)} | ${tVis.padEnd(7)} | ${pxStr.padEnd(14)} | ${distStr.padEnd(11)} | ${dPx.padEnd(6)} | ${dDist}`
+      );
+      prevPx = footPx?.x ?? prevPx;
+      prevDist = distM ?? prevDist;
+    }
     
     console.log(`   接地フレーム: ${contactFrameList.join(', ')}`);
     console.log(`   各接地距離[m]: ${sContacts.map(d => d?.toFixed(2) ?? 'N/A').join(', ')}`);
@@ -2658,6 +3059,7 @@ const clearMarksByButton = () => {
           isFirstStepFromStart,
           contactPixelX: contactFootPixel?.x,
           contactPixelY: contactFootPixel?.y,
+          leg: contactFootPixel?.side === 'L' ? 'left' : contactFootPixel?.side === 'R' ? 'right' : undefined,
         });
       }
     } else {
@@ -2728,19 +3130,48 @@ const clearMarksByButton = () => {
           isFirstStepFromStart,
           contactPixelX: contactFootPixel?.x,
           contactPixelY: contactFootPixel?.y,
+          leg: contactFootPixel?.side === 'L' ? 'left' : contactFootPixel?.side === 'R' ? 'right' : undefined,
         });
       }
     }
     
+
     // 加速度を計算（各ステップ間の速度変化）
     for (let i = 0; i < metrics.length - 1; i++) {
       const currentSpeed = metrics[i].speedMps;
       const nextSpeed = metrics[i + 1].speedMps;
       const stepTime = metrics[i].stepTime;
-      
+
       if (currentSpeed != null && nextSpeed != null && stepTime != null && stepTime > 0) {
         metrics[i].acceleration = (nextSpeed - currentSpeed) / stepTime;
       }
+    }
+
+    // 🎯 ストライド外れ値検出: 3 点移動平均（自身 ± 隣接 1 歩）から 12% 以上乖離した step は
+    //    pose 推定ノイズの疑い。歩単位の加速プロファイル表示で警告マークを出す。
+    //    端点（最初/最後）は片側のみで比較。
+    const stridesForOutlier = metrics.map(m => m.stride ?? m.fullStride ?? null);
+    for (let i = 0; i < metrics.length; i++) {
+      const cur = stridesForOutlier[i];
+      if (cur == null) continue;
+      const neighbors: number[] = [];
+      if (i > 0 && stridesForOutlier[i - 1] != null) neighbors.push(stridesForOutlier[i - 1]!);
+      if (i < metrics.length - 1 && stridesForOutlier[i + 1] != null) neighbors.push(stridesForOutlier[i + 1]!);
+      if (neighbors.length === 0) continue;
+      const localMean = neighbors.reduce((a, b) => a + b, 0) / neighbors.length;
+      if (localMean <= 0) continue;
+      const deviationPct = ((cur - localMean) / localMean) * 100;
+      metrics[i].strideDeviationPct = deviationPct;
+      if (Math.abs(deviationPct) >= 12) {
+        metrics[i].strideOutlier = true;
+      }
+    }
+    const outliers = metrics.filter(m => m.strideOutlier);
+    if (outliers.length > 0) {
+      console.log(`⚠️ ストライド外れ値検出: ${outliers.length}件`);
+      outliers.forEach(m => {
+        console.log(`   Step ${m.index}: stride=${m.stride?.toFixed(3)}m, 乖離=${m.strideDeviationPct?.toFixed(1)}%`);
+      });
     }
     
     // ✅ ブレーキ/キック比率を計算
@@ -2793,7 +3224,7 @@ const clearMarksByButton = () => {
     }
     
     return metricsWithRatios;
-  }, [analysisMode, mergedStepMetrics, contactFrames, manualContactFrames, usedTargetFps, poseResults, distanceValue, isPanMode, calibrationType, runType, savedStartHipX, savedEndHipX, sectionStartFrame, sectionEndFrame]);
+  }, [analysisMode, mergedStepMetrics, contactFrames, manualContactFrames, usedTargetFps, poseResults, distanceValue, isPanMode, calibrationType, runType, savedStartHipX, savedEndHipX, sectionStartFrame, sectionEndFrame, singleCamH]);
 
   // ⚡ H-FVP 計算（Horizontal Force-Velocity Profile）
   // パンモードでは10mスプリットデータからH-FVPを計算
@@ -3959,25 +4390,37 @@ ${panningSprintAnalysis.intervals.map((int, idx) =>
     if (!usedTargetFps || distanceValue == null) {
       return { time: null as number | null, speed: null as number | null };
     }
-    
+
     const sectionLengthM = distanceValue;
-    
-    // パーン撮影モード: フレーム数からシンプルに計算
+
+    // 🎯 最優先: ユーザが手動で区間スタート/エンドフレームをマークしている場合、
+    //    その差分をそのまま時間とする。これが一番誤差の入りようがない。
+    //    （トルソー線形スケーリングによる推定は perspective 歪みで誤差が出やすく、
+    //     パーン撮影で動画全長を返すバグもあった）
+    if (
+      sectionStartFrame != null &&
+      sectionEndFrame != null &&
+      sectionEndFrame > sectionStartFrame
+    ) {
+      const time = (sectionEndFrame - sectionStartFrame) / usedTargetFps;
+      const speed = sectionLengthM / time;
+      console.log(`🏃 ${sectionLengthM}mタイム（マーク区間基準）: ${time.toFixed(3)}s = (${sectionEndFrame} - ${sectionStartFrame}) / ${usedTargetFps}fps, 平均速度 ${speed.toFixed(2)} m/s`);
+      return { time, speed };
+    }
+
+    // パーン撮影モード: フレーム数からシンプルに計算（マーク未設定時のみ）
     if (analysisMode === 'panning') {
       const totalFrames = framesRef.current.length;
       if (totalFrames === 0) {
         return { time: null, speed: null };
       }
-      
-      const time = totalFrames / usedTargetFps; // タイム = フレーム数 ÷ FPS
-      const speed = sectionLengthM / time; // 速度 = 距離 ÷ タイム
-      
-      console.log(`🎥 Panning mode simple calculation: ${totalFrames} frames @ ${usedTargetFps} fps = ${time.toFixed(3)}s, ${speed.toFixed(2)}m/s`);
-      
+      const time = totalFrames / usedTargetFps;
+      const speed = sectionLengthM / time;
+      console.log(`🎥 Panning mode fallback: ${totalFrames} frames / ${usedTargetFps}fps = ${time.toFixed(3)}s`);
       return { time, speed };
     }
-    
-    // 固定カメラモード: トルソー位置から詳細計算
+
+    // 固定カメラモード: トルソー位置から詳細計算（マーク未設定時のフォールバック）
     if (!poseResults.length) {
       return { time: null, speed: null };
     }
@@ -4059,6 +4502,231 @@ ${panningSprintAnalysis.intervals.map((int, idx) =>
     return { time: null, speed: null };
   }, [usedTargetFps, poseResults, distanceValue, savedStartHipX, savedEndHipX, sectionStartFrame, sectionEndFrame]);
 
+  // 🎯 アンカー校正統計（実測ベース）
+  //   Task 3: 区間直前の接地 → 区間直後の接地 の実距離（校正経由で計測）
+  //   Task 4: アンカー距離 / 歩数 = 平均ストライド
+  //   Task 5: Σ(per-step stride) vs アンカー距離 の整合チェック
+  //
+  //   旧方式 (entry_gap/exit_gap を初速×時間で外挿して α スケール補正) を廃止。
+  //   代わりに「区間を跨ぐ直前直後の実接地」を使うので外挿不要、実測のみ。
+  //
+  //   stepMetrics[i].distanceAtContact = sContacts[i]、
+  //   stepMetrics[i].fullStride         = sContacts[i+1] - sContacts[i]、
+  //   最後の接地の距離 = 最後のステップの distanceAtContact + fullStride。
+  const anchorCalibration = useMemo(() => {
+    if (!stepMetrics.length) return null;
+    if (sectionStartFrame == null || sectionEndFrame == null) return null;
+    if (sectionEndFrame <= sectionStartFrame) return null;
+    if (distanceValue == null) return null;
+
+    // 接地フレームリストと各接地の距離を stepMetrics から再構築（N 個の接地 = N-1 歩 + 末尾の接地）
+    const frames: number[] = [];
+    const dists: (number | null)[] = [];
+    for (const s of stepMetrics) {
+      frames.push(s.contactFrame);
+      dists.push(s.distanceAtContact ?? null);
+    }
+    const last = stepMetrics[stepMetrics.length - 1];
+    if (last.nextContactFrame == null) return null;
+    frames.push(last.nextContactFrame);
+    const lastDist =
+      last.distanceAtContact != null && last.fullStride != null
+        ? last.distanceAtContact + last.fullStride
+        : null;
+    dists.push(lastDist);
+
+    // 区間直前の接地 (before): contact < sectionStartFrame の最大のもの
+    let beforeIdx = -1;
+    for (let i = 0; i < frames.length; i++) {
+      if (frames[i] < sectionStartFrame) beforeIdx = i;
+    }
+    // 区間直後の接地 (after): contact > sectionEndFrame の最小のもの
+    let afterIdx = -1;
+    for (let i = 0; i < frames.length; i++) {
+      if (frames[i] > sectionEndFrame) {
+        afterIdx = i;
+        break;
+      }
+    }
+
+    if (beforeIdx < 0 || afterIdx < 0 || afterIdx <= beforeIdx) {
+      console.log(
+        `⚠️ アンカー校正: 区間 [${sectionStartFrame} → ${sectionEndFrame}] を挟む接地が不足 (beforeIdx=${beforeIdx}, afterIdx=${afterIdx})`,
+      );
+      return null;
+    }
+
+    const beforeFrame = frames[beforeIdx];
+    const afterFrame = frames[afterIdx];
+    const beforeDist = dists[beforeIdx];
+    const afterDist = dists[afterIdx];
+    if (beforeDist == null || afterDist == null) return null;
+
+    // Task 3: 区間直前接地 → 区間直後接地 の実距離
+    const anchorDistance = afterDist - beforeDist;
+    const stepCount = afterIdx - beforeIdx;
+    // Task 4: 平均ストライド = アンカー距離 / 歩数
+    const avgStrideAnchor = stepCount > 0 ? anchorDistance / stepCount : null;
+
+    // Task 5: Σ(per-step stride) vs アンカー距離（telescoping で数学的には一致するが、
+    //         丸めや区間外ステップのフィルタ差異を可視化するために明示的に計算する）
+    let sumPerStep = 0;
+    let sumCount = 0;
+    for (let i = beforeIdx; i < afterIdx; i++) {
+      const s = stepMetrics[i]?.fullStride;
+      if (s != null && Number.isFinite(s)) {
+        sumPerStep += s;
+        sumCount++;
+      }
+    }
+    const matchDiff = sumPerStep - anchorDistance;
+    const matchDiffPct = anchorDistance !== 0 ? (matchDiff / anchorDistance) * 100 : 0;
+
+    console.log(`🎯 アンカー校正（実測ベース）:`);
+    console.log(
+      `   区間: sectionStart=Frame ${sectionStartFrame}, sectionEnd=Frame ${sectionEndFrame} (${distanceValue}m)`,
+    );
+    console.log(
+      `   区間直前の接地 [idx=${beforeIdx}]: Frame ${beforeFrame}, 距離 ${beforeDist.toFixed(3)}m`,
+    );
+    console.log(
+      `   区間直後の接地 [idx=${afterIdx}]: Frame ${afterFrame}, 距離 ${afterDist.toFixed(3)}m`,
+    );
+    console.log(`   アンカー距離 (Task 3): ${anchorDistance.toFixed(3)}m`);
+    console.log(`   歩数: ${stepCount}`);
+    console.log(
+      `   平均ストライド (Task 4): ${avgStrideAnchor != null ? avgStrideAnchor.toFixed(3) : 'N/A'}m`,
+    );
+    console.log(`   Σ(per-step stride) [${sumCount}歩]: ${sumPerStep.toFixed(3)}m`);
+    console.log(
+      `   整合チェック (Task 5): Δ=${matchDiff.toFixed(4)}m (${matchDiffPct.toFixed(3)}%)`,
+    );
+
+    return {
+      beforeIdx,
+      beforeFrame,
+      beforeDist,
+      afterIdx,
+      afterFrame,
+      afterDist,
+      anchorDistance,
+      stepCount,
+      avgStrideAnchor,
+      sumPerStep,
+      sumCount,
+      matchDiff,
+      matchDiffPct,
+    };
+  }, [stepMetrics, sectionStartFrame, sectionEndFrame, distanceValue]);
+
+  // 🧩 2歩ペア平均（L/R交互パターンをキャンセル）
+  //    pose 推定の L/R キーポイント系統差により、per-step 値が「長-短-長-短」と
+  //    交互振動することがある。隣接 2 歩を非重複ペアにして平均を取ると、
+  //    この系統誤差がキャンセルされ「真の加速プロファイル」が見えやすくなる。
+  //
+  //    ペア境界: (1,2), (3,4), (5,6), ... （ステップ番号は表示用の index）
+  //    quality='warning'（補間ステップ）は除外してペアを組む。
+  const pairAveragedSteps = useMemo(() => {
+    const real = stepMetrics.filter((s) => s.quality !== 'warning');
+    const avg = (vals: Array<number | null | undefined>) => {
+      const xs = vals.filter((v): v is number => v != null && Number.isFinite(v));
+      return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+    };
+
+    type Pair = {
+      pairIndex: number;
+      stepNumbers: string;
+      firstFrame: number;
+      lastFrame: number;
+      midFrame: number;
+      avgStride: number | null;
+      avgContact: number | null;
+      avgFlight: number | null;
+      avgPitch: number | null;
+      avgSpeed: number | null;
+      avgPosition: number | null;
+      legs: string;
+      lrStrideDiffPct: number | null;
+      lrContactDiffPct: number | null;
+      acceleration: number | null;
+    };
+
+    const pairs: Pair[] = [];
+
+    for (let i = 0; i < real.length; i += 2) {
+      const a = real[i];
+      const b = real[i + 1];
+      const members = b ? [a, b] : [a];
+      const legs = members
+        .map((m) => (m.leg === 'left' ? 'L' : m.leg === 'right' ? 'R' : '?'))
+        .join('+');
+
+      // ペア内 L/R 差（ペアが L+R を含む場合のみ）
+      let lrStrideDiffPct: number | null = null;
+      let lrContactDiffPct: number | null = null;
+      if (members.length === 2 && a.leg && b.leg && a.leg !== b.leg) {
+        const L = a.leg === 'left' ? a : b;
+        const R = a.leg === 'right' ? a : b;
+        if (L.stride != null && R.stride != null) {
+          const mean = (L.stride + R.stride) / 2;
+          if (mean > 0) lrStrideDiffPct = (Math.abs(L.stride - R.stride) / mean) * 100;
+        }
+        if (L.contactTime != null && R.contactTime != null) {
+          const mean = (L.contactTime + R.contactTime) / 2;
+          if (mean > 0)
+            lrContactDiffPct = (Math.abs(L.contactTime - R.contactTime) / mean) * 100;
+        }
+      }
+
+      const midFrame = b ? (a.contactFrame + b.contactFrame) / 2 : a.contactFrame;
+
+      pairs.push({
+        pairIndex: pairs.length + 1,
+        stepNumbers: b ? `${a.index}-${b.index}` : `${a.index}`,
+        firstFrame: a.contactFrame,
+        lastFrame: b ? b.nextContactFrame ?? b.contactFrame : a.nextContactFrame ?? a.contactFrame,
+        midFrame,
+        avgStride: avg(members.map((m) => m.stride)),
+        avgContact: avg(members.map((m) => m.contactTime)),
+        avgFlight: avg(members.map((m) => m.flightTime)),
+        avgPitch: avg(members.map((m) => m.stepPitch)),
+        avgSpeed: avg(members.map((m) => m.speedMps)),
+        avgPosition: avg(members.map((m) => m.distanceAtContact)),
+        legs,
+        lrStrideDiffPct,
+        lrContactDiffPct,
+        acceleration: null,
+      });
+    }
+
+    // 加速度: 次ペアの平均速度との差 / 両ペア midFrame 間の時間
+    for (let i = 0; i < pairs.length - 1; i++) {
+      const cur = pairs[i];
+      const nxt = pairs[i + 1];
+      if (
+        cur.avgSpeed != null &&
+        nxt.avgSpeed != null &&
+        usedTargetFps > 0
+      ) {
+        const dt = (nxt.midFrame - cur.midFrame) / usedTargetFps;
+        if (dt > 0) {
+          cur.acceleration = (nxt.avgSpeed - cur.avgSpeed) / dt;
+        }
+      }
+    }
+
+    if (pairs.length > 0) {
+      console.log(`🧩 2歩ペア平均（${pairs.length}ペア）:`);
+      pairs.forEach((p) => {
+        console.log(
+          `   ペア${p.pairIndex} (step ${p.stepNumbers}, ${p.legs}): ストライド=${p.avgStride?.toFixed(3) ?? 'N/A'}m, 接地=${p.avgContact?.toFixed(3) ?? 'N/A'}s, 速度=${p.avgSpeed?.toFixed(2) ?? 'N/A'}m/s, 加速=${p.acceleration?.toFixed(2) ?? '—'}m/s², L/Rストライド差=${p.lrStrideDiffPct?.toFixed(1) ?? '—'}%`,
+        );
+      });
+    }
+
+    return pairs;
+  }, [stepMetrics, usedTargetFps]);
+
   const stepSummary = useMemo(() => {
     if (!stepMetrics.length) {
       return {
@@ -4071,6 +4739,14 @@ ${panningSprintAnalysis.intervals.map((int, idx) =>
         avgSpeedMps: null as number | null,
         sectionTime: sectionTimeSpeed.time,
         sectionSpeed: sectionTimeSpeed.speed,
+        leftRightBalance: null as null | {
+          leftCount: number; rightCount: number;
+          leftStride: number | null; rightStride: number | null; strideAsymPct: number | null;
+          leftContact: number | null; rightContact: number | null; contactAsymPct: number | null;
+          leftFlight: number | null; rightFlight: number | null; flightAsymPct: number | null;
+          leftPitch: number | null; rightPitch: number | null; pitchAsymPct: number | null;
+          leftSpeed: number | null; rightSpeed: number | null; speedAsymPct: number | null;
+        },
       };
     }
 
@@ -4125,6 +4801,54 @@ ${panningSprintAnalysis.intervals.map((int, idx) =>
     const avgStride = nStride ? sumStride / nStride : null;
     const avgSpeedMps = nSpeed ? sumSpeed / nSpeed : null;
 
+    // 🎯 左右バランス解析
+    //    supportSide (= leg) ごとに接地時間・ストライド・ピッチ・スピードを集計。
+    //    各指標の非対称率 = |L - R| / ((L + R) / 2) × 100 [%]
+    //    陸上バイオメカニクスでは 非対称率 < 3% が理想、5% 超で注意、10% 超で明確な非対称とされる。
+    const byLeg = (leg: 'left' | 'right') => {
+      const ss = realSteps.filter(s => s.leg === leg);
+      const avg = (vals: (number | null | undefined)[]) => {
+        const xs = vals.filter((v): v is number => v != null);
+        return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+      };
+      return {
+        count: ss.length,
+        avgContact: avg(ss.map(s => s.contactTime)),
+        avgFlight: avg(ss.map(s => s.flightTime)),
+        avgStepTime: avg(ss.map(s => s.stepTime)),
+        avgPitch: avg(ss.map(s => s.stepPitch)),
+        avgStride: avg(ss.map(s => s.stride)),
+        avgSpeed: avg(ss.map(s => s.speedMps)),
+      };
+    };
+    const L = byLeg('left');
+    const R = byLeg('right');
+    const asym = (a: number | null, b: number | null) => {
+      if (a == null || b == null) return null;
+      const mean = (a + b) / 2;
+      if (mean === 0) return null;
+      return (Math.abs(a - b) / mean) * 100;
+    };
+    const leftRightBalance = {
+      leftCount: L.count,
+      rightCount: R.count,
+      leftStride: L.avgStride,
+      rightStride: R.avgStride,
+      strideAsymPct: asym(L.avgStride, R.avgStride),
+      leftContact: L.avgContact,
+      rightContact: R.avgContact,
+      contactAsymPct: asym(L.avgContact, R.avgContact),
+      leftFlight: L.avgFlight,
+      rightFlight: R.avgFlight,
+      flightAsymPct: asym(L.avgFlight, R.avgFlight),
+      leftPitch: L.avgPitch,
+      rightPitch: R.avgPitch,
+      pitchAsymPct: asym(L.avgPitch, R.avgPitch),
+      leftSpeed: L.avgSpeed,
+      rightSpeed: R.avgSpeed,
+      speedAsymPct: asym(L.avgSpeed, R.avgSpeed),
+    };
+
     return {
       stepCount,
       avgContact,
@@ -4135,6 +4859,7 @@ ${panningSprintAnalysis.intervals.map((int, idx) =>
       avgSpeedMps,
       sectionTime: sectionTimeSpeed.time,
       sectionSpeed: sectionTimeSpeed.speed,
+      leftRightBalance,
     };
   }, [stepMetrics, sectionTimeSpeed]);
 
@@ -4319,7 +5044,108 @@ ${panningSprintAnalysis.intervals.map((int, idx) =>
     setStatus("姿勢推定を実行中...");
 
     try {
-      // MediaPipeの存在を詳細にチェック
+      // === RTMPose APIが使える場合はそちらを使用 ===
+      // 本番 (Vercel): VITE_RTMPOSE_API_URL 環境変数で HF Space の URL を指定
+      //   例: VITE_RTMPOSE_API_URL=https://username-space.hf.space
+      // 開発環境: 未設定 → '/rtmpose' → vite.config.ts の proxy で localhost:8765 へ転送
+      const RTMPOSE_API = (import.meta.env.VITE_RTMPOSE_API_URL as string | undefined) || '/rtmpose';
+      let rtmposeAvailable = false;
+      try {
+        const healthRes = await fetch(`${RTMPOSE_API}/health`, { signal: AbortSignal.timeout(3000) });
+        rtmposeAvailable = healthRes.ok;
+      } catch { /* API not available */ }
+
+      if (rtmposeAvailable) {
+        console.log('✅ RTMPose APIサーバー接続成功 — MediaPipeをスキップ');
+        setStatus('RTMPose で姿勢推定中...');
+
+        const totalFrames = framesRef.current.length;
+        const tempCanvas = document.createElement('canvas');
+        const firstFrame = framesRef.current[0];
+        tempCanvas.width = firstFrame.width;
+        tempCanvas.height = firstFrame.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        if (!tempCtx) throw new Error('Canvas context failed');
+
+        const results: (FramePoseData | null)[] = new Array(totalFrames).fill(null);
+
+        // 🚀 並列化: N フレーム同時にサーバへ投げる。
+        //    サーバを threaded=True 起動しておけば同時処理で数倍高速。
+        //    CONCURRENCY を上げすぎるとサーバがスワップするので 4〜8 が安全。
+        const CONCURRENCY = 6;
+        let completed = 0;
+
+        const processFrame = async (idx: number): Promise<FramePoseData | null> => {
+          // 各フレームごとに独立した canvas を作る（tempCanvas の共有は並列処理で壊れる）
+          const fCanvas = document.createElement('canvas');
+          fCanvas.width = firstFrame.width;
+          fCanvas.height = firstFrame.height;
+          const fCtx = fCanvas.getContext('2d');
+          if (!fCtx) return null;
+          fCtx.putImageData(framesRef.current[idx], 0, 0);
+
+          try {
+            const blob = await new Promise<Blob>((resolve, reject) => {
+              fCanvas.toBlob(
+                b => b ? resolve(b) : reject(new Error('toBlob failed')),
+                'image/jpeg',
+                0.85,
+              );
+            });
+            const fd = new FormData();
+            fd.append('frame', blob, 'frame.jpg');
+            const res = await fetch(`${RTMPOSE_API}/process_frame`, { method: 'POST', body: fd });
+            if (!res.ok) return null;
+            const data = await res.json();
+            if (!data.landmarks || !(data.confidence > 0.2)) return null;
+            return {
+              landmarks: data.landmarks.map((lm: any) => ({
+                x: lm.x, y: lm.y, z: lm.z || 0, visibility: lm.visibility ?? 0,
+              })),
+            };
+          } catch {
+            return null;
+          }
+        };
+
+        // CONCURRENCY 本のワーカーが同じキューから取り出して処理するスキーム
+        let nextIdx = 0;
+        const worker = async () => {
+          while (true) {
+            const idx = nextIdx++;
+            if (idx >= totalFrames) break;
+            results[idx] = await processFrame(idx);
+            completed++;
+            if (completed % 5 === 0 || completed === totalFrames) {
+              const pct = Math.round((completed / totalFrames) * 100);
+              setPoseProgress(pct);
+              setStatus(`RTMPose姿勢推定中... ${completed}/${totalFrames} (${pct}%)`);
+            }
+          }
+        };
+        await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+
+        // 補間 & 結果セット（既存ロジックと同じ流れ）
+        const interpolatedResults = interpolateMissingPoses(results);
+        setPoseResults(interpolatedResults);
+
+        const successCount = results.filter(r => r !== null).length;
+        const interpolatedCount = interpolatedResults.filter(r => r !== null).length;
+        console.log(`📊 RTMPose完了: ${successCount}/${totalFrames} (補間後: ${interpolatedCount})`);
+
+        if (successCount === 0) {
+          setStatus('❌ RTMPose姿勢推定が失敗しました');
+          alert('姿勢推定に失敗しました。APIサーバーを確認してください。');
+        } else {
+          setStatus(`✅ RTMPose姿勢推定完了！（成功率: ${Math.round(interpolatedCount / totalFrames * 100)}%）`);
+          setTimeout(() => setWizardStep(5), 1000);
+        }
+
+        setIsPoseProcessing(false);
+        return; // MediaPipeの処理を完全にスキップ
+      }
+
+      // === MediaPipeフォールバック ===
       console.log('🔍 Checking MediaPipe availability...');
       console.log('window.Pose:', typeof (window as any).Pose);
       console.log('User Agent:', navigator.userAgent);
@@ -6661,12 +7487,18 @@ setUsedTargetFps(targetFps);
 
   const changeFrame = (delta: number) => {
     if (!ready) return;
-    const newFrame = clamp(
-      currentFrame + delta,
-      0,
-      Math.max(0, framesRef.current.length - 1)
+    // 🐛 BUGFIX: setState の関数形で最新の currentFrame を参照する。
+    //   直接参照だと、素早い連打時に stale closure で同じ値を返してしまい
+    //   「2 クリックで 1 コマしか進まない」症状が出る。
+    setCurrentFrame((prev) =>
+      clamp(prev + delta, 0, Math.max(0, framesRef.current.length - 1)),
     );
-    setCurrentFrame(newFrame);
+  };
+
+  // 絶対フレームに直接ジャンプ（stale closure の影響を受けない）
+  const jumpToFrame = (target: number) => {
+    if (!ready) return;
+    setCurrentFrame(clamp(target, 0, Math.max(0, framesRef.current.length - 1)));
   };
 
   const handleSliderChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -8032,23 +8864,109 @@ if (videoRef.current) {
     setStatus(`4コーンキャリブレーション: 1/4コーンを設定してください`);
   };
   
-  // 🎯 キャンバスクリックでコーンを設定
-  const handleConeClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isCalibrating || !multiCameraData) return;
-    
+  // 🎯 単一カメラ用: キャンバスクリックで4コーンを設定 → ホモグラフィ計算
+  const handleSingleConeClick = async (event: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
+
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    
     const clickX = (event.clientX - rect.left) * scaleX;
     const clickY = (event.clientY - rect.top) * scaleY;
-    
+
+    const newCones = [...singleCones, { x: clickX, y: clickY }];
+    setSingleCones(newCones);
+
+    const order = ['スタート側の手前コーン（カメラ側）', 'スタート側の奥コーン（レーン反対側）', 'ゴール側の手前コーン（カメラ側）', 'ゴール側の奥コーン（レーン反対側）'];
+    if (newCones.length < 4) {
+      setStatus(`4コーンキャリブレーション ${newCones.length + 1}/4: ${order[newCones.length]} をクリック`);
+      return;
+    }
+
+    // 4コーン揃った → ホモグラフィ計算
+    try {
+      const { computeHomographyImgToWorld } = await import('./utils/multiCameraAnalysis');
+      const sectionLengthM = distanceValue ?? 10;
+      const laneWidth = singleConeLaneWidth;
+      const imgPoints = {
+        x0_near: [newCones[0].x, newCones[0].y] as [number, number],
+        x0_far: [newCones[1].x, newCones[1].y] as [number, number],
+        x1_near: [newCones[2].x, newCones[2].y] as [number, number],
+        x1_far: [newCones[3].x, newCones[3].y] as [number, number],
+      };
+      const worldPoints = {
+        x0_near: [0, 0] as [number, number],
+        x0_far: [laneWidth, 0] as [number, number],
+        x1_near: [0, sectionLengthM] as [number, number],
+        x1_far: [laneWidth, sectionLengthM] as [number, number],
+      };
+      const H = computeHomographyImgToWorld(imgPoints, worldPoints);
+      setSingleCamH(H);
+      setSingleConeMode(false);
+      setStatus(`✅ パースペクティブ補正完了（区間${sectionLengthM}m, レーン幅${laneWidth}m）`);
+    } catch (e) {
+      console.error('ホモグラフィ計算失敗:', e);
+      setStatus(`❌ ホモグラフィ計算失敗: コーン位置を見直してください`);
+      setSingleCones([]);
+    }
+  };
+
+  // 🎯 トラックマーカー（N 点校正）: キャンバスクリックでマーカー追加
+  //    ユーザが動画内のトラック上の既知距離点（例: 0m, 2m, 4m, ...）を順にクリック。
+  //    各クリックには trackMarkerIntervalM × clickIndex の距離が自動付与される。
+  //    マーカー数が trackMarkerCount に達したら自動で設定モード終了。
+  const handleTrackMarkerClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const clickX = (event.clientX - rect.left) * scaleX;
+    const clickY = (event.clientY - rect.top) * scaleY;
+
+    const idx = trackMarkers.length;
+    const distanceM = idx * trackMarkerIntervalM;
+    const next = [...trackMarkers, { pixel: { x: clickX, y: clickY }, distanceM }];
+    setTrackMarkers(next);
+
+    if (next.length >= trackMarkerCount) {
+      setTrackMarkerMode(false);
+      setStatus(`✅ マーカー校正完了（${next.length} 点, 0m〜${(next.length - 1) * trackMarkerIntervalM}m）`);
+    } else {
+      const nextDistanceM = next.length * trackMarkerIntervalM;
+      setStatus(`マーカー校正 ${next.length + 1}/${trackMarkerCount}: ${nextDistanceM}m 地点（地面の既知マーカー）をクリック`);
+    }
+  };
+
+  // 🎯 キャンバスクリックでコーンを設定
+  const handleConeClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    // トラックマーカーモードが最優先
+    if (trackMarkerMode) {
+      handleTrackMarkerClick(event);
+      return;
+    }
+    // 単一カメラモードが有効ならそちらに振る
+    if (singleConeMode) {
+      void handleSingleConeClick(event);
+      return;
+    }
+    if (!isCalibrating || !multiCameraData) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    const clickX = (event.clientX - rect.left) * scaleX;
+    const clickY = (event.clientY - rect.top) * scaleY;
+
     const newClicks = [...coneClicks, { x: clickX, y: clickY }];
     setConeClicks(newClicks);
-    
+
     const { currentIndex, segments } = multiCameraData;
     const segment = segments[currentIndex];
     
@@ -10192,22 +11110,286 @@ if (true /* single mode */ && !videoFile) {
             <div className="wizard-step-header">
               <h2 className="wizard-step-title">ステップ 5: 区間設定</h2>
               <p className="wizard-step-desc">
-                スライダーを動かして、スタート・フィニッシュ・中間地点を設定してください。
+                スライダーを動かして、スタート・フィニッシュ地点を設定してください。
               </p>
             </div>
+
+            {/* 🎯 身長ベース自動校正ステータス（ユーザ操作不要） */}
+            {bodyAutoScale && trackMarkers.length < 2 && !singleCamH && (
+              <div style={{
+                maxWidth: '1400px', margin: '0 auto 12px', padding: '10px 16px',
+                background: '#f0fdf4',
+                border: '2px solid #22c55e',
+                borderRadius: 10,
+                display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+              }}>
+                <span style={{ fontSize: 16 }}>✅</span>
+                <div style={{ fontSize: 13, color: '#14532d', fontWeight: 600 }}>
+                  身長ベース自動校正中（追加設定不要）
+                </div>
+                <div style={{ fontSize: 12, color: '#166534' }}>
+                  身長 {bodyAutoScale.heightM.toFixed(2)}m / 身体 {bodyAutoScale.bodyPixels.toFixed(0)}px →{' '}
+                  {(bodyAutoScale.metersPerPixel * 1000).toFixed(2)} mm/px（n={bodyAutoScale.sampleCount}フレーム）
+                </div>
+                <div style={{ fontSize: 11, color: '#047857', marginLeft: 'auto' }}>
+                  ※ 精度UPしたい場合は下の N点マーカーまたは 4コーンを設定
+                </div>
+              </div>
+            )}
+            {!bodyAutoScale && !athleteInfo?.height_cm && (
+              <div style={{
+                maxWidth: '1400px', margin: '0 auto 12px', padding: '10px 16px',
+                background: '#fef3c7',
+                border: '2px solid #f59e0b',
+                borderRadius: 10,
+                fontSize: 13, color: '#92400e',
+              }}>
+                ⚠️ 選手の身長が未登録のため自動校正できません。ステップ0で身長を入力すると自動校正が有効になります。
+              </div>
+            )}
+
+            {/* 🎯 N点マーカー校正（推奨、最精度） */}
+            <div style={{
+              maxWidth: '1400px', margin: '0 auto 16px', padding: 16,
+              background: trackMarkers.length >= 2 ? '#ecfdf5' : '#eff6ff',
+              border: `2px solid ${trackMarkers.length >= 2 ? '#10b981' : '#3b82f6'}`,
+              borderRadius: 12,
+              boxShadow: trackMarkers.length >= 2 ? '0 2px 8px rgba(16,185,129,0.15)' : '0 2px 8px rgba(59,130,246,0.15)',
+            }}>
+              <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 8, color: '#111', display: 'flex', alignItems: 'center', gap: 8 }}>
+                📏 N点マーカー校正（推奨: 4コーンより精度高い）
+                {trackMarkers.length >= 2 && <span style={{ fontSize: 12, color: '#065f46', fontWeight: 700 }}>✅ {trackMarkers.length}点設定済み</span>}
+              </div>
+              {trackMarkers.length >= 2 && !trackMarkerMode ? (
+                <div style={{ fontSize: 13, color: '#065f46', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span>
+                    ✅ {trackMarkers.length}点マーカーで校正中（{trackMarkers[0].distanceM}m 〜 {trackMarkers[trackMarkers.length - 1].distanceM}m、
+                    間隔 {trackMarkerIntervalM}m）。ストライドはマーカー経由で計算されます。
+                  </span>
+                  <button
+                    onClick={() => { setTrackMarkers([]); setTrackMarkerMode(false); setStatus(''); }}
+                    style={{ padding: '6px 14px', background: '#fff', border: '1px solid #10b981', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#065f46', fontWeight: 600 }}
+                  >
+                    クリア
+                  </button>
+                </div>
+              ) : trackMarkerMode ? (
+                <div style={{ fontSize: 14, color: '#1e40af' }}>
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                    📍 動画上で {trackMarkers.length + 1}/{trackMarkerCount} 点目をクリック: {trackMarkers.length * trackMarkerIntervalM}m 地点
+                  </div>
+                  <div style={{ marginBottom: 8, padding: 8, background: '#fff', borderRadius: 6, fontSize: 13 }}>
+                    トラック上の既知距離（ラインテープ・コーン・マーカー）の**地面接触点**をクリックしてください。
+                    奥行き方向（走行方向）に順にクリック: 0m → {trackMarkerIntervalM}m → {trackMarkerIntervalM * 2}m → …
+                  </div>
+                  <button
+                    onClick={() => { setTrackMarkerMode(false); setTrackMarkers([]); setStatus(''); }}
+                    style={{ padding: '6px 14px', background: '#fff', border: '1px solid #3b82f6', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#1e40af' }}
+                  >
+                    キャンセル
+                  </button>
+                </div>
+              ) : (
+                <div style={{ fontSize: 13, color: '#1e40af' }}>
+                  <div style={{ marginBottom: 10 }}>
+                    トラック上の既知距離点（1m〜2m 間隔のラインテープ等）を複数クリックして校正します。
+                    N 点の冗長性でクリック誤差が平均化され、4 コーンより遥かに安定した距離計測が可能です。
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      マーカー数:
+                      <input
+                        type="number" min="2" max="20" step="1" value={trackMarkerCount}
+                        onChange={e => setTrackMarkerCount(Math.max(2, parseInt(e.target.value, 10) || 6))}
+                        style={{ width: 60, padding: '4px 8px', border: '1px solid #93c5fd', borderRadius: 4, fontSize: 13 }}
+                      />
+                    </label>
+                    <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      間隔:
+                      <input
+                        type="number" min="0.1" step="0.1" value={trackMarkerIntervalM}
+                        onChange={e => setTrackMarkerIntervalM(Math.max(0.1, parseFloat(e.target.value) || 2))}
+                        style={{ width: 70, padding: '4px 8px', border: '1px solid #93c5fd', borderRadius: 4, fontSize: 13 }}
+                      />
+                      m
+                    </label>
+                    <span style={{ fontSize: 12, color: '#475569' }}>
+                      → 合計 {(trackMarkerCount - 1) * trackMarkerIntervalM}m 区間をカバー
+                    </span>
+                    <button
+                      onClick={() => {
+                        setTrackMarkerMode(true);
+                        setTrackMarkers([]);
+                        setStatus(`マーカー校正 1/${trackMarkerCount}: 0m 地点（地面の既知マーカー）をクリック`);
+                      }}
+                      style={{ padding: '10px 20px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 700, boxShadow: '0 2px 4px rgba(59,130,246,0.3)' }}
+                    >
+                      📏 マーカーをクリックして校正開始
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 🎯 4コーン高精度補正（パースペクティブ補正） — ビデオの上に大きく配置 */}
+            <div style={{
+              maxWidth: '1400px', margin: '0 auto 16px', padding: 16,
+              background: singleCamH ? '#ecfdf5' : '#fff7ed',
+              border: `2px solid ${singleCamH ? '#10b981' : '#f59e0b'}`,
+              borderRadius: 12,
+              boxShadow: singleCamH ? '0 2px 8px rgba(16,185,129,0.15)' : '0 2px 8px rgba(245,158,11,0.15)',
+            }}>
+              <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 8, color: '#111', display: 'flex', alignItems: 'center', gap: 8 }}>
+                🎯 4コーン高精度補正（ストライド左右差を抑制）
+                {singleCamH && <span style={{ fontSize: 12, color: '#065f46', fontWeight: 700 }}>✅ 設定済み</span>}
+              </div>
+              {singleCamH ? (
+                <div style={{ fontSize: 13, color: '#065f46', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span>✅ ホモグラフィ適用中。ストライドは足位置＋パースペクティブ補正で計算されます。</span>
+                  <button
+                    onClick={() => { setSingleCamH(null); setSingleCones([]); setSingleConeMode(false); setStatus(''); }}
+                    style={{ padding: '6px 14px', background: '#fff', border: '1px solid #10b981', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#065f46', fontWeight: 600 }}
+                  >
+                    クリア
+                  </button>
+                </div>
+              ) : singleConeMode ? (
+                <div style={{ fontSize: 14, color: '#92400e' }}>
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>📍 動画上で {singleCones.length + 1}/4 コーンをクリック:</div>
+                  <div style={{ marginBottom: 8, padding: 8, background: '#fff', borderRadius: 6, fontSize: 13 }}>
+                    {['① スタート側の手前コーン（カメラ側）', '② スタート側の奥コーン（レーン反対側）', '③ ゴール側の手前コーン（カメラ側）', '④ ゴール側の奥コーン（レーン反対側）'][singleCones.length]}
+                  </div>
+                  <button
+                    onClick={() => { setSingleConeMode(false); setSingleCones([]); setStatus(''); }}
+                    style={{ padding: '6px 14px', background: '#fff', border: '1px solid #f59e0b', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#92400e' }}
+                  >
+                    キャンセル
+                  </button>
+                </div>
+              ) : (
+                <div style={{ fontSize: 13, color: '#92400e' }}>
+                  <div style={{ marginBottom: 10 }}>スタート側2本・ゴール側2本（合計4本）のコーンを動画で指定すると、ストライドの左右差が大幅に減少します。</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      レーン幅:
+                      <input
+                        type="number" step="0.01" value={singleConeLaneWidth}
+                        onChange={e => setSingleConeLaneWidth(parseFloat(e.target.value) || 1.22)}
+                        style={{ width: 70, padding: '4px 8px', border: '1px solid #fcd34d', borderRadius: 4, fontSize: 13 }}
+                      />
+                      m
+                    </label>
+                    <button
+                      onClick={() => {
+                        setSingleConeMode(true);
+                        setSingleCones([]);
+                        setStatus(`4コーンキャリブレーション 1/4: スタート側の手前コーン（カメラ側）をクリック`);
+                      }}
+                      style={{ padding: '10px 20px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 700, boxShadow: '0 2px 4px rgba(245,158,11,0.3)' }}
+                    >
+                      🎯 コーンをクリックして補正開始
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* ビデオプレビュー - フレームを直接表示 */}
-            <div style={{ marginBottom: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
-              <canvas 
+            <div style={{ marginBottom: '2rem', maxWidth: '1400px', margin: '0 auto', position: 'relative' }}>
+              <canvas
                 ref={displayCanvasRef}
+                onClick={trackMarkerMode ? (e) => {
+                  const canvas = displayCanvasRef.current;
+                  if (!canvas) return;
+                  const rect = canvas.getBoundingClientRect();
+                  const scaleX = canvas.width / rect.width;
+                  const scaleY = canvas.height / rect.height;
+                  const clickX = (e.clientX - rect.left) * scaleX;
+                  const clickY = (e.clientY - rect.top) * scaleY;
+                  const idx = trackMarkers.length;
+                  const distanceM = idx * trackMarkerIntervalM;
+                  const next = [...trackMarkers, { pixel: { x: clickX, y: clickY }, distanceM }];
+                  setTrackMarkers(next);
+                  if (next.length >= trackMarkerCount) {
+                    setTrackMarkerMode(false);
+                    setStatus(`✅ マーカー校正完了（${next.length} 点、0m〜${(next.length - 1) * trackMarkerIntervalM}m）`);
+                  } else {
+                    const nextDistanceM = next.length * trackMarkerIntervalM;
+                    setStatus(`マーカー校正 ${next.length + 1}/${trackMarkerCount}: ${nextDistanceM}m 地点の地面マーカーをクリック`);
+                  }
+                } : singleConeMode ? (e) => {
+                  const canvas = displayCanvasRef.current;
+                  if (!canvas) return;
+                  const rect = canvas.getBoundingClientRect();
+                  const scaleX = canvas.width / rect.width;
+                  const scaleY = canvas.height / rect.height;
+                  const clickX = (e.clientX - rect.left) * scaleX;
+                  const clickY = (e.clientY - rect.top) * scaleY;
+                  const newCones = [...singleCones, { x: clickX, y: clickY }];
+                  setSingleCones(newCones);
+                  const order = ['スタート側の手前コーン（カメラ側）', 'スタート側の奥コーン（レーン反対側）', 'ゴール側の手前コーン（カメラ側）', 'ゴール側の奥コーン（レーン反対側）'];
+                  if (newCones.length < 4) {
+                    setStatus(`4コーンキャリブレーション ${newCones.length + 1}/4: ${order[newCones.length]} をクリック`);
+                  } else {
+                    // 4コーン揃った → ホモグラフィ計算
+                    (async () => {
+                      try {
+                        const { computeHomographyImgToWorld } = await import('./utils/multiCameraAnalysis');
+                        const sectionLengthM = distanceValue ?? 10;
+                        const laneWidth = singleConeLaneWidth;
+                        const H = computeHomographyImgToWorld(
+                          {
+                            x0_near: [newCones[0].x, newCones[0].y],
+                            x0_far:  [newCones[1].x, newCones[1].y],
+                            x1_near: [newCones[2].x, newCones[2].y],
+                            x1_far:  [newCones[3].x, newCones[3].y],
+                          },
+                          {
+                            x0_near: [0, 0],
+                            x0_far:  [laneWidth, 0],
+                            x1_near: [0, sectionLengthM],
+                            x1_far:  [laneWidth, sectionLengthM],
+                          }
+                        );
+                        setSingleCamH(H);
+                        setSingleConeMode(false);
+                        setStatus(`✅ パースペクティブ補正完了（区間${sectionLengthM}m / レーン幅${laneWidth}m）`);
+                      } catch (err) {
+                        console.error('ホモグラフィ計算失敗:', err);
+                        setStatus(`❌ ホモグラフィ計算失敗: コーン位置を見直してください`);
+                        setSingleCones([]);
+                      }
+                    })();
+                  }
+                } : undefined}
                 style={{
                   width: '100%',
                   height: 'auto',
                   display: 'block',
-                  border: '2px solid #e5e7eb',
+                  border: trackMarkerMode ? '3px solid #3b82f6' : singleConeMode ? '3px solid #f59e0b' : '2px solid #e5e7eb',
                   borderRadius: '8px',
-                  backgroundColor: '#000'
+                  backgroundColor: '#000',
+                  cursor: (trackMarkerMode || singleConeMode) ? 'crosshair' : 'default',
                 }}
               />
+              {/* 設定済みコーン・マーカーの表示 */}
+              {trackMarkerMode && (
+                <div style={{
+                  position: 'absolute', top: 8, left: 8, background: 'rgba(59,130,246,0.95)', color: '#fff',
+                  padding: '6px 12px', borderRadius: 8, fontSize: 13, fontWeight: 700, pointerEvents: 'none',
+                }}>
+                  📏 {trackMarkers.length}/{trackMarkerCount} 点設定済み
+                  {trackMarkers.length > 0 && ` (最新: ${trackMarkers[trackMarkers.length - 1].distanceM}m)`}
+                </div>
+              )}
+              {singleConeMode && singleCones.length > 0 && (
+                <div style={{
+                  position: 'absolute', top: 8, left: 8, background: 'rgba(245,158,11,0.95)', color: '#111',
+                  padding: '6px 12px', borderRadius: 8, fontSize: 13, fontWeight: 700, pointerEvents: 'none',
+                }}>
+                  🎯 {singleCones.length}/4 設定済み
+                </div>
+              )}
               <div style={{ textAlign: 'center', marginTop: '10px', color: '#6b7280' }}>
                 現在のフレーム: {currentFrame} / {framesCount - 1}
               </div>
@@ -10344,60 +11526,7 @@ if (true /* single mode */ && !videoFile) {
     />
   </div>
 
-  {/* 中間地点スライダー（コンパクト） */}
-  <div style={{ marginBottom: '0.75rem' }}>
-    <span
-      style={{
-        fontSize: '0.9rem',
-        fontWeight: 'bold',
-        color: '#f59e0b',
-      }}
-    >
-      🟡 中間地点（任意）
-    </span>
-
-    <input
-      type="range"
-      min={0}
-      max={Math.max(framesCount - 1, 0)}
-      step={1}
-      value={sectionMidFrame ?? Math.floor(framesCount / 2)}
-      onChange={(e) => {
-        const newFrame = Number(e.target.value);
-        setSectionMidFrame(newFrame);
-        setCurrentFrame(newFrame);
-
-        const pose = poseResults[newFrame];
-        if (pose?.landmarks) {
-          const leftHip = pose.landmarks[23];
-          const rightHip = pose.landmarks[24];
-          if (leftHip && rightHip) {
-            setSavedMidHipX((leftHip.x + rightHip.x) / 2);
-          }
-        }
-        setMidLineOffset(0);
-
-        if (displayCanvasRef.current && framesRef.current[newFrame]) {
-          const canvas = displayCanvasRef.current;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            const frame = framesRef.current[newFrame];
-            canvas.width = frame.width;
-            canvas.height = frame.height;
-            ctx.putImageData(frame, 0, 0);
-          }
-        }
-      }}
-      className="section-slider mid-slider"
-      style={{
-        width: '100%',
-        height: '4px',
-        cursor: 'pointer',
-        marginTop: '4px',
-        borderRadius: '999px',
-      }}
-    />
-  </div>
+  {/* 中間地点スライダーは不要のため削除（2026-04-18） */}
 
   {/* 選択範囲の表示（少しだけ残す・高さも縮小） */}
   <div
@@ -10958,7 +12087,7 @@ case 6: {
                           if (!ready) return;
                           const base = manualContactFrames[i] ?? contactFrame ?? currentFrame;
                           const target = clampFrame(typeof base === "number" ? base : 0);
-                          changeFrame(target - currentFrame);
+                          jumpToFrame(target);
                         }}
                       >
                         <div
@@ -10999,7 +12128,7 @@ case 6: {
                                 next[i] = updated;
                                 return next;
                               });
-                              changeFrame(updated - currentFrame);
+                              jumpToFrame(updated);
                             }}
                             disabled={!ready}
                           >
@@ -11017,7 +12146,7 @@ case 6: {
                                 next[i] = updated;
                                 return next;
                               });
-                              changeFrame(updated - currentFrame);
+                              jumpToFrame(updated);
                             }}
                             disabled={!ready}
                           >
@@ -11054,7 +12183,7 @@ case 6: {
                                   });
                                 }
 
-                                changeFrame(updated - currentFrame);
+                                jumpToFrame(updated);
                               }}
                               disabled={!ready}
                             >
@@ -11085,7 +12214,7 @@ case 6: {
                                   });
                                 }
 
-                                changeFrame(updated - currentFrame);
+                                jumpToFrame(updated);
                               }}
                               disabled={!ready}
                             >
@@ -15222,6 +16351,88 @@ case 6: {
                       </div>
                     )}
 
+                    {/* 🎯 アンカー校正パネル（実測ベース） */}
+                    {anchorCalibration && (() => {
+                      const a = anchorCalibration;
+                      const matchOk = Math.abs(a.matchDiffPct) < 0.5;
+                      return (
+                        <div style={{
+                          background: 'linear-gradient(135deg, #ecfeff 0%, #f0fdfa 100%)',
+                          border: '3px solid #0891b2',
+                          borderRadius: '12px',
+                          padding: '16px 24px',
+                          marginBottom: '16px',
+                        }}>
+                          <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0e7490', marginBottom: '12px' }}>
+                            🎯 アンカー校正（{distanceValue}m を跨ぐ実接地間の実測）
+                          </div>
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                            gap: '16px',
+                            marginBottom: '12px',
+                          }}>
+                            <div>
+                              <div style={{ fontSize: '0.75rem', color: '#0e7490', marginBottom: '4px' }}>
+                                区間直前の接地
+                              </div>
+                              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#164e63' }}>
+                                Frame {a.beforeFrame}
+                              </div>
+                              <div style={{ fontSize: '0.85rem', color: '#0e7490' }}>
+                                {a.beforeDist.toFixed(3)} m
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '0.75rem', color: '#0e7490', marginBottom: '4px' }}>
+                                区間直後の接地
+                              </div>
+                              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#164e63' }}>
+                                Frame {a.afterFrame}
+                              </div>
+                              <div style={{ fontSize: '0.85rem', color: '#0e7490' }}>
+                                {a.afterDist.toFixed(3)} m
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '0.75rem', color: '#0e7490', marginBottom: '4px' }}>
+                                アンカー距離（実測）
+                              </div>
+                              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#164e63' }}>
+                                {a.anchorDistance.toFixed(3)} m
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: '#0e7490' }}>
+                                {a.stepCount} 歩
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '0.75rem', color: '#0e7490', marginBottom: '4px' }}>
+                                平均ストライド（アンカー）
+                              </div>
+                              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#164e63' }}>
+                                {a.avgStrideAnchor != null ? a.avgStrideAnchor.toFixed(3) : 'ー'} m
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: '#0e7490' }}>
+                                = {a.anchorDistance.toFixed(3)} ÷ {a.stepCount}
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{
+                            background: matchOk ? '#dcfce7' : '#fef3c7',
+                            border: `1px solid ${matchOk ? '#22c55e' : '#f59e0b'}`,
+                            borderRadius: '8px',
+                            padding: '10px 14px',
+                            fontSize: '0.85rem',
+                            color: matchOk ? '#15803d' : '#92400e',
+                          }}>
+                            <strong>{matchOk ? '✅' : '⚠️'} 整合チェック:</strong>{' '}
+                            Σ(per-step stride) = {a.sumPerStep.toFixed(3)}m, アンカー距離 = {a.anchorDistance.toFixed(3)}m,
+                            Δ = {a.matchDiff >= 0 ? '+' : ''}{a.matchDiff.toFixed(4)}m ({a.matchDiffPct >= 0 ? '+' : ''}{a.matchDiffPct.toFixed(3)}%)
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     <div className="metrics-summary">
                       <div className="metric-item">
                         <span className="metric-label">ステップ数</span>
@@ -15273,6 +16484,89 @@ case 6: {
                         </span>
                       </div>
                     </div>
+
+                    {/* 🎯 左右バランス（非対称率）パネル */}
+                    {stepSummary.leftRightBalance && (stepSummary.leftRightBalance.leftCount > 0 || stepSummary.leftRightBalance.rightCount > 0) && (() => {
+                      const b = stepSummary.leftRightBalance;
+                      const asymColor = (pct: number | null) => {
+                        if (pct == null) return '#94a3b8';
+                        if (pct < 3) return '#10b981'; // 緑（理想）
+                        if (pct < 5) return '#f59e0b'; // 黄（注意）
+                        return '#ef4444'; // 赤（明確な非対称）
+                      };
+                      const asymLabel = (pct: number | null) => {
+                        if (pct == null) return '—';
+                        if (pct < 3) return '良好';
+                        if (pct < 5) return '軽度';
+                        if (pct < 10) return '中度';
+                        return '顕著';
+                      };
+                      const fmt = (v: number | null, d = 3, unit = '') => v != null ? `${v.toFixed(d)}${unit}` : '—';
+                      const Row = ({ label, l, r, pct, unit, dec = 3 }: {
+                        label: string;
+                        l: number | null;
+                        r: number | null;
+                        pct: number | null;
+                        unit: string;
+                        dec?: number;
+                      }) => (
+                        <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                          <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 600, color: '#374151' }}>{label}</td>
+                          <td style={{ padding: '10px 12px', fontSize: 14, color: '#2563eb', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(l, dec, unit)}</td>
+                          <td style={{ padding: '10px 12px', fontSize: 14, color: '#dc2626', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(r, dec, unit)}</td>
+                          <td style={{ padding: '10px 12px', fontSize: 14, textAlign: 'right', fontWeight: 700, color: asymColor(pct), fontVariantNumeric: 'tabular-nums' }}>
+                            {pct != null ? `${pct.toFixed(1)}%` : '—'}
+                          </td>
+                          <td style={{ padding: '10px 12px', fontSize: 12, textAlign: 'center', fontWeight: 700, color: asymColor(pct) }}>
+                            {asymLabel(pct)}
+                          </td>
+                        </tr>
+                      );
+                      return (
+                        <div style={{
+                          marginTop: 20,
+                          background: '#fff',
+                          border: '2px solid #6366f1',
+                          borderRadius: 12,
+                          padding: 20,
+                          boxShadow: '0 2px 8px rgba(99,102,241,0.15)',
+                        }}>
+                          <h3 style={{ margin: '0 0 8px 0', fontSize: '1.1rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: 8 }}>
+                            ⚖️ 左右バランス（非対称率）
+                          </h3>
+                          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+                            支持脚（接地している足）ごとの平均値を比較。非対称率 = |L−R| / ((L+R)/2) × 100%。
+                            <strong style={{ color: '#10b981' }}>&lt; 3% 良好</strong>、
+                            <strong style={{ color: '#f59e0b' }}> 3–5% 軽度</strong>、
+                            <strong style={{ color: '#ef4444' }}> &gt; 5% 注意</strong>。
+                            サンプル数: 左 {b.leftCount} 歩 / 右 {b.rightCount} 歩。
+                          </div>
+                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                              <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
+                                <th style={{ padding: '8px 12px', fontSize: 12, textAlign: 'left', color: '#475569' }}>指標</th>
+                                <th style={{ padding: '8px 12px', fontSize: 12, textAlign: 'right', color: '#2563eb' }}>左</th>
+                                <th style={{ padding: '8px 12px', fontSize: 12, textAlign: 'right', color: '#dc2626' }}>右</th>
+                                <th style={{ padding: '8px 12px', fontSize: 12, textAlign: 'right', color: '#475569' }}>非対称率</th>
+                                <th style={{ padding: '8px 12px', fontSize: 12, textAlign: 'center', color: '#475569' }}>判定</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <Row label="接地時間"   l={b.leftContact} r={b.rightContact} pct={b.contactAsymPct} unit=" s" dec={3} />
+                              <Row label="滞空時間"   l={b.leftFlight}  r={b.rightFlight}  pct={b.flightAsymPct}  unit=" s" dec={3} />
+                              <Row label="ストライド" l={b.leftStride}  r={b.rightStride}  pct={b.strideAsymPct}  unit=" m" dec={3} />
+                              <Row label="ピッチ"     l={b.leftPitch}   r={b.rightPitch}   pct={b.pitchAsymPct}   unit=" 歩/s" dec={2} />
+                              <Row label="スピード"   l={b.leftSpeed}   r={b.rightSpeed}   pct={b.speedAsymPct}   unit=" m/s" dec={2} />
+                            </tbody>
+                          </table>
+                          {b.leftCount === 0 || b.rightCount === 0 ? (
+                            <div style={{ marginTop: 10, padding: 10, background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 6, fontSize: 12, color: '#92400e' }}>
+                              ⚠️ 片側のサンプルがありません。L/R 両方の接地が含まれる区間を解析対象にしてください。
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
 
                     {/* ⚡ H-FVP セクション */}
                     {(() => {
@@ -15774,12 +17068,19 @@ case 6: {
                               <td>{s.contactTime?.toFixed(3) ?? "ー"}</td>
                               <td>{s.flightTime?.toFixed(3) ?? "ー"}</td>
                               <td>{s.stepPitch?.toFixed(2) ?? "ー"}</td>
-                              <td style={{ 
-                                background: s.isFirstStepFromStart ? '#fef3c7' : 'inherit',
-                                fontWeight: s.isFirstStepFromStart ? 'bold' : 'normal'
-                              }}>
+                              <td style={{
+                                background: s.strideOutlier ? '#fee2e2' : s.isFirstStepFromStart ? '#fef3c7' : 'inherit',
+                                fontWeight: s.isFirstStepFromStart || s.strideOutlier ? 'bold' : 'normal',
+                                color: s.strideOutlier ? '#991b1b' : 'inherit',
+                              }}
+                              title={s.strideOutlier
+                                ? `3点移動平均から ${s.strideDeviationPct?.toFixed(1)}% 乖離（pose 推定ノイズの疑い）`
+                                : s.strideDeviationPct != null
+                                  ? `局所平均から ${s.strideDeviationPct.toFixed(1)}% の差`
+                                  : undefined}>
                                 {s.fullStride?.toFixed(2) ?? s.stride?.toFixed(2) ?? "ー"}
                                 {s.isFirstStepFromStart && <span style={{ fontSize: '0.7rem', color: '#d97706' }}> 🚀</span>}
+                                {s.strideOutlier && <span style={{ fontSize: '0.7rem' }}> ⚠️</span>}
                               </td>
                               <td style={{ fontSize: '0.85rem', color: '#6b7280' }}>
                                 {s.sectionStride?.toFixed(2) ?? "ー"}
@@ -15821,7 +17122,7 @@ case 6: {
                           const lastContact = manualContactFrames[manualContactFrames.length - 1] || 0;
                           const newContact = lastContact + 30;  // 前のステップの30フレーム後
                           const newToeOff = newContact + 20;    // 接地の20フレーム後
-                          
+
                           setManualContactFrames([...manualContactFrames, newContact]);
                           setAutoToeOffFrames([...autoToeOffFrames, newToeOff]);
                           alert(`新しいステップを追加しました！\n接地: ${newContact}\n離地: ${newToeOff}\n\n値を修正してください。`);
@@ -15830,6 +17131,92 @@ case 6: {
                         ➕ 新しいステップを追加
                       </button>
                     </div>
+
+                    {/* 🧩 2歩ペア平均テーブル（L/R交互パターンをキャンセル） */}
+                    {pairAveragedSteps.length > 0 && (
+                      <div style={{ marginTop: '24px' }}>
+                        <div style={{
+                          background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+                          border: '2px solid #3b82f6',
+                          borderRadius: '12px',
+                          padding: '16px 20px',
+                          marginBottom: '12px',
+                        }}>
+                          <div style={{ fontSize: '1rem', fontWeight: 700, color: '#1d4ed8', marginBottom: '6px' }}>
+                            🧩 2歩ペア平均（L/R交互パターンをキャンセル）
+                          </div>
+                          <div style={{ fontSize: '0.8rem', color: '#1d4ed8', lineHeight: 1.5 }}>
+                            pose 推定の左右キーポイント系統差により per-step 値は「長-短-長-短」と交互振動しがち。<br/>
+                            隣接 2 歩を非重複ペアで平均すると系統誤差がキャンセルされ、真の加速プロファイルが見えやすくなります。
+                          </div>
+                        </div>
+                        <div className="table-scroll">
+                          <table className="metrics-table">
+                            <thead>
+                              <tr>
+                                <th>ペア</th>
+                                <th>ステップ</th>
+                                <th>足</th>
+                                <th>平均接地時間</th>
+                                <th>平均滞空時間</th>
+                                <th>平均ピッチ</th>
+                                <th>平均ストライド</th>
+                                <th>平均スピード</th>
+                                <th>加速度</th>
+                                <th>L/Rストライド差</th>
+                                <th>L/R接地差</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {pairAveragedSteps.map((p) => {
+                                const lrColor = (pct: number | null) => {
+                                  if (pct == null) return '#94a3b8';
+                                  if (pct < 3) return '#10b981';
+                                  if (pct < 5) return '#f59e0b';
+                                  return '#ef4444';
+                                };
+                                return (
+                                  <tr key={p.pairIndex}>
+                                    <td style={{ fontWeight: 700 }}>{p.pairIndex}</td>
+                                    <td>{p.stepNumbers}</td>
+                                    <td style={{ fontSize: 12, fontFamily: 'monospace' }}>{p.legs}</td>
+                                    <td>{p.avgContact != null ? p.avgContact.toFixed(3) : 'ー'}</td>
+                                    <td>{p.avgFlight != null ? p.avgFlight.toFixed(3) : 'ー'}</td>
+                                    <td>{p.avgPitch != null ? p.avgPitch.toFixed(2) : 'ー'}</td>
+                                    <td style={{ fontWeight: 700, color: '#6d28d9' }}>
+                                      {p.avgStride != null ? p.avgStride.toFixed(3) : 'ー'}
+                                    </td>
+                                    <td style={{ fontWeight: 700, color: '#6d28d9' }}>
+                                      {p.avgSpeed != null ? p.avgSpeed.toFixed(2) : 'ー'}
+                                    </td>
+                                    <td style={{
+                                      color: p.acceleration != null && p.acceleration > 0 ? '#10b981' : p.acceleration != null && p.acceleration < 0 ? '#ef4444' : 'inherit',
+                                      fontWeight: 600,
+                                    }}>
+                                      {p.acceleration != null ? `${p.acceleration > 0 ? '+' : ''}${p.acceleration.toFixed(2)} m/s²` : '—'}
+                                    </td>
+                                    <td style={{ color: lrColor(p.lrStrideDiffPct), fontWeight: 600 }}>
+                                      {p.lrStrideDiffPct != null ? `${p.lrStrideDiffPct.toFixed(1)}%` : '—'}
+                                    </td>
+                                    <td style={{ color: lrColor(p.lrContactDiffPct), fontWeight: 600 }}>
+                                      {p.lrContactDiffPct != null ? `${p.lrContactDiffPct.toFixed(1)}%` : '—'}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div style={{
+                          marginTop: '8px',
+                          fontSize: '0.75rem',
+                          color: '#6b7280',
+                          fontStyle: 'italic',
+                        }}>
+                          L/R差の色: 🟢 &lt;3%（良好）/ 🟡 3-5%（軽度）/ 🟠 5-10%（中度）/ 🔴 &gt;10%（顕著、pose系統差の可能性大）
+                        </div>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <div>
@@ -16464,58 +17851,7 @@ case 6: {
       )}
       {/* モバイル用の修正を適用 */}
 
-      {/* ===== Phase 4: 検定モード切り替えUI ===== */}
-      {!isMobile && (
-        <div style={{
-          position: 'fixed',
-          top: 20,
-          right: 20,
-          zIndex: 10001,
-          display: 'flex',
-          gap: 8,
-          background: 'white',
-          padding: '8px',
-          borderRadius: 12,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-          border: '2px solid #e0e0e0'
-        }}>
-          <button
-            onClick={() => setAppMode('normal')}
-            style={{
-              padding: '10px 20px',
-              fontSize: 14,
-              fontWeight: appMode === 'normal' ? 'bold' : 'normal',
-              cursor: 'pointer',
-              borderRadius: 8,
-              border: appMode === 'normal' ? '2px solid #4CAF50' : '1px solid #ccc',
-              background: appMode === 'normal' ? '#4CAF50' : 'white',
-              color: appMode === 'normal' ? 'white' : '#333',
-              transition: 'all 0.2s'
-            }}
-          >
-            📊 通常分析
-          </button>
-          {/* 検定モードボタン: 一時非表示（実装継続中） */}
-          {false && (
-          <button
-            onClick={() => setAppMode('certification')}
-            style={{
-              padding: '10px 20px',
-              fontSize: 14,
-              fontWeight: appMode === 'certification' ? 'bold' : 'normal',
-              cursor: 'pointer',
-              borderRadius: 8,
-              border: appMode === 'certification' ? '2px solid #FF9800' : '1px solid #ccc',
-              background: appMode === 'certification' ? '#FF9800' : 'white',
-              color: appMode === 'certification' ? 'white' : '#333',
-              transition: 'all 0.2s'
-            }}
-          >
-            🏃 検定モード
-          </button>
-          )}
-        </div>
-      )}
+      {/* ===== Phase 4: 検定モード切り替えUI（検定モード未公開のため非表示） ===== */}
 
       {/* ===== Phase 4: 検定モード表示 ===== */}
       {appMode === 'certification' && (

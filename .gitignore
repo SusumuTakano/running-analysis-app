@@ -4,6 +4,8 @@ node_modules/
 # Environment variables
 .env.local
 .env
+.env.production
+.env.deploy
 
 # Build output
 dist/
@@ -21,3 +23,6 @@ dist/
 # Backup files
 *.back
 *_old
+
+# Claude Code worktree internal state
+.claude/

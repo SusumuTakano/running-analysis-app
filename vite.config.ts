@@ -21,11 +21,18 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     strictPort: true,
-    hmr: false,
+    // hmr: false,  // 無効化していたが、開発効率のためデフォルト有効に戻す
     allowedHosts: [
       '5173-iiu3g07ffhcmkyb0q957h-a402f90a.sandbox.novita.ai',
       '.sandbox.novita.ai'
-    ]
+    ],
+    proxy: {
+      '/rtmpose': {
+        target: 'http://localhost:8765',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/rtmpose/, ''),
+      },
+    },
   },
   preview: {
     host: '0.0.0.0',
