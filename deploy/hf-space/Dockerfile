@@ -1,8 +1,7 @@
 FROM python:3.11-slim
 
-# OpenCV / ONNX Runtime に必要な native ライブラリ
+# ONNX Runtime に必要な native ライブラリ（opencv-python-headless なので libGL 不要）
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1-mesa-glx \
     libglib2.0-0 \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
