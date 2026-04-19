@@ -16536,7 +16536,7 @@ case 6: {
                         </tr>
                       );
                       return (
-                        <div style={{
+                        <div className="lr-balance-panel" style={{
                           marginTop: 20,
                           background: '#fff',
                           border: '2px solid #6366f1',
@@ -16554,6 +16554,7 @@ case 6: {
                             <strong style={{ color: '#ef4444' }}> &gt; 5% 注意</strong>。
                             サンプル数: 左 {b.leftCount} 歩 / 右 {b.rightCount} 歩。
                           </div>
+                          <div className="lr-balance-table-wrap">
                           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead>
                               <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
@@ -16572,6 +16573,7 @@ case 6: {
                               <Row label="スピード"   l={b.leftSpeed}   r={b.rightSpeed}   pct={b.speedAsymPct}   unit=" m/s" dec={2} />
                             </tbody>
                           </table>
+                          </div>
                           {b.leftCount === 0 || b.rightCount === 0 ? (
                             <div style={{ marginTop: 10, padding: 10, background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 6, fontSize: 12, color: '#92400e' }}>
                               ⚠️ 片側のサンプルがありません。L/R 両方の接地が含まれる区間を解析対象にしてください。

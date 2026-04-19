@@ -1293,3 +1293,51 @@ body {
     gap: 8px !important;
   }
 }
+
+/* 📱 左右バランスパネル: モバイルはみ出し対策 */
+.lr-balance-panel {
+  overflow-x: hidden;
+}
+.lr-balance-table-wrap {
+  margin: 0 -4px;
+}
+
+@media (max-width: 768px) {
+  .lr-balance-panel {
+    padding: 14px !important;
+  }
+  .lr-balance-panel h3 {
+    font-size: 0.95rem !important;
+  }
+  /* テーブルを少し狭く */
+  .lr-balance-table-wrap table {
+    font-size: 0.75rem !important;
+  }
+  .lr-balance-table-wrap th,
+  .lr-balance-table-wrap td {
+    padding: 6px 4px !important;
+    font-size: 0.72rem !important;
+    white-space: nowrap;
+  }
+  /* 指標名列は左寄せ、他は縮小 */
+  .lr-balance-table-wrap th:first-child,
+  .lr-balance-table-wrap td:first-child {
+    padding-left: 2px !important;
+    font-size: 0.73rem !important;
+  }
+  /* 判定列（最後）は 1 文字分に */
+  .lr-balance-table-wrap th:last-child,
+  .lr-balance-table-wrap td:last-child {
+    padding-right: 2px !important;
+    min-width: 34px;
+  }
+}
+
+/* さらに狭い画面 (iPhone SE 375px 以下など) */
+@media (max-width: 380px) {
+  .lr-balance-table-wrap th,
+  .lr-balance-table-wrap td {
+    padding: 5px 2px !important;
+    font-size: 0.68rem !important;
+  }
+}
