@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#93c5fd"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+  <!-- 丸い背景 -->
+  <rect x="0" y="0" width="64" height="64" rx="14" fill="url(#bg)"/>
+  <!-- 走る人のシルエット（前傾姿勢） -->
+  <g fill="#ffffff" stroke="none">
+    <!-- 頭 -->
+    <circle cx="41" cy="15" r="5"/>
+    <!-- 胴体 -->
+    <path d="M 38 22 L 34 36 L 42 34 L 46 22 Z"/>
+    <!-- 前方の腕 -->
+    <path d="M 44 24 Q 50 22 54 26 L 52 29 Q 48 27 44 29 Z"/>
+    <!-- 後方の腕 -->
+    <path d="M 36 24 Q 28 26 24 32 L 27 34 Q 31 29 37 28 Z"/>
+    <!-- 前方の脚（蹴り出し） -->
+    <path d="M 41 33 Q 48 40 54 44 L 52 48 Q 45 44 38 38 Z"/>
+    <!-- 後方の脚（振り上げ） -->
+    <path d="M 36 34 Q 28 40 22 48 L 26 50 Q 32 44 39 38 Z"/>
+  </g>
+  <!-- スピードライン -->
+  <g stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.5">
+    <line x1="6" y1="22" x2="16" y2="22"/>
+    <line x1="4" y1="30" x2="18" y2="30"/>
+    <line x1="7" y1="38" x2="14" y2="38"/>
+  </g>
+</svg>
