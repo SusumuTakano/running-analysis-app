@@ -5,6 +5,7 @@
   "installCommand": "npm install",
   "framework": "vite",
   "rewrites": [
+    { "source": "/rtmpose/:path*", "destination": "https://susumu--pose-server-poseserver-fastapi-app.modal.run/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [

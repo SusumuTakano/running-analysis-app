@@ -26,3 +26,4 @@ dist/
 
 # Claude Code worktree internal state
 .claude/
+.vercel

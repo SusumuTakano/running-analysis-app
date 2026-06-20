@@ -1,34 +1,34 @@
-// src/pages/UserLoginPage.tsx
+// src/pages/ForgotPasswordPage.tsx
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 
-const UserLoginPage: React.FC = () => {
-  const navigate = useNavigate();
+const ForgotPasswordPage: React.FC = () => {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
-    setLoading(true);
+    setMessage(null);
+    setSubmitting(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
     });
 
     if (error) {
-      setErrorMsg("ログインに失敗しました：" + error.message);
-      setLoading(false);
+      setErrorMsg("メール送信に失敗しました: " + error.message);
+      setSubmitting(false);
       return;
     }
 
-    // ログイン成功 → ユーザーダッシュボードへ
-    setLoading(false);
-    navigate("/dashboard", { replace: true });
+    setMessage(
+      "リセット用のメールを送信しました。メール内のリンクから新しいパスワードを設定してください。"
+    );
+    setSubmitting(false);
   };
 
   return (
@@ -52,9 +52,9 @@ const UserLoginPage: React.FC = () => {
           border: "1px solid rgba(255,255,255,0.3)",
         }}
       >
-        <h1 style={{ fontSize: 22, marginBottom: 8 }}>ログイン</h1>
-        <p style={{ fontSize: 13, marginBottom: 16 }}>
-          ユーザー登録済みのメールアドレスとパスワードでログインしてください。
+        <h1 style={{ fontSize: 22, marginBottom: 8 }}>パスワードをお忘れの方</h1>
+        <p style={{ fontSize: 13, marginBottom: 16, lineHeight: 1.6 }}>
+          登録済みのメールアドレスを入力してください。パスワード再設定用のメールをお送りします。
         </p>
 
         <form onSubmit={handleSubmit}>
@@ -63,15 +63,6 @@ const UserLoginPage: React.FC = () => {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            required
-            style={inputStyle}
-          />
-
-          <label style={labelStyle}>パスワード</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
             required
             style={inputStyle}
           />
@@ -91,28 +82,25 @@ const UserLoginPage: React.FC = () => {
             </div>
           )}
 
-          <div style={{ marginTop: 12, textAlign: "right" }}>
-            <button
-              type="button"
-              onClick={() => navigate("/forgot-password")}
+          {message && (
+            <div
               style={{
-                background: "none",
-                border: "none",
-                color: "#93c5fd",
+                marginTop: 12,
+                padding: 8,
+                borderRadius: 8,
+                background: "rgba(34,197,94,0.2)",
+                border: "1px solid rgba(34,197,94,0.6)",
                 fontSize: 12,
-                textDecoration: "underline",
-                cursor: "pointer",
-                padding: 0,
               }}
             >
-              パスワードをお忘れですか？
-            </button>
-          </div>
+              {message}
+            </div>
+          )}
 
           <div style={{ marginTop: 20, display: "flex", gap: 12 }}>
             <button
               type="submit"
-              disabled={loading}
+              disabled={submitting}
               style={{
                 flex: 1,
                 padding: "10px 0",
@@ -120,16 +108,15 @@ const UserLoginPage: React.FC = () => {
                 border: "none",
                 fontSize: 14,
                 fontWeight: 600,
-                background: loading ? "#666" : "#2196f3",
+                background: submitting ? "#666" : "#2196f3",
                 color: "#fff",
-                cursor: loading ? "default" : "pointer",
+                cursor: submitting ? "default" : "pointer",
               }}
             >
-              {loading ? "ログイン中…" : "ログイン"}
+              {submitting ? "送信中…" : "リセットメールを送信"}
             </button>
-            <button
-              type="button"
-              onClick={() => navigate("/register")}
+            <Link
+              to="/login"
               style={{
                 padding: "10px 18px",
                 borderRadius: 999,
@@ -137,11 +124,13 @@ const UserLoginPage: React.FC = () => {
                 background: "transparent",
                 color: "#fff",
                 fontSize: 13,
-                cursor: "pointer",
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
               }}
             >
-              新規登録へ
-            </button>
+              ログインへ戻る
+            </Link>
           </div>
         </form>
       </div>
@@ -161,9 +150,9 @@ const inputStyle: React.CSSProperties = {
   padding: "8px 10px",
   borderRadius: 8,
   border: "1px solid rgba(255,255,255,0.5)",
-  background: "rgba(0,0,0,0.2)",
-  color: "#fff",
+  background: "#fff",
+  color: "#0f172a",
   fontSize: 13,
 };
 
-export default UserLoginPage;
+export default ForgotPasswordPage;

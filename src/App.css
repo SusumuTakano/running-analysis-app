@@ -1341,3 +1341,91 @@ body {
     font-size: 0.68rem !important;
   }
 }
+
+/* =============================================================
+   区間設定スライダー (スタート/フィニッシュ) — iPhone でも掴みやすく
+   ============================================================= */
+.section-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 999px;
+  outline: none;
+  touch-action: manipulation;
+}
+
+/* スタートスライダー: 緑のトラック + 緑の大きなつまみ */
+.start-slider {
+  background: linear-gradient(to right, #10b981 0%, #10b981 var(--pct, 0%), #e5e7eb var(--pct, 0%), #e5e7eb 100%);
+}
+.start-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #10b981;
+  border: 4px solid #fff;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+  cursor: pointer;
+}
+.start-slider::-moz-range-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #10b981;
+  border: 4px solid #fff;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+  cursor: pointer;
+}
+
+/* フィニッシュスライダー: 赤 */
+.finish-slider,
+.end-slider {
+  background: linear-gradient(to right, #ef4444 0%, #ef4444 var(--pct, 100%), #e5e7eb var(--pct, 100%), #e5e7eb 100%);
+}
+.finish-slider::-webkit-slider-thumb,
+.end-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 4px solid #fff;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
+  cursor: pointer;
+}
+.finish-slider::-moz-range-thumb,
+.end-slider::-moz-range-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 4px solid #fff;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
+  cursor: pointer;
+}
+
+/* iPhoneではさらに大きく（指で掴みやすく） */
+@media (max-width: 768px) {
+  .section-slider {
+    height: 10px !important;
+  }
+  .start-slider::-webkit-slider-thumb,
+  .finish-slider::-webkit-slider-thumb,
+  .end-slider::-webkit-slider-thumb {
+    width: 40px;
+    height: 40px;
+    border-width: 5px;
+  }
+  .start-slider::-moz-range-thumb,
+  .finish-slider::-moz-range-thumb,
+  .end-slider::-moz-range-thumb {
+    width: 40px;
+    height: 40px;
+    border-width: 5px;
+  }
+}

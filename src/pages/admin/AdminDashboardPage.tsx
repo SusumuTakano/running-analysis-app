@@ -16,6 +16,7 @@ type RunningAnalysisSession = {
 
 const AdminDashboardPage: React.FC = () => {
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [tier, setTier] = useState<string | null>(null);
   const [sessions, setSessions] = useState<RunningAnalysisSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -37,6 +38,10 @@ const AdminDashboardPage: React.FC = () => {
       }
 
       setUserEmail(sessionData.session.user.email ?? null);
+
+      // 管理ティア（super_admin / group_admin）を取得
+      const { data: tierData } = await supabase.rpc("get_my_admin_tier");
+      setTier(typeof tierData === "string" ? tierData : null);
 
       const { data, error } = await supabase
         .from("running_analysis_sessions")
@@ -96,14 +101,14 @@ const AdminDashboardPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{ minHeight: "100vh", padding: 24, color: "#fff" }}>
+      <div style={{ minHeight: "100vh", padding: 24, color: "#fff", background: "linear-gradient(135deg, #0b1220 0%, #0f172a 40%, #1e3a8a 100%)" }}>
         読み込み中…
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: "100vh", padding: 24, color: "#fff" }}>
+    <div style={{ minHeight: "100vh", padding: 24, color: "#fff", background: "linear-gradient(135deg, #0b1220 0%, #0f172a 40%, #1e3a8a 100%)" }}>
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>
         {/* ヘッダー */}
         <header
@@ -164,20 +169,34 @@ const AdminDashboardPage: React.FC = () => {
           />
         </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <Link
-            to="/admin/users"
+        <div style={{ marginBottom: 16, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <span
             style={{
-              display: "inline-block",
-              padding: "6px 12px",
+              padding: "2px 10px",
               borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.6)",
-              fontSize: 12,
+              fontSize: 11,
+              fontWeight: 700,
+              background: tier === "super_admin" ? "#dc2626" : "#0ea5e9",
               color: "#fff",
             }}
           >
-            ユーザー管理へ →
+            {tier === "super_admin" ? "スーパー管理者" : tier === "group_admin" ? "グループ管理者" : "権限なし"}
+          </span>
+
+          <Link to="/admin/users" style={menuLinkStyle}>
+            ユーザー管理 →
           </Link>
+
+          {tier === "super_admin" && (
+            <>
+              <Link to="/admin/groups" style={menuLinkStyle}>
+                管理グループ →
+              </Link>
+              <Link to="/admin/billing" style={menuLinkStyle}>
+                決済管理 →
+              </Link>
+            </>
+          )}
         </div>
 
         {/* 一覧テーブル */}
@@ -317,6 +336,16 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ title, value, caption }) => {
       )}
     </div>
   );
+};
+
+const menuLinkStyle: React.CSSProperties = {
+  display: "inline-block",
+  padding: "6px 12px",
+  borderRadius: 999,
+  border: "1px solid rgba(255,255,255,0.6)",
+  fontSize: 12,
+  color: "#fff",
+  textDecoration: "none",
 };
 
 const thStyle: React.CSSProperties = {

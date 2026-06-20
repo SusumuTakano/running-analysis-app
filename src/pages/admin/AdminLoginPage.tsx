@@ -38,7 +38,7 @@ const AdminLoginPage: React.FC = () => {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "#f5f5f5",
+        background: "linear-gradient(135deg, #0b1220 0%, #0f172a 40%, #1e3a8a 100%)",
         padding: "16px",
       }}
     >
@@ -46,10 +46,12 @@ const AdminLoginPage: React.FC = () => {
         style={{
           maxWidth: 400,
           width: "100%",
-          background: "#fff",
+          background: "rgba(15,23,42,0.85)",
+          color: "#f8fafc",
           padding: "24px",
-          borderRadius: "8px",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+          borderRadius: "12px",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
+          border: "1px solid rgba(255,255,255,0.15)",
         }}
       >
         <h1 style={{ fontSize: "20px", marginBottom: "16px" }}>
@@ -73,6 +75,8 @@ const AdminLoginPage: React.FC = () => {
               padding: "8px",
               marginBottom: "12px",
               fontSize: "14px",
+              color: "#0f172a",
+              background: "#fff",
             }}
           />
 
@@ -89,6 +93,8 @@ const AdminLoginPage: React.FC = () => {
               padding: "8px",
               marginBottom: "16px",
               fontSize: "14px",
+              color: "#0f172a",
+              background: "#fff",
             }}
           />
 
@@ -123,6 +129,24 @@ const AdminLoginPage: React.FC = () => {
           >
             {loading ? "ログイン中…" : "ログイン"}
           </button>
+
+          <div style={{ marginTop: 12, textAlign: "center" }}>
+            <button
+              type="button"
+              onClick={() => navigate("/forgot-password")}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#93c5fd",
+                fontSize: 12,
+                textDecoration: "underline",
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              パスワードをお忘れですか？
+            </button>
+          </div>
         </form>
       </div>
     </div>

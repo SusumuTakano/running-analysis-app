@@ -16,6 +16,8 @@ import "./index.css";
 import UserLoginPage from "./pages/UserLoginPage";
 import UserLogoutPage from "./pages/UserLogoutPage";
 import UserRegisterPage from "./pages/UserRegisterPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import UserDashboardPage from "./pages/UserDashboardPage";
 import UserAthletesPage from "./pages/UserAthletesPage";
 import UserProfilePage from "./pages/UserProfilePage";
@@ -23,6 +25,8 @@ import UserProfilePage from "./pages/UserProfilePage";
 import AdminLoginPage from "./pages/admin/AdminLoginPage";
 import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
 import AdminUsersPage from "./pages/admin/AdminUsersPage";
+import AdminGroupsPage from "./pages/admin/AdminGroupsPage";
+import AdminBillingPage from "./pages/admin/AdminBillingPage";
 
 import { supabase } from "./lib/supabaseClient";
 
@@ -102,6 +106,7 @@ const TopNavLink: React.FC<TopNavLinkProps> = ({ to, label, onClick }) => {
 const AppTopNav: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [isMobile, setIsMobile] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -122,12 +127,25 @@ const AppTopNav: React.FC = () => {
 
   // ログイン状態をチェック
   useEffect(() => {
+    // profiles.role === 'admin' を管理者判定の唯一の基準にする
+    const refreshAdmin = async (u: any) => {
+      if (!u) {
+        setIsAdmin(false);
+        return;
+      }
+      // get_my_admin_tier は SECURITY DEFINER で 'super_admin' | 'group_admin' | null を返す。
+      // RLS に依存せず、管理ティアを確実に判定できる。
+      const { data, error } = await supabase.rpc("get_my_admin_tier");
+      setIsAdmin(!error && (data === "super_admin" || data === "group_admin"));
+    };
+
     const checkAuth = async () => {
       try {
         const {
           data: { session },
         } = await supabase.auth.getSession();
         setUser(session?.user || null);
+        await refreshAdmin(session?.user || null);
       } catch (error) {
         console.error("Auth check error:", error);
       } finally {
@@ -138,12 +156,12 @@ const AppTopNav: React.FC = () => {
     checkAuth();
 
     // 認証状態の変更を監視
-const {
-  data: { subscription },
-} = supabase.auth.onAuthStateChange((_event: any, session: any) => {
-  setUser(session?.user ?? null);
-});
-
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
+      setUser(session?.user ?? null);
+      void refreshAdmin(session?.user ?? null);
+    });
 
     return () => {
       subscription.unsubscribe();
@@ -154,8 +172,6 @@ const {
   useEffect(() => {
     setIsMenuOpen(false);
   }, [location.pathname]);
-
-  const isAdmin = !!user?.user_metadata?.is_admin;
 
   /** PC 用ナビゲーション */
   const renderDesktopNav = () => {
@@ -357,6 +373,7 @@ const {
           </Link>
 
           {/* 右：PC では横並びメニュー / モバイルではハンバーガー */}
+      {!isMobile && renderDesktopNav()}
       {isMobile && (
           <button
             onClick={() => setIsMenuOpen((v) => !v)}
@@ -460,11 +477,15 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
         <Route path="/login" element={<UserLoginPage />} />
         <Route path="/logout" element={<UserLogoutPage />} />
         <Route path="/register" element={<UserRegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         {/* 管理者向け */}
         <Route path="/admin/login" element={<AdminLoginPage />} />
         <Route path="/admin" element={<AdminDashboardPage />} />
         <Route path="/admin/users" element={<AdminUsersPage />} />
+        <Route path="/admin/groups" element={<AdminGroupsPage />} />
+        <Route path="/admin/billing" element={<AdminBillingPage />} />
       </Routes>
     </BrowserRouter>
   </React.StrictMode>

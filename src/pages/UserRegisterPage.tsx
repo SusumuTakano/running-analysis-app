@@ -16,6 +16,7 @@ const UserRegisterPage: React.FC = () => {
   const [prefecture, setPrefecture] = useState("");
   const [occupation, setOccupation] = useState("");
   const [affiliation, setAffiliation] = useState("");
+  const [role, setRole] = useState<"athlete" | "coach" | "">("");
 
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -58,6 +59,11 @@ const UserRegisterPage: React.FC = () => {
       return;
     }
 
+    if (!role) {
+      setErrorMsg("利用者区分（選手／コーチ）を選択してください。");
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -94,6 +100,20 @@ const UserRegisterPage: React.FC = () => {
         setErrorMsg("ユーザー情報の保存に失敗しました: " + insertError.message);
         setSubmitting(false);
         return;
+      }
+
+      // ③ profiles.role を選択した区分で更新（トリガーが先に 'guest' で作成済み）
+      if (authUserId) {
+        const { error: roleError } = await supabase
+          .from("profiles")
+          .update({ role, name: fullName, updated_at: new Date().toISOString() })
+          .eq("id", authUserId);
+
+        if (roleError) {
+          setErrorMsg("利用者区分の保存に失敗しました: " + roleError.message);
+          setSubmitting(false);
+          return;
+        }
       }
 
       setMessage(
@@ -161,6 +181,71 @@ const UserRegisterPage: React.FC = () => {
             required
             style={inputStyle}
           />
+
+          {/* 利用者区分 */}
+          <label style={labelStyle}>
+            利用者区分<span style={requiredMark}>*</span>
+          </label>
+          <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+            <label
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                padding: "10px 12px",
+                borderRadius: 8,
+                border:
+                  role === "athlete"
+                    ? "2px solid #2196f3"
+                    : "1px solid rgba(255,255,255,0.3)",
+                background:
+                  role === "athlete" ? "rgba(33,150,243,0.15)" : "transparent",
+                cursor: "pointer",
+                fontSize: 14,
+              }}
+            >
+              <input
+                type="radio"
+                name="role"
+                value="athlete"
+                checked={role === "athlete"}
+                onChange={() => setRole("athlete")}
+                required
+              />
+              選手
+            </label>
+            <label
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                padding: "10px 12px",
+                borderRadius: 8,
+                border:
+                  role === "coach"
+                    ? "2px solid #2196f3"
+                    : "1px solid rgba(255,255,255,0.3)",
+                background:
+                  role === "coach" ? "rgba(33,150,243,0.15)" : "transparent",
+                cursor: "pointer",
+                fontSize: 14,
+              }}
+            >
+              <input
+                type="radio"
+                name="role"
+                value="coach"
+                checked={role === "coach"}
+                onChange={() => setRole("coach")}
+                required
+              />
+              コーチ
+            </label>
+          </div>
 
           {/* メール */}
           <label style={labelStyle}>

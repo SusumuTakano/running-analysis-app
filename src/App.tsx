@@ -973,12 +973,8 @@ useEffect(() => {
 
 
 
-  // チュートリアル
-  // チュートリアルの表示設定をローカルストレージから取得
-  const [showTutorial, setShowTutorial] = useState(() => {
-    const savedPreference = localStorage.getItem('hideTutorial');
-    return savedPreference !== 'true'; // 'true'の場合は表示しない
-  });
+  // チュートリアル（削除済み - 常に非表示）
+  const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0); // 現在のステップ
   // チュートリアルステップをリセットする関数
   const resetTutorialStep = () => {
@@ -4911,23 +4907,31 @@ ${panningSprintAnalysis.intervals.map((int, idx) =>
         });
       }
 
-      // 接地期中半：大腿角度が0°に最も近いフレームを探す
-      let minAngleDiff = Infinity;
-      let midFrame = contactFrame;
-      
+      // 接地期中半：接地脚の母指球（foot_index）が大転子（hip）の真下に最も近いフレーム
+      // 接地脚の判定：接地時点で y 座標がより大きい（画面下にある）方の足
+      const tdLm = poseResults[contactFrame]?.landmarks;
+      let isLeftContact = true;
+      if (tdLm) {
+        const lAnkleY = tdLm[27]?.y ?? 0;
+        const rAnkleY = tdLm[28]?.y ?? 0;
+        isLeftContact = lAnkleY >= rAnkleY;
+      }
+      const hipIdx = isLeftContact ? 23 : 24;
+      const footIdx = isLeftContact ? 31 : 32;
+
+      let minHorizDist = Infinity;
+      let midFrame = Math.floor((contactFrame + toeOffFrame) / 2);
       for (let f = contactFrame; f <= toeOffFrame; f++) {
-        const pose = poseResults[f];
-        if (!pose?.landmarks) continue;
-
-        const angles = calculateAngles(pose.landmarks);
-        // 左右の大腿角度の平均を取る（どちらが接地脚か不明なため）
-        const avgThighAngle = (
-          (angles.thighAngle.left ?? 0) + (angles.thighAngle.right ?? 0)
-        ) / 2;
-        const angleDiff = Math.abs(avgThighAngle);
-
-        if (angleDiff < minAngleDiff) {
-          minAngleDiff = angleDiff;
+        const lm = poseResults[f]?.landmarks;
+        if (!lm) continue;
+        const hipPt = lm[hipIdx];
+        const footPt = lm[footIdx];
+        if (!hipPt || !footPt) continue;
+        // 信頼度が極端に低いフレームはスキップ
+        if ((hipPt.visibility ?? 1) < 0.3 || (footPt.visibility ?? 1) < 0.3) continue;
+        const dist = Math.abs(footPt.x - hipPt.x);
+        if (dist < minHorizDist) {
+          minHorizDist = dist;
           midFrame = f;
         }
       }
@@ -5064,7 +5068,9 @@ ${panningSprintAnalysis.intervals.map((int, idx) =>
       const RTMPOSE_API = (import.meta.env.VITE_RTMPOSE_API_URL as string | undefined) || '/rtmpose';
       let rtmposeAvailable = false;
       try {
-        const healthRes = await fetch(`${RTMPOSE_API}/health`, { signal: AbortSignal.timeout(3000) });
+        // Modalのコールドスタートを許容するため45秒まで待つ
+        setStatus('姿勢推定サーバーに接続中...（最大45秒）');
+        const healthRes = await fetch(`${RTMPOSE_API}/health`, { signal: AbortSignal.timeout(45000) });
         rtmposeAvailable = healthRes.ok;
       } catch { /* API not available */ }
 
@@ -5073,6 +5079,92 @@ ${panningSprintAnalysis.intervals.map((int, idx) =>
         setStatus('RTMPose で姿勢推定中...');
 
         const totalFrames = framesRef.current.length;
+
+        // === 🚀 動画一括送信ルート（スマホ回線で劇的に高速化）===
+        // 元の動画ファイルがあればサーバーに丸ごと渡して、全フレーム一括処理
+        const sourceVideo = videoFile ?? videoFileRef.current;
+        if (sourceVideo) {
+          // 経過時間を刻々と表示（サーバー処理中のユーザーフィードバック用）
+          const bulkStartedAt = Date.now();
+          const tickId = setInterval(() => {
+            const elapsed = Math.round((Date.now() - bulkStartedAt) / 1000);
+            setStatus(`RTMPose 一括処理中... ${elapsed}秒経過（${totalFrames}フレーム、サーバーが処理中）`);
+            // 経過時間に応じて5%→70%まで緩やかに進める（見た目だけ）
+            const fake = Math.min(70, 5 + Math.floor(elapsed / 3));
+            setPoseProgress(fake);
+          }, 1000);
+
+          try {
+            setStatus('RTMPose 姿勢推定（動画をサーバーへ送信中）...');
+            setPoseProgress(5);
+
+            const fd = new FormData();
+            fd.append('video', sourceVideo);
+
+            // タイムアウト10分（CPUプランでも完走できる余裕）
+            const res = await fetch(`${RTMPOSE_API}/process_video`, {
+              method: 'POST',
+              body: fd,
+              signal: AbortSignal.timeout(600000),
+            });
+
+            if (res.ok) {
+              setStatus('RTMPose 姿勢推定（結果受信中）...');
+              setPoseProgress(70);
+              const data = await res.json();
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const landmarksArr: any[][] = Array.isArray(data?.landmarks) ? data.landmarks : [];
+
+              if (landmarksArr.length > 0) {
+                // フレーム数が一致しない場合は長さを揃える
+                const usable = Math.min(landmarksArr.length, totalFrames);
+                const bulkResults: (FramePoseData | null)[] = new Array(totalFrames).fill(null);
+
+                for (let i = 0; i < usable; i++) {
+                  const lms = landmarksArr[i];
+                  if (!Array.isArray(lms) || lms.length === 0) continue;
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const hasAny = lms.some((lm: any) => (lm?.visibility ?? 0) > 0.2);
+                  if (!hasAny) continue;
+                  bulkResults[i] = {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    landmarks: lms.map((lm: any) => ({
+                      x: lm.x,
+                      y: lm.y,
+                      z: lm.z ?? 0,
+                      visibility: lm.visibility ?? 0,
+                    })),
+                  };
+                }
+
+                const bulkInterpolated = interpolateMissingPoses(bulkResults);
+                const bulkSuccess = bulkResults.filter(r => r !== null).length;
+                const bulkAfterInterp = bulkInterpolated.filter(r => r !== null).length;
+
+                console.log(`📊 RTMPose(一括) 完了: ${bulkSuccess}/${totalFrames} (補間後: ${bulkAfterInterp}) 処理時間: ${data.processingTime}s`);
+
+                if (bulkSuccess > totalFrames * 0.5) {
+                  clearInterval(tickId);
+                  setPoseResults(bulkInterpolated);
+                  setStatus(`✅ RTMPose姿勢推定完了！（成功率: ${Math.round(bulkAfterInterp / totalFrames * 100)}%, ${data.processingTime}s）`);
+                  setPoseProgress(100);
+                  setTimeout(() => setWizardStep(5), 1000);
+                  setIsPoseProcessing(false);
+                  return;
+                }
+                console.warn('⚠️ 一括処理の成功率が低いためフレーム単位送信にフォールバック');
+              }
+            } else {
+              console.warn('⚠️ /process_video 失敗、フレーム単位送信にフォールバック', res.status);
+            }
+          } catch (bulkErr) {
+            console.warn('⚠️ /process_video エラー、フレーム単位送信にフォールバック', bulkErr);
+          } finally {
+            clearInterval(tickId);
+          }
+        }
+
+        // === フレーム単位送信（フォールバック／videoFile無しの場合）===
         const tempCanvas = document.createElement('canvas');
         const firstFrame = framesRef.current[0];
         tempCanvas.width = firstFrame.width;
@@ -7156,27 +7248,16 @@ setUsedTargetFps(targetFps);
       // アスペクト比を保持
       canvas.style.objectFit = 'contain';
     } else {
-      // PC/その他の場合: 従来通りCSSサイズを計算
+      // PC/その他の場合: 親コンテナの幅いっぱいまで広げる（高さは比率で自動）
       const containerWidth = canvas.parentElement?.clientWidth || window.innerWidth;
-      const containerHeight = window.innerHeight * 0.4;
-      
       const videoAspectRatio = w / h;
-      const containerAspectRatio = containerWidth / containerHeight;
-      
-      let displayWidth, displayHeight;
-      
-      if (videoAspectRatio > containerAspectRatio) {
-        displayWidth = containerWidth;
-        displayHeight = containerWidth / videoAspectRatio;
-      } else {
-        displayHeight = containerHeight;
-        displayWidth = containerHeight * videoAspectRatio;
-      }
-      
+      const displayWidth = containerWidth;
+      const displayHeight = containerWidth / videoAspectRatio;
+
       canvas.style.width = `${displayWidth}px`;
       canvas.style.height = `${displayHeight}px`;
       canvas.style.maxWidth = '100%';
-      canvas.style.maxHeight = '40vh';
+      canvas.style.maxHeight = '85vh';
     }
 
     if (!footZoomEnabled) {
@@ -7249,6 +7330,9 @@ setUsedTargetFps(targetFps);
       srcX = clamp(srcX, 0, w - srcW);
       srcY = clamp(srcY, 0, h - srcH);
 
+      // 拡大時の画質を最高品質に設定
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
       ctx.drawImage(offscreen, srcX, srcY, srcW, srcH, 0, 0, w, h);
 
       if (showSkeleton && poseResults[idx]?.landmarks) {
@@ -7833,14 +7917,34 @@ setUsedTargetFps(targetFps);
       return "現在の走行データが不足しています。マーカーを設定して解析を完了してください。";
     }
 
-    const currentSpeed = stepSummary.avgSpeedMps;
+    // 現在の平均スピード
+    const currentAvgSpeed = stepSummary.avgSpeedMps ?? 0;
+    // 現在の最大スピード（各ステップの speedMps の最大値）
+    const stepSpeeds = stepMetrics
+      .map((s) => s.speedMps)
+      .filter((v): v is number => typeof v === 'number' && isFinite(v) && v > 0);
+    const currentMaxSpeed = stepSpeeds.length > 0
+      ? Math.max(...stepSpeeds)
+      : currentAvgSpeed;
     const currentStride = stepSummary.avgStride;
     const currentPitch = stepSummary.avgStepPitch;
-    
-    // 目標タイム（秒）から必要な平均速度を計算
-    const targetSpeed = 100 / targetTime; // m/s
+
+    // 目標タイム（秒）から必要な平均速度（100m を等速で割った理論値）
+    const targetAvgSpeed = 100 / targetTime;
+    // 目標タイムから必要な最大疾走スピード（松尾ら 回帰式）
+    // 男子: max_speed = (record - 18.58) / -0.737
+    // 女子: max_speed = (record - 21.92) / -1.048
+    const isFemale = athleteInfo.gender === 'female';
+    const targetMaxSpeed = isFemale
+      ? (targetTime - 21.92) / -1.048
+      : (targetTime - 18.58) / -0.737;
+
+    // 改善ギャップは最大スピードを基準に算出
+    const currentSpeed = currentMaxSpeed;
+    const targetSpeed = targetMaxSpeed;
     const speedGap = targetSpeed - currentSpeed;
-    const speedGapPercent = (speedGap / currentSpeed) * 100;
+    const speedGapPercent = currentSpeed > 0 ? (speedGap / currentSpeed) * 100 : 0;
+    const avgSpeedGap = targetAvgSpeed - currentAvgSpeed;
 
     // 研究データから最適なピッチとストライドを取得
     const optimal = getOptimalPitchStride(targetTime, currentPitch, currentStride);
@@ -7858,20 +7962,23 @@ setUsedTargetFps(targetFps);
 
     let advice = `## 🎯 100m ${targetTime}秒達成のためのアドバイス\n\n`;
     advice += `### 📊 現状分析\n`;
-    advice += `- **現在の平均速度**: ${currentSpeed.toFixed(2)} m/s\n`;
+    advice += `- **現在の平均速度**: ${currentAvgSpeed.toFixed(2)} m/s\n`;
+    advice += `- **現在の最大疾走スピード**: ${currentMaxSpeed.toFixed(2)} m/s\n`;
     advice += `- **現在のピッチ**: ${currentPitch.toFixed(2)} 歩/秒\n`;
     advice += `- **現在のストライド**: ${currentStride.toFixed(2)} m\n`;
     advice += `- **判定された体型**: ${bodyType}\n\n`;
-    
+
     advice += `### 🎯 目標値（これまでの研究報告に基づく）\n`;
-    advice += `- **必要な平均速度**: ${targetSpeed.toFixed(2)} m/s\n`;
+    advice += `- **必要な平均速度**: ${targetAvgSpeed.toFixed(2)} m/s（100m ÷ 目標タイム）\n`;
+    advice += `- **必要な最大疾走スピード**: ${targetMaxSpeed.toFixed(2)} m/s（松尾ら 回帰式・${isFemale ? '女子' : '男子'}）\n`;
     advice += `- **最適なピッチ（${bodyType}）**: ${optimalPitch.toFixed(2)} 歩/秒\n`;
     advice += `- **最適なストライド（${bodyType}）**: ${optimalStride.toFixed(2)} m\n\n`;
     
     advice += `> 📚 **科学的根拠**: これまでの研究報告によると「身体の大きさ、四肢の長さがピッチに大きく影響し、体型によって至適ピッチが選択され、そのときのストライド長によってパフォーマンスが決まる」\n\n`;
     
     advice += `### 📈 改善が必要な項目\n`;
-    advice += `- **速度**: ${speedGap >= 0 ? '+' : ''}${speedGap.toFixed(2)} m/s (${speedGapPercent >= 0 ? '+' : ''}${speedGapPercent.toFixed(1)}%)\n`;
+    advice += `- **平均速度**: ${avgSpeedGap >= 0 ? '+' : ''}${avgSpeedGap.toFixed(2)} m/s（現在 ${currentAvgSpeed.toFixed(2)} → 目標 ${targetAvgSpeed.toFixed(2)}）\n`;
+    advice += `- **最大疾走スピード**: ${speedGap >= 0 ? '+' : ''}${speedGap.toFixed(2)} m/s (${speedGapPercent >= 0 ? '+' : ''}${speedGapPercent.toFixed(1)}%)（現在 ${currentMaxSpeed.toFixed(2)} → 目標 ${targetMaxSpeed.toFixed(2)}）\n`;
     advice += `- **ピッチ**: ${pitchGap >= 0 ? '+' : ''}${pitchGap.toFixed(2)} 歩/秒 (現在は最適値の${(pitchRatio * 100).toFixed(1)}%)\n`;
     advice += `- **ストライド**: ${strideGap >= 0 ? '+' : ''}${strideGap.toFixed(2)} m (現在は最適値の${(strideRatio * 100).toFixed(1)}%)\n\n`;
     
@@ -11244,71 +11351,10 @@ if (true /* single mode */ && !videoFile) {
               )}
             </div>
 
-            {/* 🎯 4コーン高精度補正（パースペクティブ補正） — ビデオの上に大きく配置 */}
-            <div style={{
-              maxWidth: '1400px', margin: '0 auto 16px', padding: 16,
-              background: singleCamH ? '#ecfdf5' : '#fff7ed',
-              border: `2px solid ${singleCamH ? '#10b981' : '#f59e0b'}`,
-              borderRadius: 12,
-              boxShadow: singleCamH ? '0 2px 8px rgba(16,185,129,0.15)' : '0 2px 8px rgba(245,158,11,0.15)',
-            }}>
-              <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 8, color: '#111', display: 'flex', alignItems: 'center', gap: 8 }}>
-                🎯 4コーン高精度補正（ストライド左右差を抑制）
-                {singleCamH && <span style={{ fontSize: 12, color: '#065f46', fontWeight: 700 }}>✅ 設定済み</span>}
-              </div>
-              {singleCamH ? (
-                <div style={{ fontSize: 13, color: '#065f46', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  <span>✅ ホモグラフィ適用中。ストライドは足位置＋パースペクティブ補正で計算されます。</span>
-                  <button
-                    onClick={() => { setSingleCamH(null); setSingleCones([]); setSingleConeMode(false); setStatus(''); }}
-                    style={{ padding: '6px 14px', background: '#fff', border: '1px solid #10b981', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#065f46', fontWeight: 600 }}
-                  >
-                    クリア
-                  </button>
-                </div>
-              ) : singleConeMode ? (
-                <div style={{ fontSize: 14, color: '#92400e' }}>
-                  <div style={{ fontWeight: 700, marginBottom: 6 }}>📍 動画上で {singleCones.length + 1}/4 コーンをクリック:</div>
-                  <div style={{ marginBottom: 8, padding: 8, background: '#fff', borderRadius: 6, fontSize: 13 }}>
-                    {['① スタート側の手前コーン（カメラ側）', '② スタート側の奥コーン（レーン反対側）', '③ ゴール側の手前コーン（カメラ側）', '④ ゴール側の奥コーン（レーン反対側）'][singleCones.length]}
-                  </div>
-                  <button
-                    onClick={() => { setSingleConeMode(false); setSingleCones([]); setStatus(''); }}
-                    style={{ padding: '6px 14px', background: '#fff', border: '1px solid #f59e0b', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: '#92400e' }}
-                  >
-                    キャンセル
-                  </button>
-                </div>
-              ) : (
-                <div style={{ fontSize: 13, color: '#92400e' }}>
-                  <div style={{ marginBottom: 10 }}>スタート側2本・ゴール側2本（合計4本）のコーンを動画で指定すると、ストライドの左右差が大幅に減少します。</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      レーン幅:
-                      <input
-                        type="number" step="0.01" value={singleConeLaneWidth}
-                        onChange={e => setSingleConeLaneWidth(parseFloat(e.target.value) || 1.22)}
-                        style={{ width: 70, padding: '4px 8px', border: '1px solid #fcd34d', borderRadius: 4, fontSize: 13 }}
-                      />
-                      m
-                    </label>
-                    <button
-                      onClick={() => {
-                        setSingleConeMode(true);
-                        setSingleCones([]);
-                        setStatus(`4コーンキャリブレーション 1/4: スタート側の手前コーン（カメラ側）をクリック`);
-                      }}
-                      style={{ padding: '10px 20px', background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 700, boxShadow: '0 2px 4px rgba(245,158,11,0.3)' }}
-                    >
-                      🎯 コーンをクリックして補正開始
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+            {/* 4コーン高精度補正のUIは非表示（精度が出ないため削除）。ロジックは残置。 */}
 
             {/* ビデオプレビュー - フレームを直接表示 */}
-            <div style={{ marginBottom: '2rem', maxWidth: '1400px', margin: '0 auto', position: 'relative' }}>
+            <div style={{ marginBottom: '2rem', width: '100%', position: 'relative' }}>
               <canvas
                 ref={displayCanvasRef}
                 onClick={trackMarkerMode ? (e) => {
@@ -11476,10 +11522,8 @@ if (true /* single mode */ && !videoFile) {
       className="section-slider start-slider"
       style={{
         width: '100%',
-        height: '4px', // 細く
         cursor: 'pointer',
         marginTop: '4px',
-        borderRadius: '999px',
       }}
     />
   </div>
@@ -11531,10 +11575,8 @@ if (true /* single mode */ && !videoFile) {
       className="section-slider end-slider"
       style={{
         width: '100%',
-        height: '4px',
         cursor: 'pointer',
         marginTop: '4px',
-        borderRadius: '999px',
       }}
     />
   </div>
@@ -11903,13 +11945,29 @@ case 6: {
                       onClick={() =>
                         setFootZoomEnabled((prev) => {
                           const next = !prev;
-                          if (next) setZoomScale(4.5); // スマホはONで最大寄り
+                          if (next) setZoomScale(3.0); // スマホ初期倍率
                           return next;
                         })
                       }
                     >
                       足元拡大 {footZoomEnabled ? "ON" : "OFF"}
                     </button>
+
+                    {footZoomEnabled && (
+                      <label className="zoom-control" style={{ width: "100%", marginTop: 8 }}>
+                        倍率:
+                        <input
+                          type="range"
+                          min={1}
+                          max={6}
+                          step={0.5}
+                          value={zoomScale}
+                          onChange={(e) => setZoomScale(Number(e.currentTarget.value))}
+                          style={{ flex: 1, minWidth: 120 }}
+                        />
+                        <span style={{ minWidth: 40, fontWeight: 700 }}>{zoomScale.toFixed(1)}x</span>
+                      </label>
+                    )}
 
                     <button
                       className={showSkeleton ? "toggle-btn active" : "toggle-btn"}
@@ -16163,7 +16221,48 @@ case 6: {
               <p className="wizard-step-desc">
                 詳細なステップメトリクス、グラフ、関節角度データを確認できます。
               </p>
-              
+
+              {/* 戻るナビゲーション（前ステップへ素早くアクセス） */}
+              <div style={{
+                display: 'flex',
+                gap: '10px',
+                justifyContent: 'center',
+                marginTop: '12px',
+                marginBottom: '8px',
+                flexWrap: 'wrap',
+              }}>
+                <button
+                  onClick={() => setWizardStep(6)}
+                  style={{
+                    padding: '8px 16px',
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                    borderRadius: '8px',
+                    border: '2px solid #3b82f6',
+                    background: '#eff6ff',
+                    color: '#1d4ed8',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ⬅️ ステップ 6（接地・離地マーク）に戻る
+                </button>
+                <button
+                  onClick={() => setWizardStep(7)}
+                  style={{
+                    padding: '8px 16px',
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                    borderRadius: '8px',
+                    border: '2px solid #06b6d4',
+                    background: '#ecfeff',
+                    color: '#0e7490',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ⬅️ ステップ 7（区間結果）に戻る
+                </button>
+              </div>
+
               {/* ベータ版案内 */}
               <div style={{
                 padding: '16px',
@@ -17946,8 +18045,8 @@ case 6: {
         </div>
       )}
       
-      {/* チュートリアルモーダル */}
-      {showTutorial && (
+      {/* チュートリアルモーダル（削除済み） */}
+      {false && showTutorial && (
         <div style={{
           position: 'fixed',
           top: 0,
