@@ -199,12 +199,28 @@ class PoseServer:
         async def process_video(
             video: UploadFile = File(...),
             roi: Optional[str] = Form(None),
+            start_frac: Optional[str] = Form(None),
+            end_frac: Optional[str] = Form(None),
         ):
             roi_rect = None
             if roi:
                 parts = [float(x) for x in roi.split(",")]
                 if len(parts) == 4:
                     roi_rect = parts
+
+            # 解析範囲（割合 0〜1）。未指定なら全区間（＝従来動作）。
+            try:
+                sf_frac = float(start_frac) if start_frac is not None else 0.0
+            except (TypeError, ValueError):
+                sf_frac = 0.0
+            try:
+                ef_frac = float(end_frac) if end_frac is not None else 1.0
+            except (TypeError, ValueError):
+                ef_frac = 1.0
+            sf_frac = min(max(sf_frac, 0.0), 1.0)
+            ef_frac = min(max(ef_frac, 0.0), 1.0)
+            if ef_frac < sf_frac:
+                sf_frac, ef_frac = 0.0, 1.0
 
             tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
             data = await video.read()
@@ -252,11 +268,23 @@ class PoseServer:
                     ref_frame = positions[len(positions) // 2][0]
                     ref_hip_x = positions[len(positions) // 2][1]
 
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                # 処理する範囲（フレーム番号）。範囲外は推論せず空ランドマークで埋め、
+                # 返却配列は常に全フレーム長を維持（フロントのフレーム対応をそのまま使える）。
+                sf = min(max(int(round(sf_frac * total)), 0), total)
+                ef = min(max(int(round(ef_frac * total)), sf), total)
+
+                def _empty_lm():
+                    return [{"x": 0, "y": 0, "z": 0, "visibility": 0} for _ in range(33)]
+
                 all_landmarks = []
                 t0 = time.time()
 
-                for fi in range(total):
+                # 範囲手前は推論スキップ
+                for _ in range(sf):
+                    all_landmarks.append(_empty_lm())
+
+                cap.set(cv2.CAP_PROP_POS_FRAMES, sf)
+                for fi in range(sf, ef):
                     ret, frame_img = cap.read()
                     if not ret:
                         all_landmarks.append([{"x": 0, "y": 0, "z": 0, "visibility": 0}] * 33)
@@ -288,7 +316,11 @@ class PoseServer:
                     all_landmarks.append(landmarks)
 
                     if fi % 60 == 0:
-                        print(f"  Frame {fi}/{total} ({time.time()-t0:.1f}s)")
+                        print(f"  Frame {fi}/{ef} (range {sf}-{ef}/{total}) ({time.time()-t0:.1f}s)")
+
+                # 範囲より後ろは推論スキップ（空で埋めて全長を維持）
+                for _ in range(ef, total):
+                    all_landmarks.append(_empty_lm())
 
                 cap.release()
                 elapsed = time.time() - t0
