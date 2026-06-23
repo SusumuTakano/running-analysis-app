@@ -25,13 +25,14 @@ const ROLE_OPTIONS = [
   "super_admin",
   "group_admin",
   "coach",
+  "athlete",
   "instructor",
   "student",
   "guest",
 ] as const;
 type Role = (typeof ROLE_OPTIONS)[number];
 // group_admin が付与できるのは管理者以外のロールのみ（super/group は super_admin 専用）
-const NON_ADMIN_ROLES: Role[] = ["coach", "instructor", "student", "guest"];
+const NON_ADMIN_ROLES: Role[] = ["coach", "athlete", "instructor", "student", "guest"];
 
 const AdminUsersPage: React.FC = () => {
   const navigate = useNavigate();
