@@ -9,6 +9,7 @@ import React, {
 import "./App.css";
 import { supabase } from "./lib/supabaseClient";
 import Chart from "chart.js/auto";
+import { Line } from "react-chartjs-2";
 import { generateRunningEvaluation, type RunningEvaluation } from "./runningEvaluation";
 import OpenAI from "openai";
 // New multi-camera components
@@ -743,6 +744,22 @@ const getActiveVideoFile = (): File | null => {
   useEffect(() => {
     try { window.localStorage.setItem('linkedSegments', JSON.stringify(linkedSegments)); } catch { /* ignore */ }
   }, [linkedSegments]);
+
+  // 📥 CSVダウンロード共通処理（Excel文字化け防止のBOM付き）
+  const downloadCsv = (rows: (string | number | null | undefined)[][], filename: string) => {
+    const esc = (v: string | number | null | undefined) => {
+      const s = v == null ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const csv = "﻿" + rows.map((r) => r.map(esc).join(",")).join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
   const [currentVideoSegmentIndex, setCurrentVideoSegmentIndex] = useState<number>(0);
 
 // ------------- 測定者情報 -------------------
@@ -17500,10 +17517,48 @@ case 6: {
                           .sort((a, b) => a.g - b.g);
                         return (
                           <div style={{ marginTop: 12 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: '#5b21b6', marginBottom: 6 }}>
-                              連結結果（全 {merged.length} 歩 / 0〜{linkedSegments.reduce((s, seg) => s + seg.lengthM, 0)}m）— スタートからのストライド推移
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: '#5b21b6' }}>
+                                連結結果（全 {merged.length} 歩 / 0〜{linkedSegments.reduce((s, seg) => s + seg.lengthM, 0)}m）— スタートからの推移
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const rows: (string | number | null | undefined)[][] = [['距離[m]', 'ストライド[m]', 'ピッチ[歩/s]', 'スピード[m/s]']];
+                                  merged.forEach(r => rows.push([r.g.toFixed(2), r.stride?.toFixed(3), r.pitch?.toFixed(2), r.speed?.toFixed(2)]));
+                                  const name = (athleteInfo.name || 'athlete').replace(/[^\w一-龯ぁ-んァ-ン]/g, '_');
+                                  downloadCsv(rows, `linked_${name}_${linkedSegments.reduce((s, seg) => s + seg.lengthM, 0)}m.csv`);
+                                }}
+                                style={{ background: '#8b5cf6', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                              >
+                                📥 連結データをCSV出力
+                              </button>
                             </div>
-                            <div style={{ maxHeight: 260, overflowY: 'auto', background: '#fff', borderRadius: 8, border: '1px solid #ddd6fe' }}>
+
+                            {/* 距離 × ストライド / スピード の折れ線グラフ */}
+                            <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #ddd6fe', padding: 10, marginBottom: 10, height: 300 }}>
+                              <Line
+                                data={{
+                                  labels: merged.map(r => r.g.toFixed(1)),
+                                  datasets: [
+                                    { label: 'ストライド [m]', data: merged.map(r => r.stride), borderColor: '#8b5cf6', backgroundColor: '#8b5cf6', yAxisID: 'y', tension: 0.25, pointRadius: 3 },
+                                    { label: 'スピード [m/s]', data: merged.map(r => r.speed), borderColor: '#0ea5e9', backgroundColor: '#0ea5e9', yAxisID: 'y1', tension: 0.25, pointRadius: 2 },
+                                  ],
+                                }}
+                                options={{
+                                  responsive: true, maintainAspectRatio: false,
+                                  interaction: { mode: 'index' as const, intersect: false },
+                                  plugins: { legend: { position: 'top' as const } },
+                                  scales: {
+                                    x: { title: { display: true, text: '距離 [m]' } },
+                                    y: { type: 'linear' as const, position: 'left' as const, title: { display: true, text: 'ストライド [m]' } },
+                                    y1: { type: 'linear' as const, position: 'right' as const, title: { display: true, text: 'スピード [m/s]' }, grid: { drawOnChartArea: false } },
+                                  },
+                                }}
+                              />
+                            </div>
+
+                            <div style={{ maxHeight: 240, overflowY: 'auto', background: '#fff', borderRadius: 8, border: '1px solid #ddd6fe' }}>
                               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                                 <thead>
                                   <tr style={{ background: '#ede9fe', position: 'sticky', top: 0 }}>
@@ -17528,6 +17583,33 @@ case 6: {
                           </div>
                         );
                       })()}
+                    </div>
+
+                    {/* 📥 この解析結果をCSV出力 */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '0 0 8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const header = ['#', '接地フレーム', '離地フレーム', '接地時間[s]', '滞空時間[s]', 'ピッチ[歩/s]', 'ストライド[m]', '接地位置[m]', 'スピード[m/s]', '加速度[m/s2]'];
+                          const rows: (string | number | null | undefined)[][] = [header];
+                          stepMetrics.forEach((s, i) => {
+                            rows.push([
+                              i + 1, s.contactFrame, s.toeOffFrame,
+                              s.contactTime?.toFixed(3), s.flightTime?.toFixed(3),
+                              s.stepPitch?.toFixed(2),
+                              (s.stride ?? s.fullStride)?.toFixed(3),
+                              s.distanceAtContact?.toFixed(2),
+                              s.speedMps?.toFixed(2),
+                              s.acceleration?.toFixed(2),
+                            ]);
+                          });
+                          const name = (athleteInfo.name || 'athlete').replace(/[^\w一-龯ぁ-んァ-ン]/g, '_');
+                          downloadCsv(rows, `result_${name}_${distanceValue ?? 10}m.csv`);
+                        }}
+                        style={{ background: '#0ea5e9', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        📥 この結果をCSV出力
+                      </button>
                     </div>
 
                     <div className="table-scroll">
