@@ -234,6 +234,33 @@ class PoseServer:
                 w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                 h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
+                # 📱 iPhone等の動画は「回転メタデータ」を持つ。ブラウザ（特にiPhone Safari）は
+                # これを適用して表示するが、サーバーのデコードは無視するため骨格座標がズレる。
+                # → メタデータを読み、各フレームをサーバー側でも手動回転して向きを揃える。
+                # （メタデータが無いPC転送動画は rotate_code=0 で無変更＝従来通り）
+                try:
+                    cap.set(cv2.CAP_PROP_ORIENTATION_AUTO, 0)  # 二重回転を防ぐため自動回転OFF
+                except Exception:
+                    pass
+                try:
+                    rotate_code = int(round(cap.get(cv2.CAP_PROP_ORIENTATION_META))) % 360
+                except Exception:
+                    rotate_code = 0
+                print(f"🔄 rotation metadata = {rotate_code}deg (raw {w}x{h})")
+
+                def _apply_rotation(img):
+                    if rotate_code == 90:
+                        return cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+                    if rotate_code == 180:
+                        return cv2.rotate(img, cv2.ROTATE_180)
+                    if rotate_code == 270:
+                        return cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                    return img
+
+                # 90/270回転では縦横が入れ替わる → 正規化用の w,h も入れ替える
+                if rotate_code in (90, 270):
+                    w, h = h, w
+
                 samples = [total // 3, total // 2, total * 2 // 3]
                 best_area = 0
                 ref_hip_x = None
@@ -245,6 +272,7 @@ class PoseServer:
                     ret, frame_img = cap.read()
                     if not ret:
                         continue
+                    frame_img = _apply_rotation(frame_img)  # 📱 回転メタデータを適用
                     if roi_rect:
                         rx, ry, rw, rh = int(roi_rect[0]*w), int(roi_rect[1]*h), int(roi_rect[2]*w), int(roi_rect[3]*h)
                         frame_img = frame_img[ry:ry+rh, rx:rx+rw]
@@ -290,6 +318,7 @@ class PoseServer:
                         all_landmarks.append([{"x": 0, "y": 0, "z": 0, "visibility": 0}] * 33)
                         continue
 
+                    frame_img = _apply_rotation(frame_img)  # 📱 回転メタデータを適用
                     frame_for_pose = frame_img
                     offset_x, offset_y = 0, 0
                     if roi_rect:
@@ -331,6 +360,7 @@ class PoseServer:
                     "totalFrames": len(all_landmarks),
                     "width": w,
                     "height": h,
+                    "rotation": rotate_code,
                     "processingTime": round(elapsed, 1),
                     "model": "rtmpose-performance-halpe26",
                     "backend": "modal+gpu(T4)",
