@@ -997,6 +997,9 @@ useEffect(() => {
     }));
   };
   
+  // 動画ファイルのドラッグ＆ドロップ表示用
+  const [isFileDragOver, setIsFileDragOver] = useState(false);
+
   // ドラッグ用のstate
   const panningViewportRef = useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -6442,8 +6445,8 @@ const framesToMs = (frames: number) => (frames * 1000) / analysisFps;
 const framesToSec = (frames: number) => frames / analysisFps;
 
   // ------------ ファイル選択 & リセット ------------
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0] ?? null;
+  // ファイル選択・ドラッグ＆ドロップ共通処理
+  const processSelectedFile = (file: File | null) => {
 
   // ★ まず必ず保存（初回選択でも入る）
   setSourceVideoFile(file);
@@ -6496,6 +6499,18 @@ const framesToSec = (frames: number) => frames / analysisFps;
         alert("mp4 などの動画ファイルを選択してください。");
       }
     }
+  };
+
+  // <input> の onChange から呼ぶラッパー
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    processSelectedFile(e.target.files?.[0] ?? null);
+  };
+
+  // ドラッグ＆ドロップで動画ファイルを受け取る
+  const handleFileDrop = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    setIsFileDragOver(false);
+    processSelectedFile(e.dataTransfer.files?.[0] ?? null);
   };
 
   // ------------ 動画最適化 ------------
@@ -10982,9 +10997,17 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
       <div className="upload-area">
         <label
           className="upload-box"
+          onDragOver={(e) => { e.preventDefault(); setIsFileDragOver(true); }}
+          onDragEnter={(e) => { e.preventDefault(); setIsFileDragOver(true); }}
+          onDragLeave={(e) => { e.preventDefault(); setIsFileDragOver(false); }}
+          onDrop={handleFileDrop}
           style={{
-            borderColor: videoFile ? "var(--success)" : "var(--gray-300)",
-            background: videoFile
+            borderColor: isFileDragOver
+              ? "var(--primary, #6366f1)"
+              : videoFile ? "var(--success)" : "var(--gray-300)",
+            background: isFileDragOver
+              ? "rgba(99, 102, 241, 0.08)"
+              : videoFile
               ? "rgba(16, 185, 129, 0.05)"
               : "var(--gray-50)",
           }}
@@ -11003,7 +11026,7 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
             ) : (
               <>
                 <strong>動画ファイルを選択</strong>
-                <span>MP4, MOV, AVI など</span>
+                <span>クリックで選択、またはここにドラッグ＆ドロップ（MP4, MOV, AVI など）</span>
               </>
             )}
           </div>
