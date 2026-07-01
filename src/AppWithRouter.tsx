@@ -35,8 +35,8 @@ const Navigation: React.FC<{
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center">
-            <h1 className="text-xl font-bold text-gray-800">
-              ランニング動作解析システム
+            <h1 className="text-xl font-bold text-gray-800" style={{ letterSpacing: '0.06em' }}>
+              ⚡ SPRINT TIMER
             </h1>
             {isAdmin && (
               <span className="ml-3 px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs font-semibold">
