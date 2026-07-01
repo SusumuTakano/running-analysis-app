@@ -14265,7 +14265,7 @@ case 6: {
                             background: 'rgba(255,255,255,0.15)',
                             borderRadius: '8px'
                           }}>
-                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>50mタイム（実測）</div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>{Math.round(panningSprintAnalysis.totalDistance)}mタイム（実測）</div>
                             <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
                               {panningSprintAnalysis.totalTime.toFixed(2)}
                             </div>
