@@ -10,6 +10,7 @@ import "./App.css";
 import { supabase } from "./lib/supabaseClient";
 import Chart from "chart.js/auto";
 import { Line } from "react-chartjs-2";
+import { predict100m, type Sex as Predict100mSex } from "./utils/predict100m";
 import { generateRunningEvaluation, type RunningEvaluation } from "./runningEvaluation";
 import OpenAI from "openai";
 // New multi-camera components
@@ -987,7 +988,8 @@ useEffect(() => {
     aiImprovements: false,       // AI改善提案
     aiTrainingPlan: false,       // AIトレーニングプラン
     poseAnalysis: false,         // 姿勢分析
-    splitsList: false            // スプリット一覧
+    splitsList: false,           // スプリット一覧
+    strideChange: false          // 各歩のストライド変化
   });
   
   const toggleAccordion = (key: keyof typeof accordionState) => {
@@ -997,9 +999,6 @@ useEffect(() => {
     }));
   };
   
-  // 動画ファイルのドラッグ＆ドロップ表示用
-  const [isFileDragOver, setIsFileDragOver] = useState(false);
-
   // ドラッグ用のstate
   const panningViewportRef = useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -1180,6 +1179,48 @@ const handleStartNewAnalysis = () => {
 // ------------- 距離・速度・ラベル -------------
 const [distanceInput, setDistanceInput] = useState<string>("10");
 const [labelInput, setLabelInput] = useState<string>("");
+
+// 🎯 パン撮影: 解析モード。'full'=姿勢推定込み（ストライド/ピッチ/関節角度も）、
+//    'timeOnly'=姿勢推定スキップ（速度・加速度・H-FVPのみ／高速・GPU不要）
+const [panningPoseMode, setPanningPoseMode] = useState<'full' | 'timeOnly'>('full');
+
+// 🎯 パン撮影: スプリット距離パターン（自由設定）。累積距離の配列（必ず0始まり）。
+//    マーク時に次の距離をここから自動入力する。
+// 次の区間の間隔（5m か 10m）をプルダウンで選択。マーク時に「前の距離＋間隔」を自動入力。
+const [panningIncrement, setPanningIncrement] = useState<number>(5);
+// 🏃 ハードル等のカスタム間隔（手動追加・localStorageで保存して使い回し）。例: 110mH=9.14, 400mH=35
+const [panningCustomIntervals, setPanningCustomIntervals] = useState<number[]>(() => {
+  try { const s = window.localStorage.getItem('panningCustomIntervals'); return s ? JSON.parse(s) : []; } catch { return []; }
+});
+const addPanningCustomInterval = () => {
+  const v = window.prompt('カスタム間隔(m)を入力してください。\n例: 110mH=9.14、400mH=35、または任意の距離');
+  if (v == null) return;
+  const n = parseFloat(v);
+  if (!Number.isFinite(n) || n <= 0) { alert('正しい数値を入力してください'); return; }
+  setPanningCustomIntervals((prev) => {
+    const next = Array.from(new Set([...prev, n])).sort((a, b) => a - b);
+    try { window.localStorage.setItem('panningCustomIntervals', JSON.stringify(next)); } catch { /* noop */ }
+    return next;
+  });
+  setPanningIncrement(n);
+  if (panningSplits.length > 0) {
+    const lastDist = panningSplits[panningSplits.length - 1].distance;
+    setDistanceInput(String(lastDist + n));
+  }
+};
+
+// 🦶 パン: 接地フレームの手動調整。null=自動検出を使用、配列=手動で確定した接地フレーム。
+//    これで1歩ごとのストライド精度を確保する（自動検出の左右ブレを人が補正）。
+const [panningContacts, setPanningContacts] = useState<number[] | null>(null);
+// 接地入力モード: 「ストライドを正確に測るとき」だけ ON にする任意機能。
+//    OFF（既定）= 単なるタイム計測（接地入力UIは出さない）。
+const [panningContactMode, setPanningContactMode] = useState<boolean>(false);
+// 区間ごとの歩数の手動上書き（key=区間開始距離）。自動検出が取りこぼす加速初期などを人が補正。
+//    平均ストライド = 区間距離 ÷ 歩数 なので、歩数さえ直せば正確になる。
+const [panningSegStepsOverride, setPanningSegStepsOverride] = useState<Record<string, number>>({});
+
+// 次に推奨するスプリット距離 = 前の距離 + 選択中の間隔（5 or 10）
+const recommendNextDistance = (lastDistance: number): number => lastDistance + panningIncrement;
 const [notesInput, setNotesInput] = useState<string>("");
 
   
@@ -1199,6 +1240,16 @@ const [notesInput, setNotesInput] = useState<string>("");
     distanceValue != null && sectionTime != null && sectionTime > 0
       ? distanceValue / sectionTime
       : null;
+
+  // 🔮 100m予測（固定カメラのトップスピードから・3パターン）用の状態
+  const [predictSex, setPredictSex] = useState<Predict100mSex>('male');
+  const [predictVmaxInput, setPredictVmaxInput] = useState<string>(''); // 空なら計測値(avgSpeed)を使う
+  // 選手の性別が分かれば自動反映
+  useEffect(() => {
+    if (athleteInfo.gender === 'male' || athleteInfo.gender === 'female') {
+      setPredictSex(athleteInfo.gender);
+    }
+  }, [athleteInfo.gender]);
 
   // ------------ 選手情報の保存 ------------
   const handleSaveAthlete = async () => {
@@ -1404,6 +1455,14 @@ const [notesInput, setNotesInput] = useState<string>("");
   const [trackMarkerIntervalM, setTrackMarkerIntervalM] = useState<number>(2); // マーカー間隔 [m]
   const [trackMarkerCount, setTrackMarkerCount] = useState<number>(6); // 期待するマーカー数（例: 0,2,4,6,8,10m = 6点）
 
+  // 📏 縦線方式の校正（スマホ向け）: 0m/2m/.../ の縦線をドラッグして地面マーカーに合わせる。
+  //    縦線なので横位置だけ合わせればよく、点タップより遥かに簡単。再生時にも縦線を表示して通過を目視確認できる。
+  const [lineCalibMode, setLineCalibMode] = useState<boolean>(false);
+  const [vLineFracs, setVLineFracs] = useState<number[]>([]); // 各縦線の正規化X(0〜1)。要素数 = trackMarkerCount
+  const [vLineGroundFrac, setVLineGroundFrac] = useState<number>(0.72); // 地面ライン（縦線の基準Y、正規化）。校正時の共通Yに使う
+  const lineWrapperRef = useRef<HTMLDivElement | null>(null);
+  const dragLineRef = useRef<number | null>(null);
+
   // 📏 マーカー経由で地面ピクセル → スタートからの距離 [m] を返す。
   //    マーカー列をポリラインとみなし、問い合わせピクセルを最近傍セグメントに
   //    射影 → そのセグメント上のパラメータ t から距離を線形補間。
@@ -1448,6 +1507,56 @@ const [notesInput, setNotesInput] = useState<string>("");
       return best?.distanceM ?? null;
     };
   }, [trackMarkers]);
+
+  // 📏 接地フレームの推定距離[m]を返す（一覧の範囲外フラグ用）。
+  //    ①縦線/N点マーカー（distanceAtGroundPixel）②区間10mアンカー（savedStartHipX/EndHipX）の順で換算。
+  const contactDistanceMeters = useCallback((frame: number): number | null => {
+    const pose = poseResults[frame];
+    if (!pose?.landmarks) return null;
+    const lm = pose.landmarks;
+    const lH = lm[29], lT = lm[31], rH = lm[30], rT = lm[32], lA = lm[27], rA = lm[28];
+    const VIS = 0.3;
+    const lHok = (lH?.visibility ?? 1) >= VIS, lTok = (lT?.visibility ?? 1) >= VIS;
+    const rHok = (rH?.visibility ?? 1) >= VIS, rTok = (rT?.visibility ?? 1) >= VIS;
+    const lY = Math.max(lHok ? lH.y : -Infinity, lTok ? lT.y : -Infinity);
+    const rY = Math.max(rHok ? rH.y : -Infinity, rTok ? rT.y : -Infinity);
+    const lEff = Number.isFinite(lY) ? lY : (lA?.y ?? 0);
+    const rEff = Number.isFinite(rY) ? rY : (rA?.y ?? 0);
+    const useLeft = lEff > rEff;
+    const heel = useLeft ? lH : rH, toe = useLeft ? lT : rT, ankle = useLeft ? lA : rA;
+    const heelOk = useLeft ? lHok : rHok, toeOk = useLeft ? lTok : rTok;
+    let fxN: number, fyN: number;
+    if (heelOk && toeOk) { fxN = (heel.x + toe.x) / 2; fyN = (heel.y + toe.y) / 2; }
+    else if (toeOk) { fxN = toe.x; fyN = toe.y; }
+    else if (heelOk) { fxN = heel.x; fyN = heel.y; }
+    else { fxN = ankle?.x ?? 0; fyN = ankle?.y ?? 0; }
+
+    const fw = framesRef.current[0]?.width ?? canvasRef.current?.width ?? 1280;
+    const fh = framesRef.current[0]?.height ?? canvasRef.current?.height ?? 720;
+    if (trackMarkers.length >= 2) {
+      return distanceAtGroundPixel(fxN * fw, fyN * fh);
+    }
+    if (savedStartHipX != null && savedEndHipX != null && Math.abs(savedEndHipX - savedStartHipX) > 1e-4) {
+      const span = savedEndHipX - savedStartHipX;
+      const sectionLengthM = distanceValue ?? 10;
+      return ((fxN - savedStartHipX) / span) * sectionLengthM;
+    }
+    return null;
+  }, [poseResults, trackMarkers, distanceAtGroundPixel, savedStartHipX, savedEndHipX, distanceValue]);
+
+  // 🦶 接地脚の左右（L/R）を返す（一覧表示用）。地面に近い方（Y最大）の足を接地脚とみなす。
+  const contactFootSide = useCallback((frame: number): 'L' | 'R' | null => {
+    const pose = poseResults[frame];
+    if (!pose?.landmarks) return null;
+    const lm = pose.landmarks;
+    const lH = lm[29], lT = lm[31], rH = lm[30], rT = lm[32], lA = lm[27], rA = lm[28];
+    const VIS = 0.3;
+    const lY = Math.max((lH?.visibility ?? 1) >= VIS ? lH.y : -Infinity, (lT?.visibility ?? 1) >= VIS ? lT.y : -Infinity);
+    const rY = Math.max((rH?.visibility ?? 1) >= VIS ? rH.y : -Infinity, (rT?.visibility ?? 1) >= VIS ? rT.y : -Infinity);
+    const lEff = Number.isFinite(lY) ? lY : (lA?.y ?? 0);
+    const rEff = Number.isFinite(rY) ? rY : (rA?.y ?? 0);
+    return lEff > rEff ? 'L' : 'R';
+  }, [poseResults]);
 
   // 🎯 身長ベース自動校正（ユーザ操作ゼロ）
   //    選手の身長 (athleteInfo.height_cm) と、姿勢推定で得られる
@@ -1528,6 +1637,12 @@ const [notesInput, setNotesInput] = useState<string>("");
   const [calibrationType, setCalibrationType] = useState<1 | 2 | 3 | null>(null);
   // 🆕 全自動（β）が選択中か（下流は半自動=2 経路を使うため、表示用フラグとして保持）
   const [fullAutoActive, setFullAutoActive] = useState<boolean>(false);
+  // 🆕 スナップ補助：接地登録時に近くの「足が最も低いフレーム」に吸着（手動の高速化）
+  const [snapAssist, setSnapAssist] = useState<boolean>(true);
+  // 🔁 連続マーク：接地を登録したら自動で次の接地候補へジャンプ（マーク作業の高速化）
+  const [autoAdvanceMark, setAutoAdvanceMark] = useState<boolean>(true);
+  // 🆕 動画ファイルのドラッグ＆ドロップ中フラグ（見た目のハイライト用）
+  const [isDragOver, setIsDragOver] = useState<boolean>(false);
 
   // 🆕 姿勢推定の解析範囲（割合 0〜1）。既定は全区間。区間を絞ると姿勢推定が高速化する。
   //    前回指定した範囲を localStorage に保存し、次の動画でも初期値として引き継ぐ。
@@ -1597,6 +1712,15 @@ const [notesInput, setNotesInput] = useState<string>("");
         }
       }
     }, [wizardStep, calibrationType, sectionStartFrame]);
+
+  // ステップ6（接地・離地マーク）に入ったら、既定をスケルトンOFF・足元拡大ONにする
+  // （接地の瞬間を見やすくするため。ページ内で各自トグル可）
+  useEffect(() => {
+    if (wizardStep === 6) {
+      setShowSkeleton(false);
+      setFootZoomEnabled(true);
+    }
+  }, [wizardStep]);
 
 
   const [toeOffThreshold, setToeOffThreshold] = useState<number | null>(null); // つま先上昇閾値（ピクセル）
@@ -1886,9 +2010,9 @@ const [notesInput, setNotesInput] = useState<string>("");
         ctx.stroke();
       }
       
-      // ポーズがある場合は骨格を描画
+      // ポーズがある場合は骨格を描画（showSkeleton で ON/OFF）
       const pose = poseResults[currentFrame];
-      if (pose?.landmarks) {
+      if (showSkeleton && pose?.landmarks) {
         drawSkeleton(ctx, pose.landmarks, canvas.width, canvas.height);
       }
       
@@ -1937,6 +2061,24 @@ const [notesInput, setNotesInput] = useState<string>("");
         });
         ctx.stroke();
         ctx.setLineDash([]);
+
+        // 📏 縦線（再生時の通過確認用）: 各マーカーのX位置に全高の縦線＋上部に距離ラベル
+        const _H = ctx.canvas.height;
+        sorted.forEach((m, i) => {
+          ctx.strokeStyle = i === 0 ? 'rgba(16,185,129,0.85)' : 'rgba(239,68,68,0.65)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(m.pixel.x, 0);
+          ctx.lineTo(m.pixel.x, _H);
+          ctx.stroke();
+          const vlabel = `${m.distanceM}m`;
+          ctx.font = 'bold 14px Arial';
+          const vtw = ctx.measureText(vlabel).width;
+          ctx.fillStyle = i === 0 ? 'rgba(16,185,129,0.95)' : 'rgba(239,68,68,0.9)';
+          ctx.fillRect(m.pixel.x - vtw / 2 - 5, 4, vtw + 10, 20);
+          ctx.fillStyle = '#fff';
+          ctx.fillText(vlabel, m.pixel.x - vtw / 2, 19);
+        });
 
         // 各マーカーに丸 + 距離ラベル
         sorted.forEach((m) => {
@@ -2577,6 +2719,22 @@ const [notesInput, setNotesInput] = useState<string>("");
 type MarkKind = "contact" | "toeOff";
 
 // 接地/離地を追加（半自動/手動どちらもここを通す）
+// 🆕 スナップ補助：指定フレーム付近(±W)で「足が最も低い(=接地らしい)」フレームを返す。
+//    おおまかに登録しても、近くの接地フレームに自動で吸着させる。
+function snapToLowestToe(frame: number, W: number = 6): number {
+  if (!snapAssist) return frame;
+  let best = frame;
+  let bestY = -Infinity;
+  const lo = Math.max(0, frame - W);
+  const hi = Math.min(poseResults.length - 1, frame + W);
+  for (let fr = lo; fr <= hi; fr++) {
+    const feat = getMultiJointFeatures(poseResults[fr]);
+    if (!feat) continue;
+    if (feat.relativeToeHeight > bestY) { bestY = feat.relativeToeHeight; best = fr; }
+  }
+  return best;
+}
+
 function handleMarkAtCurrentFrame(kind?: MarkKind) {
   if (!ready) return;
   if (!framesCount) return;
@@ -2585,16 +2743,28 @@ function handleMarkAtCurrentFrame(kind?: MarkKind) {
 
   // 半自動：接地だけ手動、離地は自動検出
   if (calibrationType === 2) {
-    const nextContacts = [...manualContactFrames, f];
+    const cf = snapToLowestToe(f);           // 接地はスナップ補助で吸着
+    // 重複防止: すでに近く(±3コマ)に接地がある場合は登録しない
+    if (manualContactFrames.some((c) => Math.abs(c - cf) <= 3)) {
+      console.warn(`⚠️ 近くに既に接地があります（${cf}）。重複登録をスキップしました`);
+      if (cf !== f) setCurrentFrame(cf);
+      return;
+    }
+    const nextContacts = [...manualContactFrames, cf];
     setManualContactFrames(nextContacts);
-    console.log(`📍 接地マーク: フレーム ${f}`);
+    console.log(`📍 接地マーク: フレーム ${cf}${cf !== f ? `（スナップ: ${f}→${cf}）` : ''}`);
 
-    const toeOff = detectToeOffFrame(f);
+    // 🔁 連続マーク: 登録後、次の接地候補へ自動ジャンプ（OFFなら吸着位置に留まる）
+    const nextCand = autoAdvanceMark ? toeContactCandidates.find((c) => c > cf) : undefined;
+    setCurrentFrame(nextCand != null ? nextCand : cf);
+    if (nextCand != null) console.log(`🔁 連続マーク: 次の接地候補へ → ${nextCand}`);
+
+    const toeOff = detectToeOffFrame(cf);
     if (toeOff != null) {
       setAutoToeOffFrames([...autoToeOffFrames, toeOff]);
       console.log(`📍 離地(自動): フレーム ${toeOff}`);
     } else {
-      console.warn(`⚠️ 離地が検出できませんでした（接地: ${f}）`);
+      console.warn(`⚠️ 離地が検出できませんでした（接地: ${cf}）`);
     }
     return;
   }
@@ -2606,8 +2776,16 @@ function handleMarkAtCurrentFrame(kind?: MarkKind) {
       (manualContactFrames.length === manualToeOffFrames.length ? "contact" : "toeOff");
 
     if (nextKind === "contact") {
-      setManualContactFrames([...manualContactFrames, f]);
-      console.log(`📍 接地マーク: フレーム ${f}`);
+      const cf = snapToLowestToe(f);         // 接地のみスナップ（離地は吸着しない）
+      // 重複防止: すでに近く(±3コマ)に接地がある場合は登録しない
+      if (manualContactFrames.some((c) => Math.abs(c - cf) <= 3)) {
+        console.warn(`⚠️ 近くに既に接地があります（${cf}）。重複登録をスキップしました`);
+        if (cf !== f) setCurrentFrame(cf);
+        return;
+      }
+      if (cf !== f) setCurrentFrame(cf);
+      setManualContactFrames([...manualContactFrames, cf]);
+      console.log(`📍 接地マーク: フレーム ${cf}${cf !== f ? `（スナップ: ${f}→${cf}）` : ''}`);
       return;
     }
 
@@ -2630,16 +2808,95 @@ function handleMarkAtCurrentFrame(kind?: MarkKind) {
 
 
   
+  // 🆕 接地候補フレーム（足が最も低い局所ピーク）を全フレームから抽出。J/Kキーで飛ぶ用。
+  const toeContactCandidates = useMemo(() => {
+    const N = poseResults.length;
+    if (N < 5) return [] as number[];
+    const ys = new Array<number>(N).fill(NaN);
+    for (let i = 0; i < N; i++) {
+      const f = getMultiJointFeatures(poseResults[i]);
+      if (f) ys[i] = f.relativeToeHeight;
+    }
+    const sm = ys.map((_, i) => {
+      const vals = [ys[Math.max(0, i - 1)], ys[i], ys[Math.min(N - 1, i + 1)]].filter((v) => Number.isFinite(v));
+      return vals.length ? vals.reduce((s, x) => s + x, 0) / vals.length : NaN;
+    });
+    let mn = Infinity, mx = -Infinity;
+    for (const v of sm) if (Number.isFinite(v)) { if (v < mn) mn = v; if (v > mx) mx = v; }
+    const range = mx - mn;
+    if (!(range > 1e-4)) return [] as number[];
+    const minPeak = mn + range * 0.45;
+    const W = 4;
+    const peaks: number[] = [];
+    for (let i = W; i < N - W; i++) {
+      if (!Number.isFinite(sm[i]) || sm[i] < minPeak) continue;
+      let isPeak = true;
+      for (let j = i - W; j <= i + W; j++) { if (j !== i && Number.isFinite(sm[j]) && sm[j] > sm[i]) { isPeak = false; break; } }
+      if (!isPeak) continue;
+      if (Number.isFinite(sm[i - 1]) && sm[i - 1] >= sm[i]) continue; // 平坦頂上の重複回避
+      peaks.push(i);
+    }
+    // 🔧 最小間隔フィルタ: 1回の接地に対する二重検出を除去。
+    //    連続接地（左右交互）は実際 0.18〜0.25秒間隔なので、0.13秒以内の候補は
+    //    同一接地とみなし、relativeToeHeight が大きい（足が低い）方だけ残す。
+    const fps = usedTargetFps && usedTargetFps > 0 ? usedTargetFps : 60;
+    const minGap = Math.max(8, Math.round(fps * 0.13));
+    const filtered: number[] = [];
+    for (const p of peaks) {
+      if (filtered.length === 0) { filtered.push(p); continue; }
+      const last = filtered[filtered.length - 1];
+      if (p - last < minGap) {
+        if (sm[p] > sm[last]) filtered[filtered.length - 1] = p; // 近すぎ → 強い方を残す
+      } else {
+        filtered.push(p);
+      }
+    }
+    return filtered;
+  }, [poseResults, usedTargetFps]);
+
+  // J=次の接地候補へ / K=前の接地候補へ ジャンプ（ボタンからも使う）
+  const jumpToContactCandidate = useCallback((dir: 1 | -1) => {
+    const cur = Math.round(currentFrame);
+    if (dir === 1) {
+      const next = toeContactCandidates.find((c) => c > cur);
+      if (next != null) { setCurrentFrame(next); console.log(`⏭ 次の接地候補へ: Frame ${next}`); }
+      else console.log('（これ以降に接地候補なし）');
+    } else {
+      const prevs = toeContactCandidates.filter((c) => c < cur);
+      if (prevs.length) { const p = prevs[prevs.length - 1]; setCurrentFrame(p); console.log(`⏮ 前の接地候補へ: Frame ${p}`); }
+      else console.log('（これ以前に接地候補なし）');
+    }
+  }, [currentFrame, toeContactCandidates]);
+
   // キーボード操作
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!framesCount) return;
+
+      // 🎥 パン撮影モード（結果画面）: 接地入力モードのときだけ Space=接地追加 / J=次 / K=前（矢印はコマ送り）
+      if (wizardStep === 7 && analysisMode === 'panning') {
+        if (panningContactMode) {
+          if (e.code === "Space") {
+            e.preventDefault();
+            if (panningContacts == null) startEditPanningContacts();
+            addPanningContactAtCurrent();
+            return;
+          }
+          if (e.code === "KeyJ") { e.preventDefault(); jumpToPanningContact(1); return; }
+          if (e.code === "KeyK") { e.preventDefault(); jumpToPanningContact(-1); return; }
+        }
+        // 矢印キーは下の共通処理（コマ送り）に流す
+      } else {
+      // J=次の接地候補 / K=前の接地候補 へ一気にジャンプ
+      if (e.code === "KeyJ") { e.preventDefault(); jumpToContactCandidate(1); return; }
+      if (e.code === "KeyK") { e.preventDefault(); jumpToContactCandidate(-1); return; }
 
      if (e.code === "Space") {
   e.preventDefault();
   handleMarkAtCurrentFrame(); // 半自動/手動どちらでも動く
   return;
 }
+      } // end else（固定カメラ）
 
 
       if (e.code === "ArrowRight") {
@@ -2667,42 +2924,13 @@ function handleMarkAtCurrentFrame(kind?: MarkKind) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentFrame, framesCount]);
+  }, [currentFrame, framesCount, jumpToContactCandidate, wizardStep, analysisMode, panningContacts, panningContactMode]);
 
   // ===== 追加：ボタン操作（半自動/手動） =====
 const addMarkByButton = () => {
   if (!framesCount) return;
-
-  // 半自動設定: 接地のみ手動マーク、離地は自動検出
-  if (calibrationType === 2) {
-    const newContactFrames = [...manualContactFrames, currentFrame];
-    setManualContactFrames(newContactFrames);
-    console.log(`📍 接地マーク: フレーム ${currentFrame}`);
-
-    const toeOffFrame = detectToeOffFrame(currentFrame);
-    if (toeOffFrame !== null) {
-      setAutoToeOffFrames([...autoToeOffFrames, toeOffFrame]);
-    } else {
-      console.warn(`⚠️ 離地が検出できませんでした（接地: ${currentFrame}）`);
-    }
-    return;
-  }
-
-  // 手動マーク設定: すべて手動（接地→離地→接地→離地…交互）
-  if (calibrationType === 3) {
-    if (manualContactFrames.length === manualToeOffFrames.length) {
-      setManualContactFrames([...manualContactFrames, currentFrame]);
-      console.log(`📍 接地マーク: フレーム ${currentFrame}`);
-    } else {
-      const lastContact = manualContactFrames[manualContactFrames.length - 1];
-      if (currentFrame <= lastContact) {
-        alert("離地フレームは接地フレームより後にしてください。");
-        return;
-      }
-      setManualToeOffFrames([...manualToeOffFrames, currentFrame]);
-      console.log(`📍 離地マーク: フレーム ${currentFrame}`);
-    }
-  }
+  // ボタン操作（スマホ含む）も Space キーと同じ処理に統一 → スナップ補助が効く
+  handleMarkAtCurrentFrame();
 };
 
 const clearMarksByButton = () => {
@@ -3981,6 +4209,304 @@ const clearMarksByButton = () => {
       hfvpData // H-FVPデータを追加
     };
   }, [analysisMode, panningSplits, panningStartIndex, panningEndIndex, athleteInfo.weight_kg]);
+
+  // 🏃👣 パンモード：各歩のストライド変化（スタートからの伸びを見る）
+  //   接地候補（腰相対つま先高さの局所ピーク＝カメラ移動に強い）を自動検出し、
+  //   スプリット間を時間で線形補間して各接地の距離を推定 → 連続接地間の距離＝ストライド。
+  //   ※時間線形補間 ⇒ ストライド ≒ 区間速度 × 歩時間 で、物理的なストライド長の近似になる。
+  const panningStrideAnalysis = useMemo(() => {
+    if (analysisMode !== 'panning') return null;
+    if (panningSplits.length < 2 || !usedTargetFps) return null;
+    // 近すぎる接地（実際の接地間隔 0.18s 未満）は同一接地として除去。二重カウント＝ピッチ異常値を防ぐ。
+    const _minGapF = Math.max(8, Math.round((usedTargetFps || 60) * 0.15));
+    const _rawCand = (panningContacts ?? toeContactCandidates).slice().sort((a, b) => a - b);
+    const candidates: number[] = [];
+    for (const c of _rawCand) { if (!candidates.length || c - candidates[candidates.length - 1] >= _minGapF) candidates.push(c); }
+    if (candidates.length < 2) return null;
+
+    const splits = [...panningSplits].sort((a, b) => a.frame - b.frame);
+    const distAt = (f: number): number => {
+      // 区間を探して線形補間（範囲外は端区間で外挿）
+      let i = 0;
+      for (; i < splits.length - 1; i++) {
+        if (f <= splits[i + 1].frame) break;
+      }
+      i = Math.min(i, splits.length - 2);
+      const a = splits[i], b = splits[i + 1];
+      const denom = (b.frame - a.frame) || 1;
+      const t = (f - a.frame) / denom;
+      return a.distance + t * (b.distance - a.distance);
+    };
+
+    // 測定区間（指定があればその範囲、無ければ全スプリット範囲）
+    let loF = splits[0].frame, hiF = splits[splits.length - 1].frame;
+    if (panningStartIndex != null && panningEndIndex != null && panningStartIndex < panningEndIndex) {
+      loF = panningSplits[panningStartIndex].frame;
+      hiF = panningSplits[panningEndIndex].frame;
+    }
+    // 最終マークの距離。これを超える接地は「外挿（参考）」扱いにする。
+    const lastRefDist = distAt(hiF);
+    // 最終マークを跨ぐ最後の1歩を見せるため、少しだけ先（≒0.4秒）まで接地を拾う。
+    const hiFExt = hiF + Math.max(8, Math.round((usedTargetFps || 60) * 0.4));
+    const contacts = candidates.filter((f) => f >= loF && f <= hiFExt).sort((a, b) => a - b);
+    if (contacts.length < 2) return null;
+
+    const steps: Array<{ stepNo: number; frame: number; distance: number; time: number; side: 'L' | 'R' | null; stride: number | null; frequency: number | null; trend: number | null; extrapolated: boolean }> = [];
+    for (let i = 0; i < contacts.length; i++) {
+      const f = contacts[i];
+      const d = distAt(f);
+      const tm = f / usedTargetFps;
+      // この接地が最終マークより先＝外挿（基準点が片側しかなく精度が落ちる）
+      const extrapolated = d > lastRefDist + 0.05;
+      let stride: number | null = null;
+      let frequency: number | null = null;
+      if (i > 0) {
+        const pd = distAt(contacts[i - 1]);
+        const pt = contacts[i - 1] / usedTargetFps;
+        stride = Math.abs(d - pd);
+        const dt = tm - pt;
+        frequency = dt > 0 ? 1 / dt : null;
+      }
+      steps.push({ stepNo: i + 1, frame: f, distance: d, time: tm, side: contactFootSide(f), stride, frequency, trend: null, extrapolated });
+    }
+    // 📈 トレンド（移動中央値→平均）: 左右交互のブレ＋取りこぼし外れ値を相殺して
+    //    「徐々に伸びる」傾向を出す。幅±3（7歩）。まず中央値で外れ値を抑え、近傍平均で滑らかに。
+    const rawStrides = steps.map((s) => (s.extrapolated ? null : s.stride));
+    for (let i = 0; i < steps.length; i++) {
+      const win: number[] = [];
+      for (let k = i - 3; k <= i + 3; k++) {
+        if (k >= 0 && k < steps.length && rawStrides[k] != null) win.push(rawStrides[k] as number);
+      }
+      if (!win.length) { steps[i].trend = null; continue; }
+      win.sort((a, b) => a - b);
+      // 中央値±1の平均（外れ値の影響を抑えた中心値）
+      const mid = Math.floor(win.length / 2);
+      const core = win.length >= 3 ? win.slice(Math.max(0, mid - 1), Math.min(win.length, mid + 2)) : win;
+      steps[i].trend = core.reduce((a, b) => a + b, 0) / core.length;
+    }
+    // 平均・最大は「外挿（最終マーク超え）」の歩を除外して算出（精度の低い最後の1歩を混ぜない）
+    const validStrides = steps.filter((s) => s.stride != null && !s.extrapolated) as Array<{ stride: number }>;
+    const avgStride = validStrides.length ? validStrides.reduce((s, x) => s + x.stride, 0) / validStrides.length : null;
+    const maxStride = validStrides.length ? Math.max(...validStrides.map((s) => s.stride)) : null;
+    return { steps, avgStride, maxStride };
+  }, [analysisMode, panningSplits, usedTargetFps, toeContactCandidates, panningContacts, panningStartIndex, panningEndIndex, contactFootSide]);
+
+  // 📊 区間ごとの平均ストライド（左右ブレに強い）。区間距離は正確なので
+  //    平均ストライド = 区間距離 ÷ 区間内の歩数。1歩ごとの検出ノイズが相殺され、増加傾向がきれいに出る。
+  const panningSegmentStride = useMemo(() => {
+    if (analysisMode !== 'panning') return null;
+    if (panningSplits.length < 2 || !usedTargetFps) return null;
+    // 近すぎる接地（同一接地の二重カウント）を除去してから区間内の歩数を数える
+    const _minGapSeg = Math.max(8, Math.round((usedTargetFps || 60) * 0.15));
+    const _rawSeg = (panningContacts ?? toeContactCandidates).slice().sort((a, b) => a - b);
+    const cand: number[] = [];
+    for (const c of _rawSeg) { if (!cand.length || c - cand[cand.length - 1] >= _minGapSeg) cand.push(c); }
+    if (cand.length < 1) return null;
+    const splits = [...panningSplits].sort((a, b) => a.frame - b.frame);
+    const segs: Array<{ startDistance: number; endDistance: number; avgStride: number; steps: number; autoSteps: number; edited: boolean; avgPitch: number; avgSpeed: number }> = [];
+    for (let j = 0; j < splits.length - 1; j++) {
+      const a = splits[j], b = splits[j + 1];
+      const segDist = b.distance - a.distance;
+      const segTime = (b.frame - a.frame) / usedTargetFps;
+      if (!(segDist > 0) || !(segTime > 0)) continue;
+      const autoCount = cand.filter((f) => f >= a.frame && f < b.frame).length;
+      // 手動上書きがあればそれを使う（加速初期の取りこぼし補正など）
+      const ov = panningSegStepsOverride[String(a.distance)];
+      const count = ov != null && ov > 0 ? ov : autoCount;
+      if (count < 1) continue;
+      segs.push({
+        startDistance: a.distance,
+        endDistance: b.distance,
+        avgStride: segDist / count,
+        steps: count,
+        autoSteps: autoCount,
+        edited: ov != null && ov > 0,
+        avgPitch: count / segTime,
+        avgSpeed: segDist / segTime,
+      });
+    }
+    return segs.length ? segs : null;
+  }, [analysisMode, panningSplits, usedTargetFps, toeContactCandidates, panningContacts, panningSegStepsOverride, panningStartIndex, panningEndIndex, contactFootSide]);
+
+  // 🦶 パン: 接地手動調整のヘルパー群（動画をスクラブしながら追加/削除/±1）
+  const _panningBaseContacts = () => (panningContacts ?? toeContactCandidates).slice().sort((a, b) => a - b);
+  const startEditPanningContacts = () => setPanningContacts(_panningBaseContacts());
+  const resetPanningContacts = () => setPanningContacts(null);
+  const addPanningContactAtCurrent = () => {
+    const f = Math.round(currentFrame);
+    const gard = Math.max(6, Math.round((usedTargetFps || 60) * 0.12)); // 近すぎる接地は同一とみなす
+    setPanningContacts((prev) => {
+      const list = (prev ?? toeContactCandidates).slice();
+      if (list.some((c) => Math.abs(c - f) < gard)) return list.slice().sort((a, b) => a - b);
+      return [...list, f].sort((a, b) => a - b);
+    });
+  };
+  const removeNearestPanningContact = () => {
+    const f = Math.round(currentFrame);
+    setPanningContacts((prev) => {
+      const list = (prev ?? toeContactCandidates).slice();
+      if (!list.length) return list;
+      let bi = 0, bd = Infinity;
+      list.forEach((c, i) => { const d = Math.abs(c - f); if (d < bd) { bd = d; bi = i; } });
+      if (bd > 15) return list.slice().sort((a, b) => a - b);
+      return list.filter((_, i) => i !== bi).sort((a, b) => a - b);
+    });
+  };
+  const nudgePanningContact = (idx: number, delta: number) => {
+    setPanningContacts((prev) => {
+      const list = (prev ?? toeContactCandidates).slice().sort((a, b) => a - b);
+      if (idx < 0 || idx >= list.length) return list;
+      const maxF = (framesRef.current.length || 1) - 1;
+      list[idx] = Math.max(0, Math.min(maxF, list[idx] + delta));
+      return list.slice().sort((a, b) => a - b);
+    });
+  };
+  const removePanningContactByIndex = (idx: number) => {
+    setPanningContacts((prev) => {
+      const list = (prev ?? toeContactCandidates).slice().sort((a, b) => a - b);
+      return list.filter((_, i) => i !== idx);
+    });
+  };
+  const jumpToPanningContact = (dir: 1 | -1) => {
+    const list = _panningBaseContacts();
+    const f = Math.round(currentFrame);
+    if (dir > 0) { const n = list.find((c) => c > f); if (n != null) setCurrentFrame(n); }
+    else { const ps = list.filter((c) => c < f); if (ps.length) setCurrentFrame(ps[ps.length - 1]); }
+  };
+
+  // 🦶 接地の手動調整パネル（動画直下に表示）。動画をスクラブしながら接地を追加/削除/±1。
+  const renderPanningContactEditor = () => {
+    if (analysisMode !== 'panning') return null;
+    // poseが無くても手動で接地入力できる（ピッチ/ストライドは接地＋スプリットだけで計算可能）
+    const contacts = panningContacts ?? toeContactCandidates;
+    const sorted = contacts.slice().sort((a, b) => a - b);
+
+    // OFF（区間設定フェーズ）: 接地入力UIは出さない（上のトグルで切替）
+    if (!panningContactMode) return null;
+
+    return (
+      <div style={{ background: 'linear-gradient(135deg,#0f766e 0%,#115e59 100%)', borderRadius: 12, padding: 14, marginTop: 16, color: '#fff', boxShadow: '0 4px 12px rgba(15,118,110,0.3)' }}>
+        <div style={{ fontSize: '1rem', fontWeight: 800, marginBottom: 6 }}>
+          🦶 接地の手動調整（1歩ごとのストライド精度UP）
+          <span style={{ fontSize: '0.78rem', fontWeight: 400, opacity: 0.9, marginLeft: 8 }}>
+            接地 {contacts.length} 点{panningContacts != null && <span style={{ color: '#86efac' }}>（手動調整中）</span>}
+          </span>
+        </div>
+        <div style={{ fontSize: '0.76rem', opacity: 0.9, marginBottom: 8 }}>
+          上の動画スライダーを<strong>真の接地（足が地面に着く瞬間）</strong>に合わせ、ボタンで追加/削除/±1調整。正確な接地から1歩ごとのストライドを再計算します。
+          <br />💻 <strong>PC</strong>: ◀▶ でコマ送り、<strong>Space</strong>で接地追加、<strong>J/K</strong>で次/前の接地へ。
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button onClick={() => jumpToPanningContact(-1)} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid rgba(255,255,255,0.4)', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>⏮ 前の接地</button>
+          <button onClick={() => jumpToPanningContact(1)} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid rgba(255,255,255,0.4)', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>次の接地 ⏭</button>
+          <button onClick={() => { if (panningContacts == null) startEditPanningContacts(); addPanningContactAtCurrent(); }} style={{ padding: '8px 12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>➕ ここに接地追加</button>
+          <button onClick={() => { if (panningContacts == null) startEditPanningContacts(); removeNearestPanningContact(); }} style={{ padding: '8px 12px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>🗑 最寄りを削除</button>
+          <button onClick={() => setPanningContacts([])} style={{ padding: '8px 12px', background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: 'pointer' }} title="接地を全部消して、最初から手動で入力します">🧹 全消去</button>
+          <button onClick={() => setPanningContacts(toeContactCandidates.slice().sort((a, b) => a - b))} style={{ padding: '8px 12px', background: '#fff', color: '#334155', border: '1px solid #cbd5e1', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: 'pointer' }} title="自動検出した接地を読み込んで、それを土台に編集します">📥 自動検出を読込</button>
+          <button onClick={() => setPanningContactMode(false)} style={{ padding: '8px 12px', background: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>✕ 計測のみに戻る</button>
+        </div>
+        {panningContacts != null && panningContacts.length > 0 && (
+          <div style={{ marginTop: 10, maxHeight: 170, overflowY: 'auto', background: 'rgba(0,0,0,0.2)', borderRadius: 6, padding: 6 }}>
+            {sorted.map((cf, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 4px', fontSize: 13, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                <span style={{ width: 26, opacity: 0.7 }}>{idx + 1}</span>
+                <button onClick={() => setCurrentFrame(cf)} style={{ flex: 1, textAlign: 'left', background: 'transparent', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 13 }}>F{cf}</button>
+                <button onClick={() => nudgePanningContact(idx, -1)} style={{ padding: '2px 9px', borderRadius: 5, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.15)', color: '#fff', cursor: 'pointer' }}>−1</button>
+                <button onClick={() => nudgePanningContact(idx, 1)} style={{ padding: '2px 9px', borderRadius: 5, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.15)', color: '#fff', cursor: 'pointer' }}>+1</button>
+                <button onClick={() => removePanningContactByIndex(idx)} style={{ padding: '2px 9px', borderRadius: 5, border: 'none', background: '#dc2626', color: '#fff', cursor: 'pointer' }}>削除</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // 📄 レポート出力（印刷/PDF）: 解析結果を1枚にまとめる。依存追加なし（window.print）。
+  //    印刷時は .print-report だけ表示（CSS @media print）。固定/パン両対応。
+  const renderReportSection = () => {
+    const today = new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    const name = athleteInfo.name || '—';
+    const sexLabel = athleteInfo.gender === 'female' ? '女子' : athleteInfo.gender === 'male' ? '男子' : '—';
+    const isPanning = analysisMode === 'panning';
+    const topSpeed = isPanning ? (panningSprintAnalysis?.maxSpeed ?? null) : avgSpeed;
+    const pred = topSpeed != null ? predict100m(topSpeed, predictSex) : null;
+
+    const td: React.CSSProperties = { border: '1px solid #cbd5e1', padding: '6px 10px', fontSize: '0.9rem' };
+    const th: React.CSSProperties = { ...td, background: '#f1f5f9', fontWeight: 700, textAlign: 'left' };
+
+    return (
+      <>
+        <div className="no-print" style={{ textAlign: 'center', margin: '20px 0' }}>
+          <button
+            onClick={() => window.print()}
+            style={{ padding: '12px 26px', background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 10, fontSize: '1rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 6px rgba(29,78,216,0.3)' }}
+          >
+            📄 レポート出力（印刷 / PDF保存）
+          </button>
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>印刷ダイアログで「PDFに保存」を選ぶと、選手に渡せる1枚レポートになります。</div>
+        </div>
+
+        <div className="print-report">
+          <div style={{ borderBottom: '3px solid #1d4ed8', paddingBottom: 8, marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1d4ed8' }}>ランニング動作解析レポート</div>
+            <div style={{ fontSize: '0.85rem', color: '#475569' }}>{today}</div>
+          </div>
+
+          <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: 14 }}>
+            <tbody>
+              <tr><th style={th}>選手</th><td style={td}>{name}（{sexLabel}）</td><th style={th}>身長 / 体重</th><td style={td}>{athleteInfo.height_cm ?? '—'} cm / {athleteInfo.weight_kg ?? '—'} kg</td></tr>
+              <tr>
+                <th style={th}>自己記録</th><td style={td}>{athleteInfo.current_record != null ? `${athleteInfo.current_record} 秒` : '—'}</td>
+                <th style={th}>計測</th><td style={td}>{labelInput || '—'}{isPanning ? '（パン撮影）' : '（固定カメラ）'}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div style={{ fontWeight: 700, margin: '8px 0 6px', color: '#0f172a' }}>■ 計測結果</div>
+          <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: 14 }}>
+            <tbody>
+              {!isPanning && (
+                <>
+                  <tr><th style={th}>区間距離</th><td style={td}>{distanceValue ?? '—'} m</td><th style={th}>区間タイム</th><td style={td}>{sectionTime != null ? `${sectionTime.toFixed(3)} 秒` : '—'}</td></tr>
+                  <tr><th style={th}>最大疾走スピード</th><td style={td}>{topSpeed != null ? `${topSpeed.toFixed(2)} m/s` : '—'}</td><th style={th}>—</th><td style={td}>—</td></tr>
+                </>
+              )}
+              {isPanning && panningSprintAnalysis && (
+                <>
+                  <tr><th style={th}>総距離 / 総タイム</th><td style={td}>{panningSprintAnalysis.totalDistance.toFixed(1)} m / {panningSprintAnalysis.totalTime.toFixed(3)} 秒</td><th style={th}>平均速度</th><td style={td}>{panningSprintAnalysis.averageSpeed.toFixed(2)} m/s</td></tr>
+                  <tr><th style={th}>最高速度</th><td style={td}>{panningSprintAnalysis.maxSpeed.toFixed(2)} m/s</td><th style={th}>平均ストライド</th><td style={td}>{panningStrideAnalysis?.avgStride != null ? `${panningStrideAnalysis.avgStride.toFixed(2)} m` : '—'}</td></tr>
+                </>
+              )}
+            </tbody>
+          </table>
+
+          {pred && (
+            <>
+              <div style={{ fontWeight: 700, margin: '8px 0 6px', color: '#0f172a' }}>■ 100m予測（最大疾走スピード {topSpeed!.toFixed(2)} m/s より）</div>
+              <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: 8 }}>
+                <thead><tr><th style={th}>パターン</th><th style={th}>予測100m</th><th style={th}>特徴</th></tr></thead>
+                <tbody>
+                  {pred.patterns.map((p) => (
+                    <tr key={p.key}><td style={td}>{p.label}</td><td style={{ ...td, fontWeight: 800, color: '#1d4ed8' }}>{p.time100.toFixed(2)} 秒</td><td style={td}>{p.description}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+              <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: 8 }}>
+                <thead><tr><th style={th}>ピッチ (歩/秒)</th>{pred.strideByPitch.map((s) => <th key={s.pitch} style={th}>{s.pitch.toFixed(2)}</th>)}</tr></thead>
+                <tbody><tr><td style={td}>必要ストライド (m)</td>{pred.strideByPitch.map((s) => <td key={s.pitch} style={td}>{s.stride.toFixed(2)}</td>)}</tr></tbody>
+              </table>
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>※{pred.formula}。前半型/後半型は走り方の差として±0.12秒の目安。</div>
+            </>
+          )}
+
+          <div style={{ marginTop: 16, paddingTop: 8, borderTop: '1px solid #cbd5e1', fontSize: '0.75rem', color: '#64748b', textAlign: 'right' }}>
+            ランニング動作解析システム（analyze.jrpo.jp）
+          </div>
+        </div>
+      </>
+    );
+  };
 
   // ===== 検定モード：測定完了時に自動的に戻る =====
   useEffect(() => {
@@ -6445,8 +6971,8 @@ const framesToMs = (frames: number) => (frames * 1000) / analysisFps;
 const framesToSec = (frames: number) => frames / analysisFps;
 
   // ------------ ファイル選択 & リセット ------------
-  // ファイル選択・ドラッグ＆ドロップ共通処理
-  const processSelectedFile = (file: File | null) => {
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0] ?? null;
 
   // ★ まず必ず保存（初回選択でも入る）
   setSourceVideoFile(file);
@@ -6499,18 +7025,6 @@ const framesToSec = (frames: number) => frames / analysisFps;
         alert("mp4 などの動画ファイルを選択してください。");
       }
     }
-  };
-
-  // <input> の onChange から呼ぶラッパー
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    processSelectedFile(e.target.files?.[0] ?? null);
-  };
-
-  // ドラッグ＆ドロップで動画ファイルを受け取る
-  const handleFileDrop = (e: React.DragEvent<HTMLLabelElement>) => {
-    e.preventDefault();
-    setIsFileDragOver(false);
-    processSelectedFile(e.dataTransfer.files?.[0] ?? null);
   };
 
   // ------------ 動画最適化 ------------
@@ -6771,7 +7285,7 @@ const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
     
     if (isIOS) {
       // iOS（iPhone/iPad）: メモリ制限が厳しいため、控えめに設定
-      MAX_FRAMES = isPanningMode ? 600 : 300; // パンモードなら2倍許可
+      MAX_FRAMES = isPanningMode ? 1000 : 600; // 120fps×5秒(=600)まで警告なし。実機で499枚/439MBは問題なく動作
       MAX_WIDTH = isPanningMode ? 960 : 640;  // パンモードなら解像度も少し上げる
       preferredFps = selectedFps;
       console.log(`📱 iOS detected: ${selectedFps}fps mode (${MAX_WIDTH}px, max ${MAX_FRAMES} frames${isPanningMode ? ' - panning mode' : ''})`);
@@ -6787,6 +7301,19 @@ const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
       MAX_WIDTH = isPanningMode ? 1920 : 1280;
       preferredFps = selectedFps;
       console.log(`💻 Desktop detected: ${selectedFps}fps mode (${MAX_WIDTH}px, max ${MAX_FRAMES} frames${isPanningMode ? ' - panning mode' : ''})`);
+    }
+
+    // 🏁 レース等の長尺パン動画（200m/400m=20〜50秒）対策:
+    //    フレーム数×解像度のメモリを抑えるため、解像度を下げ・fpsを自動調整して上限を上げる。
+    //    スプリット計測は低解像度・低fpsでも十分（通過フレームが分かればよい）。
+    if (isPanningMode && duration > 25) {
+      // 画質優先: 解像度は確保し、その分fpsを下げてメモリを抑える（スプリットは少数点なので低fpsでOK）
+      MAX_WIDTH = Math.min(MAX_WIDTH, 720);
+      MAX_FRAMES = 1500;
+      // 目標 ~720フレームになるよう fps を自動調整（720px×720枚 ≒ 800MB弱）
+      const tgt = Math.max(8, Math.round(720 / duration));
+      if (preferredFps > tgt) preferredFps = tgt;
+      console.log(`🏁 長尺パン（${duration.toFixed(0)}s）: 画質優先 ${MAX_WIDTH}px / max ${MAX_FRAMES} / ${preferredFps}fps`);
     }
     
     // ユーザーが選択したFPSを使用
@@ -6988,6 +7515,15 @@ console.log(
   }
 }
 
+// 🏁 長尺パン（レース）: フレーム数を抑えるため抽出fpsを下げる（メモリ・安定性対策）。
+//    スプリット計測は少数点なので低fpsで十分。目標 ~700フレーム以下。
+if (isPanningMode && duration > 25 && totalFrames > 800) {
+  const newFps = Math.max(8, 700 / duration);
+  seekDt = 1 / newFps;
+  totalFrames = Math.floor(duration * newFps);
+  console.log(`🏁 長尺パン軽量化: extractFps=${newFps.toFixed(2)} / totalFrames=${totalFrames} / seekDt=${seekDt.toFixed(4)}`);
+}
+
 console.log(`🎬 Video specs: analysisFps=${targetFps}fps, extractFrames=${totalFrames}, duration=${duration.toFixed(2)}s`);
 
 // ✅ 重すぎる時は fps を落とすのではなく「警告して中止」
@@ -7007,7 +7543,13 @@ if (totalFrames > MAX_FRAMES) {
 }
 
 
-setUsedTargetFps(targetFps);
+// ⏱️ 時間計算用fpsは「実際にフレームを抽出した間隔(1/seekDt)」に必ず一致させる。
+//    これが targetFps と食い違うと、全スプリットタイム・ストライド時間が狂う（致命的バグの原因）。
+{
+  const effectiveFps = (seekDt && seekDt > 0) ? (1 / seekDt) : targetFps;
+  console.log(`⏱️ usedTargetFps = ${effectiveFps.toFixed(3)} (1/seekDt) ← 抽出間隔に一致`);
+  setUsedTargetFps(effectiveFps);
+}
 
 
     // 4K動画の検出と確認（保存された補正済みの解像度を使用）
@@ -7082,9 +7624,9 @@ setUsedTargetFps(targetFps);
       }
     }
     
-    if (isIOS && estimatedMemoryMB > (isPanningMode ? 400 : 200)) {
+    if (isIOS && estimatedMemoryMB > (isPanningMode ? 900 : 700)) {
       console.warn('⚠️ High memory usage detected on iOS. May cause crash.');
-      const memoryThreshold = isPanningMode ? 400 : 200;
+      const memoryThreshold = isPanningMode ? 900 : 700;
       if (!confirm(`この動画の処理には約${estimatedMemoryMB.toFixed(0)}MBのメモリが必要です。\niPhoneでは処理中にクラッシュする可能性があります。\n\n続行しますか？`)) {
         setIsExtracting(false);
         setStatus("キャンセルされました");
@@ -7104,6 +7646,7 @@ setUsedTargetFps(targetFps);
     );
 
     let index = 0;
+    let extractFailCount = 0; // フレーム抽出の失敗回数（VFR動画の一時的デコード失敗をスキップして継続）
 
     // Promise でラップして、フレーム抽出の完了を await できるようにする
     return new Promise<void>((resolveExtraction, rejectExtraction) => {
@@ -7126,12 +7669,19 @@ setUsedTargetFps(targetFps);
           
           // シングルカメラモード
           setTimeout(async () => {
-            // パーン撮影モードでも姿勢推定を実行
+            // パーン撮影モード
             if (analysisMode === 'panning') {
+              if (panningPoseMode === 'timeOnly') {
+                // タイムのみ（高速）: 姿勢推定をスキップ → 速度・加速度・H-FVPのみ
+                console.log('📹 Panning (タイムのみ): 姿勢推定をスキップします');
+                setWizardStep(7);
+                resolveExtraction();
+                return;
+              }
+              // フル解析: 姿勢推定を実行（ストライド/ピッチ/関節角度も）
               console.log('📹 Panning mode: Starting pose estimation for joint angles...');
               setWizardStep(4);
               await runPoseEstimation();
-              // 姿勢推定完了後、スプリットタイマーへ
               setWizardStep(7);
               resolveExtraction();
               return;
@@ -7180,11 +7730,20 @@ setUsedTargetFps(targetFps);
             index += 1;
             grabFrame();
           } catch (error) {
-            // メモリエラーをキャッチしてクラッシュを防ぐ
-            console.error('❌ Frame extraction error:', error);
+            // 🔧 1フレームのデコード失敗（VFR動画など）は、その1枚をスキップして継続する。
+            //    失敗が多すぎる（>40）場合のみ中断＝1枚のエラーで全体が止まらないように。
+            extractFailCount += 1;
+            console.warn(`⚠️ Frame ${index} extraction failed (${extractFailCount}件目), skipping:`, error);
+            if (extractFailCount <= 40) {
+              index += 1;       // この1枚は飛ばす
+              grabFrame();      // 次のフレームへ継続
+              return;
+            }
+            // 失敗が多すぎる → 中断
+            console.error('❌ Too many frame extraction errors:', error);
             setIsExtracting(false);
             setStatus(`⚠️ フレーム抽出中にエラーが発生しました（${index}/${totalFrames}フレームまで処理）`);
-            
+
             // エラーが発生しても、それまでに抽出したフレームは使用可能にする
             if (framesRef.current.length > 0) {
               setFramesCount(framesRef.current.length);
@@ -7500,8 +8059,10 @@ setUsedTargetFps(targetFps);
       canvas.style.width = `${displayWidth}px`;
       canvas.style.height = `${displayHeight}px`;
       canvas.style.maxWidth = '100%';
-      // ノートPCでも下の操作欄（接地マーク等）が見えるよう、動画の高さを画面の42%までに抑える
-      canvas.style.maxHeight = '42vh';
+      // 下の操作欄（前/次の接地・接地マーク等）が見えるよう、動画の高さを抑える。
+      // スマホは画面が狭いのでさらに低く（マーク欄が隠れないように）
+      const isSmallScreen = typeof window !== 'undefined' && window.innerWidth < 768;
+      canvas.style.maxHeight = isSmallScreen ? '24vh' : '42vh';
     }
 
     if (!footZoomEnabled) {
@@ -9282,6 +9843,51 @@ if (videoRef.current) {
     }
   };
 
+  // 📏 縦線方式の校正：開始（縦線を均等配置して、ドラッグ可能モードに）
+  const startLineCalib = () => {
+    const n = Math.max(2, trackMarkerCount);
+    const arr: number[] = [];
+    for (let i = 0; i < n; i++) arr.push(n === 1 ? 0.5 : 0.12 + (0.76 * i) / (n - 1));
+    setVLineFracs(arr);
+    setTrackMarkers([]);
+    setTrackMarkerMode(false);
+    setLineCalibMode(true);
+    setStatus(`📏 各縦線をドラッグして、地面の ${trackMarkerIntervalM}m 間隔マーカーに合わせてください（0m〜${(n - 1) * trackMarkerIntervalM}m）`);
+  };
+
+  // 縦線ドラッグ（pointerイベントでマウス/タッチ両対応）
+  const startDragLine = (i: number, e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    dragLineRef.current = i;
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* noop */ }
+  };
+  const moveDragLine = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragLineRef.current === null) return;
+    const wrap = lineWrapperRef.current;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    let frac = (e.clientX - rect.left) / rect.width;
+    frac = Math.max(0, Math.min(1, frac));
+    const idx = dragLineRef.current;
+    setVLineFracs((prev) => prev.map((f, k) => (k === idx ? frac : f)));
+  };
+  const endDragLine = () => { dragLineRef.current = null; };
+
+  // 縦線方式の校正を確定 → trackMarkers（共通Y・異なるX）に変換
+  const completeLineCalib = () => {
+    const canvas = displayCanvasRef.current;
+    const cw = canvas?.width ?? 1280;
+    const ch = canvas?.height ?? 720;
+    const groundY = vLineGroundFrac * ch;
+    const markers = vLineFracs
+      .map((frac, i) => ({ pixel: { x: frac * cw, y: groundY }, distanceM: i * trackMarkerIntervalM }))
+      .sort((a, b) => a.pixel.x - b.pixel.x) // 左→右で距離が単調になるよう並べ替え（向きに依存しない）
+      .map((m, i) => ({ pixel: m.pixel, distanceM: i * trackMarkerIntervalM }));
+    setTrackMarkers(markers);
+    setLineCalibMode(false);
+    setStatus(`✅ 縦線校正完了（${markers.length} 点・0m〜${(markers.length - 1) * trackMarkerIntervalM}m）。再生時も縦線を表示します`);
+  };
+
   // 🎯 トラックマーカー（N 点校正）: キャンバスクリックでマーカー追加
   //    ユーザが動画内のトラック上の既知距離点（例: 0m, 2m, 4m, ...）を順にクリック。
   //    各クリックには trackMarkerIntervalM × clickIndex の距離が自動付与される。
@@ -10648,7 +11254,7 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
                   name="analysisMode"
                   value="panning"
                   checked={analysisMode === 'panning'}
-                  onChange={() => setAnalysisMode('panning')}
+                  onChange={() => { setAnalysisMode('panning'); setPanningPoseMode('full'); }}
                   style={{ display: 'none' }}
                 />
                 🎥 パーン撮影（30-40m推奨）
@@ -10711,7 +11317,27 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
             fontSize: '0.9rem',
             color: '#1e40af'
           }}>
-            <strong>⏱️ パーン撮影モード:</strong> シンプルなタイム測定モードです。動画内でスプリット地点を選択し、区間タイムと距離からH-FVPを算出します。姿勢推定は行いません。
+            <strong>⏱️ パーン撮影モード:</strong> 動画内でスプリット地点を選択し、区間タイム・速度・H-FVPを算出します。
+            <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontWeight: 700 }}>解析モード:</span>
+              <button
+                onClick={() => setPanningPoseMode('full')}
+                style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #3b82f6', background: panningPoseMode === 'full' ? '#3b82f6' : '#fff', color: panningPoseMode === 'full' ? '#fff' : '#1e40af', fontWeight: 700, cursor: 'pointer' }}
+              >
+                フル解析（姿勢込み）
+              </button>
+              <button
+                onClick={() => setPanningPoseMode('timeOnly')}
+                style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #3b82f6', background: panningPoseMode === 'timeOnly' ? '#3b82f6' : '#fff', color: panningPoseMode === 'timeOnly' ? '#fff' : '#1e40af', fontWeight: 700, cursor: 'pointer' }}
+              >
+                タイムのみ（高速）
+              </button>
+            </div>
+            <div style={{ marginTop: 6, fontSize: '0.8rem' }}>
+              {panningPoseMode === 'full'
+                ? '✅ フル: 速度・H-FVPに加え、ストライド・ピッチ・関節角度も解析（姿勢推定あり＝やや時間/GPUを使用）'
+                : '⚡ タイムのみ: 姿勢推定をスキップ（高速・軽量・長尺レース向き）。速度・加速度・H-FVPに加え、②接地入力で手動マークすれば ピッチ・ストライド も算出できます（自動接地と関節角度のみ非対応）'}
+            </div>
           </div>
         )}
       </div>
@@ -10997,36 +11623,45 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
       <div className="upload-area">
         <label
           className="upload-box"
-          onDragOver={(e) => { e.preventDefault(); setIsFileDragOver(true); }}
-          onDragEnter={(e) => { e.preventDefault(); setIsFileDragOver(true); }}
-          onDragLeave={(e) => { e.preventDefault(); setIsFileDragOver(false); }}
-          onDrop={handleFileDrop}
+          onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+          onDragEnter={(e) => { e.preventDefault(); setIsDragOver(true); }}
+          onDragLeave={(e) => { e.preventDefault(); setIsDragOver(false); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDragOver(false);
+            const file = e.dataTransfer?.files?.[0];
+            if (!file) return;
+            if (!file.type.startsWith("video/")) { alert("動画ファイル（MP4, MOV など）をドロップしてください。"); return; }
+            // handleFileChange は e.target.files しか参照しないので合成イベントで再利用
+            handleFileChange({ target: { files: e.dataTransfer.files } } as unknown as ChangeEvent<HTMLInputElement>);
+          }}
           style={{
-            borderColor: isFileDragOver
-              ? "var(--primary, #6366f1)"
-              : videoFile ? "var(--success)" : "var(--gray-300)",
-            background: isFileDragOver
-              ? "rgba(99, 102, 241, 0.08)"
+            borderColor: isDragOver ? "#2563eb" : videoFile ? "var(--success)" : "var(--gray-300)",
+            background: isDragOver
+              ? "rgba(37, 99, 235, 0.08)"
               : videoFile
               ? "rgba(16, 185, 129, 0.05)"
               : "var(--gray-50)",
+            transition: "border-color 0.15s, background 0.15s",
           }}
         >
           <div className="upload-icon">
-            {videoFile ? "✅" : "🎥"}
+            {isDragOver ? "📥" : videoFile ? "✅" : "🎥"}
           </div>
           <div className="upload-text">
-            {videoFile ? (
+            {isDragOver ? (
+              <strong style={{ color: "#2563eb" }}>ここにドロップ</strong>
+            ) : videoFile ? (
               <>
                 <strong style={{ color: "var(--success)" }}>
                   ✓ {videoFile.name}
                 </strong>
-                <span>クリックで別のファイルを選択</span>
+                <span>クリック / ドラッグ＆ドロップで別のファイルを選択</span>
               </>
             ) : (
               <>
                 <strong>動画ファイルを選択</strong>
-                <span>クリックで選択、またはここにドラッグ＆ドロップ（MP4, MOV, AVI など）</span>
+                <span>クリック、または ここにドラッグ＆ドロップ（MP4, MOV, AVI など）</span>
               </>
             )}
           </div>
@@ -11040,13 +11675,15 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
       </div>
 
       {/* ⚡ 解析範囲（任意・高速化）— 動画を見ながら開始/終了を指定。既定は全体＝従来通り */}
-      {videoFile && videoUrl && analysisMode !== 'panning' && (
+      {videoFile && videoUrl && (
         <div style={{
-          maxWidth: 720, margin: '12px auto', padding: 14,
+          maxWidth: 1100, margin: '12px auto', padding: 14,
           background: '#fffbeb', border: '2px solid #f59e0b', borderRadius: 12,
         }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: '#92400e', marginBottom: 6 }}>
-            ⚡ スタート/フィニッシュ地点の指定（高速化＆区間の下準備）
+            {analysisMode === 'panning'
+              ? '⚡ 解析範囲の指定（高速化）'
+              : '⚡ スタート/フィニッシュ地点の指定（高速化＆区間の下準備）'}
           </div>
           <p style={{ fontSize: 12, color: '#92400e', lineHeight: 1.6, margin: '0 0 4px' }}>
             <strong>指定しなければ全体を処理</strong>します（従来通り）。<span style={{ color: '#b45309' }}>🔖 指定した位置は記憶され、<strong>次の動画でも自動で引き継がれます</strong>。</span>
@@ -11057,12 +11694,21 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
             src={videoUrl}
             controls
             playsInline
-            style={{ width: '100%', borderRadius: 8, background: '#000', maxHeight: '40vh' }}
+            style={{ width: '100%', borderRadius: 8, background: '#000', maxHeight: '65vh' }}
           />
 
           <p style={{ fontSize: 12.5, color: '#92400e', lineHeight: 1.6, margin: '6px 0 8px' }}>
-            動画を<strong>スタート地点（0m）</strong>で止めて「🚩 スタートに」、<strong>フィニッシュ地点</strong>で「🏁 フィニッシュに」を押してください。
-            ここで決めた位置は<strong>ステップ5に引き継がれ、そこで1コマ単位で微調整</strong>できます（最終精度はステップ5で確保）。
+            {analysisMode === 'panning' ? (
+              <>
+                動画を<strong>走り始め</strong>で止めて「🚩 スタートに」、<strong>走り終わり</strong>で「🏁 フィニッシュに」を押してください。
+                <strong>この範囲だけ姿勢推定する</strong>ので処理が速くなります（範囲外はスキップ）。スプリット登録は全範囲で可能です。
+              </>
+            ) : (
+              <>
+                動画を<strong>スタート地点（0m）</strong>で止めて「🚩 スタートに」、<strong>フィニッシュ地点</strong>で「🏁 フィニッシュに」を押してください。
+                ここで決めた位置は<strong>ステップ5に引き継がれ、そこで1コマ単位で微調整</strong>できます（最終精度はステップ5で確保）。
+              </>
+            )}
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
             <button
@@ -11623,7 +12269,42 @@ if (true /* single mode */ && !videoFile) {
                   （競技会レベルの精密な距離が必要なときだけ、下のマーカー校正をお使いください）
                 </div>
               )}
-              {trackMarkers.length >= 2 && !trackMarkerMode ? (
+              {lineCalibMode ? (
+                <div style={{ fontSize: 14, color: '#1e40af' }}>
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                    📏 各縦線を地面の {trackMarkerIntervalM}m マーカーに合わせてください（{vLineFracs.length}本・0m〜{(vLineFracs.length - 1) * trackMarkerIntervalM}m）
+                  </div>
+                  <div style={{ marginBottom: 8, padding: 8, background: '#fff', borderRadius: 6, fontSize: 13 }}>
+                    動画上の縦線を**左右にドラッグ**して、地面のマーカー位置に合わせます（縦線なので横位置だけ合わせればOK）。
+                    緑=0m基準。合ったら下の「確定」を押してください。
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+                    <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      地面ライン高さ:
+                      <input
+                        type="range" min={0.4} max={0.95} step={0.01} value={vLineGroundFrac}
+                        onChange={(e) => setVLineGroundFrac(parseFloat(e.target.value))}
+                        style={{ width: 140 }}
+                      />
+                    </label>
+                    <span style={{ fontSize: 12, color: '#475569' }}>（足の接地ライン付近に合わせると精度UP）</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button
+                      onClick={completeLineCalib}
+                      style={{ padding: '10px 22px', background: '#10b981', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 15, fontWeight: 700, boxShadow: '0 2px 4px rgba(16,185,129,0.3)' }}
+                    >
+                      ✅ この位置で確定
+                    </button>
+                    <button
+                      onClick={() => { setLineCalibMode(false); setVLineFracs([]); setStatus(''); }}
+                      style={{ padding: '10px 16px', background: '#fff', border: '1px solid #3b82f6', borderRadius: 8, cursor: 'pointer', fontSize: 13, color: '#1e40af' }}
+                    >
+                      キャンセル
+                    </button>
+                  </div>
+                </div>
+              ) : trackMarkers.length >= 2 && !trackMarkerMode ? (
                 <div style={{ fontSize: 13, color: '#065f46', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <span>
                     ✅ {trackMarkers.length}点マーカーで校正中（{trackMarkers[0].distanceM}m 〜 {trackMarkers[trackMarkers.length - 1].distanceM}m、
@@ -11680,6 +12361,12 @@ if (true /* single mode */ && !videoFile) {
                       → 合計 {(trackMarkerCount - 1) * trackMarkerIntervalM}m 区間をカバー
                     </span>
                     <button
+                      onClick={startLineCalib}
+                      style={{ padding: '10px 20px', background: '#10b981', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 700, boxShadow: '0 2px 4px rgba(16,185,129,0.3)' }}
+                    >
+                      📏 縦線で校正（スマホ推奨）
+                    </button>
+                    <button
                       onClick={() => {
                         setTrackMarkerMode(true);
                         setTrackMarkers([]);
@@ -11687,7 +12374,7 @@ if (true /* single mode */ && !videoFile) {
                       }}
                       style={{ padding: '10px 20px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 700, boxShadow: '0 2px 4px rgba(59,130,246,0.3)' }}
                     >
-                      📏 マーカーをクリックして校正開始
+                      点をタップして校正（PC向け）
                     </button>
                   </div>
                 </div>
@@ -11697,7 +12384,34 @@ if (true /* single mode */ && !videoFile) {
             {/* 4コーン高精度補正のUIは非表示（精度が出ないため削除）。ロジックは残置。 */}
 
             {/* ビデオプレビュー - フレームを直接表示 */}
-            <div style={{ marginBottom: '2rem', width: '100%', position: 'relative' }}>
+            <div ref={lineWrapperRef} style={{ marginBottom: '2rem', width: '100%', position: 'relative' }}>
+              {/* 📏 縦線方式の校正オーバーレイ（ドラッグで各縦線を地面マーカーに合わせる） */}
+              {lineCalibMode && vLineFracs.length > 0 && (
+                <div style={{ position: 'absolute', inset: 0, zIndex: 30 }}>
+                  {vLineFracs.map((frac, i) => (
+                    <div
+                      key={i}
+                      onPointerDown={(e) => startDragLine(i, e)}
+                      onPointerMove={moveDragLine}
+                      onPointerUp={endDragLine}
+                      onPointerCancel={endDragLine}
+                      style={{
+                        position: 'absolute', left: `calc(${frac * 100}% - 16px)`, top: 0, bottom: 0,
+                        width: 32, cursor: 'ew-resize', touchAction: 'none',
+                        display: 'flex', justifyContent: 'center',
+                      }}
+                    >
+                      <div style={{ width: 2, height: '100%', background: i === 0 ? '#10b981' : '#ef4444', boxShadow: '0 0 0 0.5px rgba(0,0,0,0.4)', position: 'relative' }}>
+                        <span style={{ position: 'absolute', top: 4, left: '50%', transform: 'translateX(-50%)', background: i === 0 ? '#10b981' : '#ef4444', color: '#fff', fontSize: 12, fontWeight: 700, padding: '2px 7px', borderRadius: 5, whiteSpace: 'nowrap', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
+                          {i * trackMarkerIntervalM}m
+                        </span>
+                        {/* 下部のドラッグつまみ（指で掴みやすく） */}
+                        <span style={{ position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)', width: 26, height: 26, borderRadius: '50%', background: '#fff', border: `3px solid ${i === 0 ? '#10b981' : '#ef4444'}`, boxShadow: '0 2px 6px rgba(0,0,0,0.35)' }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               <canvas
                 ref={displayCanvasRef}
                 onClick={trackMarkerMode ? (e) => {
@@ -12010,6 +12724,82 @@ if (true /* single mode */ && !videoFile) {
               </div>
             </div>
 
+            {/* 🔮 100m予測（トップスピードから・前半型/中間型/後半型） */}
+            {(() => {
+              const measured = avgSpeed;
+              const vmax = predictVmaxInput !== '' ? parseFloat(predictVmaxInput) : (measured ?? NaN);
+              const result = Number.isFinite(vmax) ? predict100m(vmax, predictSex) : null;
+              return (
+                <div style={{ marginTop: '2rem', background: '#eff6ff', border: '2px solid #3b82f6', borderRadius: 12, padding: 20, marginBottom: 24 }}>
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: 8, color: '#1d4ed8' }}>
+                    🔮 100m予測（トップスピードから・前半型 / 中間型 / 後半型）
+                  </h3>
+                  <div style={{ fontSize: 13, color: '#374151', marginBottom: 12 }}>
+                    固定カメラで計測した最大疾走スピードから、実データ回帰式で100mを予測します。
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={() => setPredictSex('male')} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #3b82f6', background: predictSex === 'male' ? '#3b82f6' : '#fff', color: predictSex === 'male' ? '#fff' : '#1d4ed8', fontWeight: 700, cursor: 'pointer' }}>男子</button>
+                      <button onClick={() => setPredictSex('female')} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #ec4899', background: predictSex === 'female' ? '#ec4899' : '#fff', color: predictSex === 'female' ? '#fff' : '#be185d', fontWeight: 700, cursor: 'pointer' }}>女子</button>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
+                      最大疾走スピード:
+                      <input type="number" step="0.01" value={predictVmaxInput}
+                        onChange={(e) => setPredictVmaxInput(e.target.value)}
+                        placeholder={measured != null ? measured.toFixed(2) : '例: 11.5'}
+                        style={{ width: 90, padding: '6px 8px', border: '1px solid #93c5fd', borderRadius: 6 }} />
+                      m/s
+                    </label>
+                    {measured != null && (
+                      <span style={{ fontSize: 12, color: '#475569' }}>計測値: {measured.toFixed(2)} m/s（空欄ならこれを使用）</span>
+                    )}
+                  </div>
+                  {!result ? (
+                    <div style={{ fontSize: 13, color: '#b91c1c' }}>最大疾走スピード（5〜14 m/s）を入力すると予測します。</div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 14 }}>
+                        {result.patterns.map((p) => (
+                          <div key={p.key} style={{ background: '#fff', border: `2px solid ${p.key === 'middle' ? '#3b82f6' : '#cbd5e1'}`, borderRadius: 10, padding: 12, textAlign: 'center' }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>{p.label}</div>
+                            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#1d4ed8' }}>{p.time100.toFixed(2)}<span style={{ fontSize: '0.9rem' }}>秒</span></div>
+                            <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{p.description}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ background: '#fff', borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                        <Line data={{
+                          labels: result.patterns[1].curve.map((c) => c.distance.toFixed(0)),
+                          datasets: result.patterns.map((p, idx) => ({
+                            label: p.label,
+                            data: p.curve.map((c) => c.velocity),
+                            borderColor: ['#ef4444', '#3b82f6', '#10b981'][idx],
+                            backgroundColor: 'transparent', tension: 0.3, pointRadius: 0,
+                          })),
+                        }} options={{ responsive: true, plugins: { legend: { display: true }, title: { display: true, text: '速度カーブ（イメージ・横軸: 距離 m）' } }, scales: { y: { title: { display: true, text: '速度 (m/s)' } }, x: { title: { display: true, text: '距離 (m)' } } } }} />
+                      </div>
+                      <div style={{ fontSize: 13, color: '#374151' }}>
+                        <strong>このスピードに必要なストライド</strong>（ピッチ別）:
+                        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 6 }}>
+                          {result.strideByPitch.map((s) => (
+                            <span key={s.pitch} style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, padding: '4px 10px' }}>
+                              {s.pitch.toFixed(2)}歩/秒 → <strong>{s.stride.toFixed(2)}m</strong>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 10 }}>
+                        ※中間型 = {result.formula}。前半型/後半型は同じ最高速での走り方の差として ±0.12秒 を見込んだ目安です。速度カーブは形状イメージです。
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* 📄 レポート出力 */}
+            {renderReportSection()}
+
             {/* 🎯 走行タイプ選択（加速走/スタートダッシュ） */}
             <div style={{
               marginTop: '2rem',
@@ -12301,6 +13091,22 @@ case 6: {
                     <button className="btn-ghost-small" onClick={handleClearMarkers}>
                       マーカークリア
                     </button>
+
+                    <button
+                      className={snapAssist ? "toggle-btn active" : "toggle-btn"}
+                      onClick={() => setSnapAssist((v) => !v)}
+                      title="接地を登録すると、近くの「足が最も低いフレーム」へ自動で吸着します"
+                    >
+                      🧲 スナップ {snapAssist ? "ON" : "OFF"}
+                    </button>
+
+                    <button
+                      className={autoAdvanceMark ? "toggle-btn active" : "toggle-btn"}
+                      onClick={() => setAutoAdvanceMark((v) => !v)}
+                      title="接地を登録したら自動で次の接地候補へジャンプ（連続でテンポよくマーク）"
+                    >
+                      🔁 連続 {autoAdvanceMark ? "ON" : "OFF"}
+                    </button>
                   </div>
                 ) : (
                   <div className="mobile-view-options">
@@ -12344,6 +13150,22 @@ case 6: {
                     <button className="btn-ghost-small" onClick={handleClearMarkers}>
                       マーカークリア
                     </button>
+
+                    <button
+                      className={snapAssist ? "toggle-btn active" : "toggle-btn"}
+                      onClick={() => setSnapAssist((v) => !v)}
+                      title="接地を登録すると、近くの「足が最も低いフレーム」へ自動で吸着します"
+                    >
+                      🧲 スナップ {snapAssist ? "ON" : "OFF"}
+                    </button>
+
+                    <button
+                      className={autoAdvanceMark ? "toggle-btn active" : "toggle-btn"}
+                      onClick={() => setAutoAdvanceMark((v) => !v)}
+                      title="接地を登録したら自動で次の接地候補へジャンプ（連続でテンポよくマーク）"
+                    >
+                      🔁 連続 {autoAdvanceMark ? "ON" : "OFF"}
+                    </button>
                   </div>
                 )}
               </div>
@@ -12379,6 +13201,29 @@ case 6: {
                   <button onClick={() => changeFrame(10)} disabled={!ready}>
                     +10
                   </button>
+                </div>
+
+                {/* 🆕 接地候補へ一気にジャンプ（J/K キー or ボタン） */}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 8 }}>
+                  <button
+                    onClick={() => jumpToContactCandidate(-1)}
+                    disabled={!ready || toeContactCandidates.length === 0}
+                    style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: toeContactCandidates.length === 0 ? 0.4 : 1 }}
+                    title="前の接地候補へジャンプ（Kキー）"
+                  >
+                    ⏮ 前の接地
+                  </button>
+                  <button
+                    onClick={() => jumpToContactCandidate(1)}
+                    disabled={!ready || toeContactCandidates.length === 0}
+                    style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: toeContactCandidates.length === 0 ? 0.4 : 1 }}
+                    title="次の接地候補へジャンプ（Jキー）"
+                  >
+                    次の接地 ⏭
+                  </button>
+                </div>
+                <div style={{ textAlign: 'center', fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+                  接地候補 {toeContactCandidates.length} 点検出 ／ PCは <strong>J</strong>=次・<strong>K</strong>=前 でジャンプ → Spaceで登録
                 </div>
               </div>
 
@@ -12450,8 +13295,8 @@ case 6: {
                       disabled={!ready}
                       style={{
                         width: "100%",
-                        padding: "18px",
-                        fontSize: "18px",
+                        padding: "11px",
+                        fontSize: "16px",
                         fontWeight: "bold",
                         background:
                           calibrationType === 3 && manualContactFrames.length !== manualToeOffFrames.length
@@ -12462,7 +13307,7 @@ case 6: {
                         borderRadius: "12px",
                         cursor: "pointer",
                         boxShadow: "0 4px 10px rgba(0,0,0,0.25)",
-                        marginTop: 10,
+                        marginTop: 6,
                         touchAction: "manipulation",
                       }}
                     >
@@ -12492,9 +13337,33 @@ case 6: {
                   overflowY: isMobile ? "visible" : "auto",
                 }}
               >
-                <h4 style={{ margin: "0 0 12px 0", fontWeight: "bold", fontSize: isMobile ? "0.95rem" : "1rem" }}>
-                  マーカー一覧（全 {Math.floor(contactFrames.length / 2)} ステップ）
-                </h4>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", margin: "0 0 12px 0" }}>
+                  <h4 style={{ margin: 0, fontWeight: "bold", fontSize: isMobile ? "0.95rem" : "1rem" }}>
+                    マーカー一覧（全 {Math.floor(contactFrames.length / 2)} ステップ）
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!ready) return;
+                      const maxR = trackMarkers.length >= 2 ? Math.max(...trackMarkers.map((m) => m.distanceM)) : (distanceValue ?? 10);
+                      const keepIdx: number[] = [];
+                      for (let k = 0; k < manualContactFrames.length; k++) {
+                        const d = contactDistanceMeters(manualContactFrames[k]);
+                        if (d == null || (d >= -0.3 && d <= maxR + 0.3)) keepIdx.push(k);
+                      }
+                      const removeN = manualContactFrames.length - keepIdx.length;
+                      if (removeN === 0) { alert("範囲外（0〜" + maxR + "m）のステップはありません。"); return; }
+                      if (!window.confirm(`範囲外（0〜${maxR}m の外）の ${removeN} ステップを除外します。よろしいですか？`)) return;
+                      setManualContactFrames((prev) => keepIdx.map((k) => prev[k]));
+                      if (calibrationType === 2) setAutoToeOffFrames((prev) => keepIdx.map((k) => prev[k]));
+                      else setManualToeOffFrames((prev) => keepIdx.map((k) => prev[k]));
+                    }}
+                    disabled={!ready}
+                    style={{ background: "#fff", color: "#dc2626", border: "1px solid #dc2626", borderRadius: 6, padding: "5px 12px", fontSize: "0.78rem", fontWeight: 700, cursor: "pointer" }}
+                  >
+                    ⚠️ 範囲外を一括除外
+                  </button>
+                </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {Array.from({ length: Math.floor(contactFrames.length / 2) }, (_: unknown, i: number) => {
@@ -12508,14 +13377,27 @@ case 6: {
                     const lastIndex = framesCount && framesCount > 0 ? framesCount - 1 : 0;
                     const clampFrame = (f: number) => Math.min(Math.max(f, 0), lastIndex);
 
+                    // 📏 推定距離 & 範囲外判定（10m区間や縦線/マーカー校正の外なら警告）
+                    const stepDistM = contactDistanceMeters(contactFrame);
+                    const maxRangeM = trackMarkers.length >= 2
+                      ? Math.max(...trackMarkers.map((m) => m.distanceM))
+                      : (distanceValue ?? 10);
+                    const isOutOfRange = stepDistM != null && (stepDistM < -0.3 || stepDistM > maxRangeM + 0.3);
+
+                    // 🦶 接地脚（L/R）と 👣 前の歩からのストライド[m]
+                    const footSide = contactFootSide(contactFrame);
+                    const prevContactFrame = i > 0 ? contactFrames[(i - 1) * 2] : null;
+                    const prevDistM = prevContactFrame != null ? contactDistanceMeters(prevContactFrame) : null;
+                    const strideM = (stepDistM != null && prevDistM != null) ? Math.abs(stepDistM - prevDistM) : null;
+
                     return (
                       <div
                         key={i}
                         style={{
-                          border: isCurrentStep ? "2px solid #3b82f6" : "1px solid #e5e7eb",
+                          border: isOutOfRange ? "2px solid #dc2626" : isCurrentStep ? "2px solid #3b82f6" : "1px solid #e5e7eb",
                           borderRadius: 8,
                           padding: isMobile ? "8px 10px" : "10px 12px",
-                          background: "#ffffff",
+                          background: isOutOfRange ? "#fef2f2" : "#ffffff",
                           cursor: ready ? "pointer" : "default",
                         }}
                         onClick={() => {
@@ -12535,11 +13417,26 @@ case 6: {
                             marginBottom: 4,
                           }}
                         >
-                          <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                             <strong>ステップ {i + 1}</strong>
+                            {footSide && (
+                              <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#fff", background: footSide === "L" ? "#6366f1" : "#f59e0b", borderRadius: 4, padding: "1px 6px" }}>
+                                {footSide === "L" ? "左足" : "右足"}
+                              </span>
+                            )}
+                            {stepDistM != null && (
+                              <span style={{ fontSize: "0.78rem", fontWeight: 700, color: isOutOfRange ? "#dc2626" : "#2563eb" }}>
+                                {isOutOfRange ? "⚠️範囲外 " : ""}{stepDistM.toFixed(2)}m
+                              </span>
+                            )}
+                            {strideM != null && (
+                              <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#059669" }}>
+                                👣 {strideM.toFixed(2)}m
+                              </span>
+                            )}
                             {isAuto && (
-                              <span style={{ fontSize: "0.75rem", marginLeft: 6, color: "#6b7280" }}>
-                                （離地は自動検出）
+                              <span style={{ fontSize: "0.72rem", color: "#6b7280" }}>
+                                （離地自動）
                               </span>
                             )}
                           </div>
@@ -12710,6 +13607,9 @@ case 6: {
                   </li>
                   <li>
                     <strong>↑ / ↓</strong>: 10フレーム移動
+                  </li>
+                  <li>
+                    🧲 <strong>スナップ {snapAssist ? "ON" : "OFF"}</strong>: 接地登録時、近くの「足が最も低いフレーム」へ自動吸着（おおまかに登録でOK）
                   </li>
                 </ul>
               </div>
@@ -13045,9 +13945,51 @@ case 6: {
                       >
                         リセット
                       </button>
+                      {/* 🦴 スティックピクチャー（骨格）ON/OFF */}
+                      <button
+                        onClick={() => setShowSkeleton((v) => !v)}
+                        title="スティックピクチャー（骨格）の表示を切り替えます"
+                        style={{
+                          padding: '6px 8px',
+                          background: showSkeleton ? 'rgba(59,130,246,0.65)' : 'rgba(255,255,255,0.2)',
+                          color: 'white',
+                          border: '1px solid rgba(255,255,255,0.4)',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '0.7rem',
+                          fontWeight: 'bold',
+                          marginTop: 4,
+                        }}
+                      >
+                        🦴 骨格 {showSkeleton ? 'ON' : 'OFF'}
+                      </button>
                     </div>
 
-                    <div 
+                    {/* 🦵 関節角度モニター（動画オーバーレイ・ズームの反対側＝左上） */}
+                    {analysisMode === 'panning' && currentAngles && (
+                      <div style={{
+                        position: 'absolute', top: '10px', left: '10px', zIndex: 10,
+                        background: 'rgba(0,0,0,0.62)', borderRadius: '8px', padding: '8px 10px',
+                        color: 'white', fontSize: '0.72rem', maxWidth: '46%',
+                        border: '1px solid rgba(255,255,255,0.25)', pointerEvents: 'none'
+                      }}>
+                        <div style={{ fontWeight: 'bold', fontSize: '0.72rem', marginBottom: 4, opacity: 0.85 }}>
+                          🦵 関節角度（F{currentFrame}）
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, auto)', gap: '2px 10px' }}>
+                          <div><span style={{ opacity: 0.7 }}>体幹 </span><strong>{currentAngles.trunkAngle?.toFixed(0) ?? '—'}°</strong></div>
+                          <div />
+                          <div><span style={{ opacity: 0.7 }}>左膝 </span><strong>{currentAngles.kneeFlex.left?.toFixed(0) ?? '—'}°</strong></div>
+                          <div><span style={{ opacity: 0.7 }}>右膝 </span><strong>{currentAngles.kneeFlex.right?.toFixed(0) ?? '—'}°</strong></div>
+                          <div><span style={{ opacity: 0.7 }}>左腿 </span><strong>{currentAngles.thighAngle.left?.toFixed(0) ?? '—'}°</strong></div>
+                          <div><span style={{ opacity: 0.7 }}>右腿 </span><strong>{currentAngles.thighAngle.right?.toFixed(0) ?? '—'}°</strong></div>
+                          <div><span style={{ opacity: 0.7 }}>左足首 </span><strong>{currentAngles.ankleFlex.left?.toFixed(0) ?? '—'}°</strong></div>
+                          <div><span style={{ opacity: 0.7 }}>右足首 </span><strong>{currentAngles.ankleFlex.right?.toFixed(0) ?? '—'}°</strong></div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div
                       ref={panningViewportRef}
                       style={{ 
                         overflow: 'auto',
@@ -13164,8 +14106,29 @@ case 6: {
 
                 </div>
 
-                {/* 関節角度リアルタイムモニター（パンニングモード） */}
-                {analysisMode === 'panning' && currentAngles && (
+                {/* 🔀 フェーズ切替（① 区間設定 / ② 接地入力）— 混在を防ぐ。poseなし（タイムのみ）でも手動接地でピッチ/ストライド可 */}
+                {analysisMode === 'panning' && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 16, background: 'rgba(0,0,0,0.2)', borderRadius: 10, padding: 5 }}>
+                    <button
+                      onClick={() => setPanningContactMode(false)}
+                      style={{ flex: 1, padding: '12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: '0.95rem', fontWeight: 700, background: !panningContactMode ? '#ffffff' : 'transparent', color: !panningContactMode ? '#1e293b' : '#fff' }}
+                    >
+                      ① 区間設定（通過地点）
+                    </button>
+                    <button
+                      onClick={() => { setPanningContactMode(true); setPanningContacts((prev) => prev ?? []); }}
+                      style={{ flex: 1, padding: '12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: '0.95rem', fontWeight: 700, background: panningContactMode ? '#0f766e' : 'transparent', color: '#fff' }}
+                    >
+                      ② 接地入力（ストライド）
+                    </button>
+                  </div>
+                )}
+
+                {/* 🦶 接地入力（フェーズ②のときだけ・動画の直下） */}
+                {analysisMode === 'panning' && renderPanningContactEditor()}
+
+                {/* 関節角度モニターは動画オーバーレイ版（ズームコントロール付近）に移設したため、ここは非表示 */}
+                {false && analysisMode === 'panning' && currentAngles && (
                   <div style={{
                     marginTop: '10px',
                     padding: '10px 12px',
@@ -13232,64 +14195,23 @@ case 6: {
                   </div>
                 )}
 
-                {/* パーン撮影モード: スプリット登録ボタン（動画の下） */}
-                {analysisMode === 'panning' && (
+                {/* パーン撮影モード: スプリット登録（フェーズ①のときだけ表示・接地入力中は隠す） */}
+                {analysisMode === 'panning' && !panningContactMode && (
                   <div style={{
                     marginTop: '16px',
                     padding: '16px',
                     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                     borderRadius: '12px',
-                    color: 'white'
+                    color: 'white',
+                    display: 'flex',
+                    flexDirection: 'column'
                   }}>
-                    {/* 入力モード切り替え */}
-                    <div style={{
-                      marginBottom: '16px',
-                      display: 'flex',
-                      gap: '8px',
-                      padding: '4px',
-                      background: 'rgba(0,0,0,0.2)',
-                      borderRadius: '8px'
-                    }}>
-                      <button
-                        onClick={() => setPanningInputMode('video')}
-                        style={{
-                          flex: 1,
-                          padding: '10px',
-                          fontSize: '0.9rem',
-                          fontWeight: 'bold',
-                          background: panningInputMode === 'video' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.2)',
-                          color: panningInputMode === 'video' ? '#667eea' : 'white',
-                          border: 'none',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s'
-                        }}
-                      >
-                        🎥 動画から測定
-                      </button>
-                      <button
-                        onClick={() => setPanningInputMode('manual')}
-                        style={{
-                          flex: 1,
-                          padding: '10px',
-                          fontSize: '0.9rem',
-                          fontWeight: 'bold',
-                          background: panningInputMode === 'manual' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.2)',
-                          color: panningInputMode === 'manual' ? '#667eea' : 'white',
-                          border: 'none',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s'
-                        }}
-                      >
-                        ⌨️ 手動入力
-                      </button>
-                    </div>
+                    {/* 入力モード切り替えは非表示（常に動画から測定） */}
 
                     <div style={{ marginBottom: '12px', fontWeight: 'bold', fontSize: '1.1rem' }}>
                       {panningSplits.length === 0 ? '🏁 スタート登録（手が地面を離れた瞬間）' : '⏱️ スプリット地点を登録'}
                     </div>
-                    
+
                     {/* スタート地点の説明 */}
                     {panningSplits.length === 0 && (
                       <div style={{
@@ -13325,7 +14247,7 @@ case 6: {
                             onChange={(e) => setDistanceInput(e.target.value)}
                             placeholder={(() => {
                               const lastDist = panningSplits[panningSplits.length - 1].distance;
-                              const recommended = lastDist < 10 ? lastDist + 5 : lastDist + 10;
+                              const recommended = recommendNextDistance(lastDist);
                               return `推奨: ${recommended}m`;
                             })()}
                             step="0.1"
@@ -13389,7 +14311,8 @@ case 6: {
                       </div>
                     )}
                     
-                    {/* 登録ボタン */}
+                    {/* 登録ボタン＋次の間隔プルダウン（横並び・動画直下） */}
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'stretch', order: -1, marginBottom: 12 }}>
                     <button
                       onClick={() => {
                         // スタート地点（0m）の登録
@@ -13404,7 +14327,7 @@ case 6: {
                           }];
                           setPanningSplits(newSplits);
                           setPanningStartIndex(0); // 自動的に開始点に設定
-                          setDistanceInput('5'); // 次の推奨距離（0m→5m）
+                          setDistanceInput(String(panningIncrement)); // 0m→次は選択中の間隔（5 or 10）
                           setManualTimeInput(''); // 手動タイム入力をクリア
                           return;
                         }
@@ -13481,16 +14404,8 @@ case 6: {
                         });
                         setPanningSplits(newSplits);
                         
-                        // 次の推奨距離を自動入力
-                        // 0-5m, 5-10m の最初の2区間は5m間隔、以降は10m間隔
-                        let nextDistance: number;
-                        if (distance < 10) {
-                          // まだ10m未満 → 次は5m刻み
-                          nextDistance = distance + 5;
-                        } else {
-                          // 10m以降 → 10m刻み
-                          nextDistance = distance + 10;
-                        }
+                        // 次の推奨距離を自動入力（自由設定したパターンから）
+                        const nextDistance = recommendNextDistance(distance);
                         setDistanceInput(nextDistance.toString());
                         
                         // 手動入力の場合は次の推奨タイムも設定
@@ -13503,9 +14418,9 @@ case 6: {
                         }
                       }}
                       style={{
-                        width: '100%',
-                        padding: '14px',
-                        fontSize: '1.1rem',
+                        flex: 1,
+                        padding: '16px',
+                        fontSize: '1.15rem',
                         fontWeight: 'bold',
                         background: 'rgba(255,255,255,0.3)',
                         border: '2px solid rgba(255,255,255,0.5)',
@@ -13530,11 +14445,37 @@ case 6: {
                           : '➕ スプリット追加'
                       }
                     </button>
-                    
+                    {/* 次の区間の間隔プルダウン（ボタンの横） */}
+                    <select
+                      value={panningIncrement}
+                      onChange={(e) => {
+                        if (e.target.value === '__add__') { addPanningCustomInterval(); return; }
+                        const inc = parseFloat(e.target.value) || 10;
+                        setPanningIncrement(inc);
+                        if (panningSplits.length > 0) {
+                          const lastDist = panningSplits[panningSplits.length - 1].distance;
+                          setDistanceInput(String(lastDist + inc));
+                        }
+                      }}
+                      title="次の区間の間隔。練習は5/10m、レースは20/50/100m、ハードルは『＋カスタム追加』で任意間隔を登録（保存して使い回し）"
+                      style={{ padding: '0 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.5)', background: '#ffffff', color: '#1e293b', fontSize: '1rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    >
+                      <option value={5}>5m間隔</option>
+                      <option value={10}>10m間隔</option>
+                      <option value={20}>20m間隔</option>
+                      <option value={50}>50m間隔（レース）</option>
+                      <option value={100}>100m間隔（レース）</option>
+                      {panningCustomIntervals.length > 0 && <optgroup label="カスタム（保存済み）">
+                        {panningCustomIntervals.map((v) => <option key={v} value={v}>{v}m間隔</option>)}
+                      </optgroup>}
+                      <option value="__add__">＋ カスタム間隔を追加…</option>
+                    </select>
+                    </div>
+
                     {panningSplits.length === 0 && (
-                      <div style={{ 
-                        marginTop: '8px', 
-                        fontSize: '0.85rem', 
+                      <div style={{
+                        marginTop: '8px',
+                        fontSize: '0.85rem',
                         opacity: 0.8,
                         textAlign: 'center'
                       }}>
@@ -13884,6 +14825,9 @@ case 6: {
                 )}
                 
                 {/* パーン撮影モード: スプリント分析のみ表示（H-FVP計算は無効） */}
+                {/* 📄 レポート出力（パン撮影） */}
+                {analysisMode === 'panning' && panningSprintAnalysis && renderReportSection()}
+
                 {analysisMode === 'panning' && panningSprintAnalysis && (
                   <div style={{
                     background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
@@ -14072,11 +15016,249 @@ case 6: {
                       </div>
                     </div>
 
+                    {/* 🏁 レース分析（ラップ表＋速度維持率/減速率） */}
+                    {panningSprintAnalysis.intervals.length >= 2 && (() => {
+                      const ivs = panningSprintAnalysis.intervals;
+                      const speeds = ivs.map((i) => i.speed);
+                      const maxSpd = Math.max(...speeds);
+                      const maxIdx = speeds.indexOf(maxSpd);
+                      const lastSpd = speeds[speeds.length - 1];
+                      const maintenance = maxSpd > 0 ? (lastSpd / maxSpd) * 100 : 0;
+                      const decel = 100 - maintenance;
+                      let cum = 0;
+                      const rows = ivs.map((iv) => { cum += iv.time; return { ...iv, cumTime: cum, pct: maxSpd > 0 ? (iv.speed / maxSpd) * 100 : 0 }; });
+                      return (
+                        <div style={{ marginTop: '20px', background: 'rgba(255,255,255,0.1)', borderRadius: 12, padding: 16 }}>
+                          <h4 style={{ margin: '0 0 12px', fontSize: '1.1rem' }}>🏁 レース分析（ラップ＆速度維持）</h4>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 14 }}>
+                            <div style={{ background: 'rgba(16,185,129,0.3)', borderRadius: 10, padding: 14, textAlign: 'center' }}>
+                              <div style={{ fontSize: '0.8rem', opacity: 0.9 }}>速度維持率</div>
+                              <div style={{ fontSize: '1.9rem', fontWeight: 800 }}>{maintenance.toFixed(1)}<span style={{ fontSize: '1rem' }}>%</span></div>
+                              <div style={{ fontSize: '0.68rem', opacity: 0.8 }}>最終区間 ÷ 最高区間</div>
+                            </div>
+                            <div style={{ background: 'rgba(239,68,68,0.3)', borderRadius: 10, padding: 14, textAlign: 'center' }}>
+                              <div style={{ fontSize: '0.8rem', opacity: 0.9 }}>減速率</div>
+                              <div style={{ fontSize: '1.9rem', fontWeight: 800 }}>{decel.toFixed(1)}<span style={{ fontSize: '1rem' }}>%</span></div>
+                              <div style={{ fontSize: '0.68rem', opacity: 0.8 }}>最高速からの低下</div>
+                            </div>
+                            <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: 14, textAlign: 'center' }}>
+                              <div style={{ fontSize: '0.8rem', opacity: 0.9 }}>最高区間速度</div>
+                              <div style={{ fontSize: '1.9rem', fontWeight: 800 }}>{maxSpd.toFixed(2)}</div>
+                              <div style={{ fontSize: '0.68rem', opacity: 0.8 }}>{ivs[maxIdx].startDistance}-{ivs[maxIdx].endDistance}m</div>
+                            </div>
+                          </div>
+                          <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+                              <thead>
+                                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.3)' }}>
+                                  <th style={{ textAlign: 'left', padding: '5px 8px' }}>区間</th>
+                                  <th style={{ textAlign: 'right', padding: '5px 8px' }}>ラップ</th>
+                                  <th style={{ textAlign: 'right', padding: '5px 8px' }}>通過</th>
+                                  <th style={{ textAlign: 'right', padding: '5px 8px' }}>区間速度</th>
+                                  <th style={{ textAlign: 'right', padding: '5px 8px' }}>対最高</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {rows.map((r, idx) => (
+                                  <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', background: idx === maxIdx ? 'rgba(16,185,129,0.2)' : 'transparent' }}>
+                                    <td style={{ padding: '5px 8px' }}>{r.startDistance}-{r.endDistance}m</td>
+                                    <td style={{ textAlign: 'right', padding: '5px 8px', fontWeight: 700 }}>{r.time.toFixed(2)}s</td>
+                                    <td style={{ textAlign: 'right', padding: '5px 8px' }}>{r.cumTime.toFixed(2)}s</td>
+                                    <td style={{ textAlign: 'right', padding: '5px 8px' }}>{r.speed.toFixed(2)} m/s</td>
+                                    <td style={{ textAlign: 'right', padding: '5px 8px' }}>{r.pct.toFixed(0)}%</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          <div style={{ fontSize: '0.72rem', opacity: 0.75, marginTop: 8 }}>
+                            ※速度維持率が高い＝後半までスピードを保てている。緑＝最高速区間。400mでは特に重要な指標です。
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* 👣 各歩のストライド変化 */}
+                    {panningStrideAnalysis && panningStrideAnalysis.steps.length >= 2 && (
+                      <div style={{ marginTop: '20px' }}>
+                        <h4 style={{
+                          margin: '0 0 12px 0', fontSize: '1.1rem', cursor: 'pointer', padding: '8px',
+                          background: 'rgba(255,255,255,0.05)', borderRadius: '8px',
+                          display: 'flex', alignItems: 'center', gap: '8px'
+                        }}
+                        onClick={() => toggleAccordion('strideChange')}>
+                          <span style={{ fontSize: '1rem', transition: 'transform 0.2s', transform: accordionState.strideChange ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                          👣 各歩のストライド変化（自動検出）
+                        </h4>
+                        {accordionState.strideChange && (
+                          <>
+                            {/* 📊 区間ごとの平均ストライド — ユーザー要望で非表示（手動接地の1歩ごとを使用） */}
+                            {false && panningSegmentStride && (
+                              <div style={{ background: 'rgba(255,255,255,0.12)', borderRadius: 8, padding: 12, marginBottom: 14 }}>
+                                <div style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 4 }}>📊 区間ごとの平均ストライド（おすすめ）</div>
+                                <div style={{ fontSize: '0.78rem', opacity: 0.85, marginBottom: 10 }}>
+                                  「区間距離 ÷ 区間内の歩数」で算出。区間距離は正確なので、<strong>歩数さえ正しければ正確</strong>です。
+                                  <br />⚠️ 加速初期は足が低く接地を取りこぼしがち（例: 0-5mが2歩）。表の<strong>「歩数」を直接修正</strong>すれば、その区間の平均ストライドが正しく出ます（修正欄は黄色枠）。
+                                </div>
+                                <div style={{ background: 'rgba(255,255,255,0.95)', borderRadius: 8, padding: 10, marginBottom: 10 }}>
+                                  <Line
+                                    data={{
+                                      labels: panningSegmentStride.map((s) => `${s.startDistance}-${s.endDistance}m`),
+                                      datasets: [{
+                                        label: '平均ストライド (m)',
+                                        data: panningSegmentStride.map((s) => s.avgStride),
+                                        borderColor: '#1d4ed8',
+                                        backgroundColor: 'rgba(29,78,216,0.12)',
+                                        borderWidth: 3,
+                                        tension: 0.3,
+                                        pointRadius: 4,
+                                      }],
+                                    }}
+                                    options={{ responsive: true, plugins: { legend: { display: false }, title: { display: true, text: '区間ごとの平均ストライド' } }, scales: { y: { title: { display: true, text: 'ストライド (m)' } }, x: { title: { display: true, text: '区間' } } } }}
+                                  />
+                                </div>
+                                <div style={{ overflowX: 'auto' }}>
+                                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                    <thead>
+                                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.3)' }}>
+                                        <th style={{ textAlign: 'left', padding: '4px 8px' }}>区間</th>
+                                        <th style={{ textAlign: 'right', padding: '4px 8px' }}>歩数<span style={{ opacity: 0.7, fontWeight: 400 }}>(修正可)</span></th>
+                                        <th style={{ textAlign: 'right', padding: '4px 8px' }}>平均ストライド(m)</th>
+                                        <th style={{ textAlign: 'right', padding: '4px 8px' }}>平均ピッチ(歩/s)</th>
+                                        <th style={{ textAlign: 'right', padding: '4px 8px' }}>平均速度(m/s)</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {panningSegmentStride.map((s, idx) => (
+                                        <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                          <td style={{ padding: '4px 8px' }}>{s.startDistance}-{s.endDistance}m</td>
+                                          <td style={{ textAlign: 'right', padding: '4px 8px' }}>
+                                            <input
+                                              type="number"
+                                              min={1}
+                                              step={1}
+                                              value={s.steps}
+                                              onChange={(e) => {
+                                                const v = parseInt(e.target.value, 10);
+                                                setPanningSegStepsOverride((prev) => {
+                                                  const next = { ...prev };
+                                                  if (Number.isFinite(v) && v > 0) next[String(s.startDistance)] = v;
+                                                  else delete next[String(s.startDistance)];
+                                                  return next;
+                                                });
+                                              }}
+                                              style={{ width: 52, textAlign: 'right', padding: '2px 4px', borderRadius: 5, border: s.edited ? '2px solid #fbbf24' : '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.9)', color: '#1e293b', fontWeight: 700, fontSize: 13 }}
+                                              title="歩数を直接修正できます（加速初期の取りこぼし補正）"
+                                            />
+                                          </td>
+                                          <td style={{ textAlign: 'right', padding: '4px 8px', fontWeight: 700, color: s.edited ? '#fde68a' : undefined }}>{s.avgStride.toFixed(2)}</td>
+                                          <td style={{ textAlign: 'right', padding: '4px 8px' }}>{s.avgPitch.toFixed(2)}</td>
+                                          <td style={{ textAlign: 'right', padding: '4px 8px' }}>{s.avgSpeed.toFixed(2)}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+
+                            <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: 4, marginTop: 8 }}>
+                              {panningContacts != null
+                                ? '✅ 1歩ごとのストライド（手動接地・接地位置から換算＝正確）'
+                                : '👣 各歩のストライド（自動検出・参考）'}
+                            </div>
+                            <div style={{ fontSize: '0.8rem', opacity: 0.85, marginBottom: 10 }}>
+                              {panningContacts != null ? (
+                                <>あなたが入力した接地フレームから、各接地の距離をスプリット間補間で換算 → 連続接地の差＝ストライド。<strong>接地が正確なら1歩ごとも正確</strong>です。</>
+                              ) : (
+                                <>接地を自動検出し各歩の距離を推定。<strong>加速初期は接地を取りこぼす</strong>ため、正確に出すには下の動画で<strong>「🦶 接地を入力する」→ Space で接地をマーク</strong>してください（特にスタート〜数歩）。</>
+                              )}
+                              {panningStrideAnalysis.avgStride != null && (
+                                <> 平均ストライド <strong>{panningStrideAnalysis.avgStride.toFixed(2)}m</strong>
+                                  {panningStrideAnalysis.maxStride != null && <> ／ 最大 <strong>{panningStrideAnalysis.maxStride.toFixed(2)}m</strong></>}
+                                </>
+                              )}
+                            </div>
+                            {/* ストライド×距離 グラフ */}
+                            <div style={{ background: 'rgba(255,255,255,0.95)', borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                              <Line
+                                data={{
+                                  labels: panningStrideAnalysis.steps.filter(s => s.stride != null && !s.extrapolated).map(s => s.distance.toFixed(1)),
+                                  datasets: [
+                                    {
+                                      label: 'トレンド（移動平均）',
+                                      data: panningStrideAnalysis.steps.filter(s => s.stride != null && !s.extrapolated).map(s => s.trend as number),
+                                      borderColor: '#1d4ed8',
+                                      backgroundColor: 'transparent',
+                                      borderWidth: 3,
+                                      tension: 0.4,
+                                      pointRadius: 0,
+                                    },
+                                    {
+                                      label: 'ストライド（各歩）',
+                                      data: panningStrideAnalysis.steps.filter(s => s.stride != null && !s.extrapolated).map(s => s.stride as number),
+                                      borderColor: 'rgba(5,150,105,0.55)',
+                                      backgroundColor: 'rgba(5,150,105,0.10)',
+                                      borderWidth: 1,
+                                      tension: 0.3,
+                                      pointRadius: 2,
+                                    },
+                                  ],
+                                }}
+                                options={{
+                                  responsive: true,
+                                  plugins: { legend: { display: true }, title: { display: true, text: 'ストライドの変化（横軸: スタートからの距離 m）' } },
+                                  scales: { y: { title: { display: true, text: 'ストライド (m)' } }, x: { title: { display: true, text: '距離 (m)' } } },
+                                }}
+                              />
+                            </div>
+                            {/* 表 */}
+                            <div style={{ overflowX: 'auto' }}>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                <thead>
+                                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.3)' }}>
+                                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>歩</th>
+                                    <th style={{ textAlign: 'left', padding: '4px 8px' }}>足</th>
+                                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>距離(m)</th>
+                                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>ストライド 平滑<span style={{ opacity: 0.6, fontWeight: 400 }}>(生)</span></th>
+                                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>ピッチ(歩/s)</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {panningStrideAnalysis.steps.map((s) => (
+                                    <tr key={s.stepNo} style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', opacity: s.extrapolated ? 0.5 : 1 }}>
+                                      <td style={{ padding: '4px 8px' }}>{s.stepNo}</td>
+                                      <td style={{ padding: '4px 8px' }}>{s.side === 'L' ? '左' : s.side === 'R' ? '右' : '-'}</td>
+                                      <td style={{ textAlign: 'right', padding: '4px 8px' }}>
+                                        {s.distance.toFixed(2)}
+                                        {s.extrapolated && <span style={{ fontSize: '0.72em', color: '#fca5a5', marginLeft: 4 }}>⚠️外挿</span>}
+                                      </td>
+                                      <td style={{ textAlign: 'right', padding: '4px 8px' }}>
+                                        {s.extrapolated ? (
+                                          <span style={{ opacity: 0.7 }}>{s.stride != null ? s.stride.toFixed(2) : '-'}<span style={{ fontSize: '0.72em', marginLeft: 3 }}>(参考)</span></span>
+                                        ) : (
+                                          <>
+                                            <strong>{s.trend != null ? s.trend.toFixed(2) : '-'}</strong>
+                                            {s.stride != null && <span style={{ opacity: 0.5, fontSize: '0.8em', marginLeft: 4 }}>({s.stride.toFixed(2)})</span>}
+                                          </>
+                                        )}
+                                      </td>
+                                      <td style={{ textAlign: 'right', padding: '4px 8px' }}>{s.frequency != null ? s.frequency.toFixed(2) : '-'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+
                     {/* 区間ごとの詳細（サブアコーディオン） */}
                     <div style={{
                       marginTop: '20px'
                     }}>
-                      <h4 style={{ 
+                      <h4 style={{
                         margin: '0 0 12px 0',
                         fontSize: '1.1rem',
                         cursor: 'pointer',
@@ -14134,8 +15316,8 @@ case 6: {
                       )}
                     </div>
                     
-                    {/* H-FVP分析（サブアコーディオン） */}
-                    {panningSprintAnalysis.hfvpData && (
+                    {/* H-FVP分析（サブアコーディオン）— レース(100m以上/タイムのみ)モードでは非表示 */}
+                    {panningSprintAnalysis.hfvpData && panningPoseMode !== 'timeOnly' && (
                     <div style={{ marginTop: '24px' }}>
                       <h4 style={{ 
                         margin: '0 0 12px 0',
@@ -14288,7 +15470,7 @@ case 6: {
                             background: 'rgba(255,255,255,0.15)',
                             borderRadius: '8px'
                           }}>
-                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>{Math.round(panningSprintAnalysis.totalDistance)}mタイム（実測）</div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>50mタイム（実測）</div>
                             <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
                               {panningSprintAnalysis.totalTime.toFixed(2)}
                             </div>
@@ -14400,8 +15582,8 @@ case 6: {
                     )}
                     
 
-                    {/* ===== H-FVP結果パネル（ADD/REPLACE）===== */}
-                    {hfvpDashboard && (
+                    {/* ===== H-FVP結果パネル（ADD/REPLACE）===== レースモード(タイムのみ)では非表示 */}
+                    {hfvpDashboard && panningPoseMode !== 'timeOnly' && (
                       <div style={{
                         marginTop: '24px',
                         padding: '20px',
