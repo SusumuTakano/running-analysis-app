@@ -15608,7 +15608,35 @@ case 6: {
                             Horizontal Force-Velocity Profile
                           </span>
                         </h4>
-                        
+
+                        {/* かんたん解説（折りたたみ）— 一般の方でも各指標の意味が分かるように */}
+                        <details style={{
+                          marginBottom: '16px',
+                          background: '#ffffff',
+                          color: '#1f2937',
+                          borderRadius: '8px',
+                          border: '1px solid rgba(0,0,0,0.1)'
+                        }}>
+                          <summary style={{ cursor: 'pointer', padding: '12px 14px', fontWeight: 700, color: '#7c3aed' }}>
+                            ❓ この数値のかんたん解説（クリックで開く）
+                          </summary>
+                          <div style={{ padding: '0 14px 14px', fontSize: '0.85rem', lineHeight: 1.75 }}>
+                            <p style={{ margin: '6px 0' }}><strong>F0（相対）</strong>：地面を押す<strong>力の強さ</strong>（体重あたり）。スタート〜低速で押し出す力。大きいほど<strong>出足が力強い</strong>。</p>
+                            <p style={{ margin: '6px 0' }}><strong>V0（理論最大速度）</strong>：理論上の<strong>最高スピードの上限</strong>。大きいほど<strong>高速域の伸びしろ</strong>が大きい。</p>
+                            <p style={{ margin: '6px 0' }}><strong>Pmax（相対）</strong>：力×速度の<strong>最大パワー</strong>（体重あたり）。<strong>加速の総合力</strong>。大きいほど良い。</p>
+                            <p style={{ margin: '6px 0' }}><strong>RFmax</strong>：蹴る力を<strong>前方向へ向けられる割合</strong>の最大＝<strong>スタートの技術効率</strong>。高いほど前へ力を使えている。</p>
+                            <p style={{ margin: '6px 0' }}><strong>DRF</strong>：速度が上がるほど前方向の効率がどれだけ落ちるか（マイナス）。<strong>0に近いほど高速でも前へ押し続けられる</strong>（技術の持続力）。</p>
+                            <p style={{ margin: '6px 0' }}><strong>Vmax（実測）</strong>：実際に計測された<strong>最高速度</strong>。</p>
+                            <p style={{ margin: '6px 0' }}><strong>τ（tau）</strong>：最高速へ達する<strong>素早さ</strong>の指標。<strong>小さいほど早く加速</strong>できている。</p>
+                            <p style={{ margin: '10px 0 6px', paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.1)' }}>
+                              <strong>ざっくり：</strong> F0＝出足の力／V0＝トップスピードの伸び／Pmax＝加速の総合力／RFmax・DRF＝走りの技術効率。
+                            </p>
+                            <p style={{ margin: '6px 0', color: '#6b7280' }}>
+                              <strong>信頼度の見方：</strong>下の「データ品質」の R² が1に近いほど信頼できます（目安：0.9↑＝優、0.8前後＝良、0.6前後＝可）。本解析は<strong>スポーツ科学の標準手法（Samozino法）による推定値</strong>で、絶対値そのものより<strong>同じ選手の変化・比較</strong>に向いています。精度を上げるには、距離校正を正確に・適切なfps・体重／身長の正確な入力を。
+                            </p>
+                          </div>
+                        </details>
+
                         {/* 1段目: F0(相対), V0, Pmax(相対), RFmax */}
                         <div style={{
                           display: 'grid',
