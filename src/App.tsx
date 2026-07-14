@@ -1735,6 +1735,13 @@ const [notesInput, setNotesInput] = useState<string>("");
   
   // 互換性のため、contactFrames を計算で生成（接地・離地を交互に並べる）
   // 🔥 バリデーション追加：離地フレームは必ず接地フレームより後でなければならない
+  // 🔧 接地・離地検出やスナップの「フレーム窓」は120fps基準で調整されている。
+  //    低FPS動画（30fps等）では同じフレーム数が数倍の実時間になり、離地の飛び・重複拒否・
+  //    マーク不能の原因になるため、実FPS（usedTargetFps）に合わせて窓を縮小する（120fps以上は従来どおり）。
+  const detectionFpsScale = Math.min(1, Math.max(0.1, (usedTargetFps ?? 120) / 120));
+  const scaledFrames = (frames120: number, minFrames: number = 1) =>
+    Math.max(minFrames, Math.round(frames120 * detectionFpsScale));
+
   const contactFrames = useMemo(() => {
     const result: number[] = [];
     for (let i = 0; i < manualContactFrames.length; i++) {
@@ -1745,10 +1752,10 @@ const [notesInput, setNotesInput] = useState<string>("");
       if (calibrationType === 3) {
         if (i < manualToeOffFrames.length) {
           let toeOffFrame = manualToeOffFrames[i];
-          // 🔥 バリデーション：離地が接地以前なら、接地+10フレームに自動修正
+          // 🔥 バリデーション：離地が接地以前なら、接地+α（FPS連動）フレームに自動修正
           if (toeOffFrame <= contactFrame) {
             console.warn(`⚠️ ステップ${i + 1}: 離地(${toeOffFrame})が接地(${contactFrame})以前です。自動修正します。`);
-            toeOffFrame = contactFrame + 10;
+            toeOffFrame = contactFrame + scaledFrames(10, 2);
           }
           result.push(toeOffFrame);
         }
@@ -1756,17 +1763,17 @@ const [notesInput, setNotesInput] = useState<string>("");
         // 方式1,2の場合はautoToeOffFramesを使用
         if (i < autoToeOffFrames.length) {
           let toeOffFrame = autoToeOffFrames[i];
-          // 🔥 バリデーション：離地が接地以前なら、接地+10フレームに自動修正
+          // 🔥 バリデーション：離地が接地以前なら、接地+α（FPS連動）フレームに自動修正
           if (toeOffFrame <= contactFrame) {
             console.warn(`⚠️ ステップ${i + 1}: 離地(${toeOffFrame})が接地(${contactFrame})以前です。自動修正します。`);
-            toeOffFrame = contactFrame + 10;
+            toeOffFrame = contactFrame + scaledFrames(10, 2);
           }
           result.push(toeOffFrame);
         }
       }
     }
     return result;
-  }, [manualContactFrames, autoToeOffFrames, manualToeOffFrames, calibrationType]);
+  }, [manualContactFrames, autoToeOffFrames, manualToeOffFrames, calibrationType, usedTargetFps]);
 
   const handleClearMarkers = () => {
     setManualContactFrames([]);
@@ -2155,13 +2162,13 @@ const [notesInput, setNotesInput] = useState<string>("");
       if (toeOffFrame !== null) {
         console.log(`✅ ループ ${loopCount}: 離地検出 Frame ${toeOffFrame}`);
         detectedToeOffs.push(toeOffFrame);
-        // 次の検索は離地フレームの直後から（5→3に短縮）
-        searchStartFrame = toeOffFrame + 3;
+        // 次の検索は離地フレームの直後から（FPS連動）
+        searchStartFrame = toeOffFrame + scaledFrames(3, 1);
         console.log(`➡️ 次の検索開始: ${searchStartFrame}`);
       } else {
         console.warn(`⚠️ ループ ${loopCount}: 離地が検出できませんでした（接地=${contactFrame}）`);
-        // 離地が見つからない場合でも、接地の直後から次を検索（10→5に短縮）
-        searchStartFrame = contactFrame + 5;
+        // 離地が見つからない場合でも、接地の直後から次を検索（FPS連動）
+        searchStartFrame = contactFrame + scaledFrames(5, 2);
         console.log(`➡️ 離地未検出、次の検索開始: ${searchStartFrame}`);
       }
     }
@@ -2180,12 +2187,13 @@ const [notesInput, setNotesInput] = useState<string>("");
     
     for (let i = 0; i < detectedContacts.length; i++) {
       const contact = detectedContacts[i];
-      let toeOff = i < detectedToeOffs.length ? detectedToeOffs[i] : contact + 15;
-      
-      // 離地が接地以前の場合は、接地+15フレームに設定
+      const fallbackToeOff = Math.min(poseResults.length - 1, contact + scaledFrames(15, 3));
+      let toeOff = i < detectedToeOffs.length ? detectedToeOffs[i] : fallbackToeOff;
+
+      // 離地が接地以前の場合は、接地+α（FPS連動・動画範囲内）に設定
       if (toeOff <= contact) {
-        console.warn(`⚠️ ステップ${i + 1}: 検出した離地(${toeOff})が接地(${contact})以前。自動修正: ${contact + 15}`);
-        toeOff = contact + 15;
+        console.warn(`⚠️ ステップ${i + 1}: 検出した離地(${toeOff})が接地(${contact})以前。自動修正: ${fallbackToeOff}`);
+        toeOff = fallbackToeOff;
       }
       
       // 前のステップの離地より後であることを確認
@@ -2211,16 +2219,16 @@ const [notesInput, setNotesInput] = useState<string>("");
     } else {
       // モード2・3: キャリブレーションの1歩目を保持し、その後に自動検出結果を追加
       const firstContact = manualContactFrames[0];
-      // キャリブレーションの接地が自動検出と重複しないように
-      const newContacts = validatedContacts.filter(c => c > firstContact + 10);
+      // キャリブレーションの接地が自動検出と重複しないように（FPS連動）
+      const newContacts = validatedContacts.filter(c => c > firstContact + scaledFrames(10, 3));
       const newToeOffs = validatedToeOffs.slice(validatedContacts.length - newContacts.length);
-      
+
       setManualContactFrames([firstContact, ...newContacts]);
       // 最初の離地も含める
       if (autoToeOffFrames.length > 0) {
         setAutoToeOffFrames([autoToeOffFrames[0], ...newToeOffs]);
       } else {
-        setAutoToeOffFrames([firstContact + 15, ...newToeOffs]);
+        setAutoToeOffFrames([Math.min(poseResults.length - 1, firstContact + scaledFrames(15, 3)), ...newToeOffs]);
       }
     }
   };
@@ -2408,7 +2416,7 @@ const [notesInput, setNotesInput] = useState<string>("");
     //    グローバルなしきい値だと、足の届きが浅い歩を取りこぼす（→ ストライド倍増）。
     //    ピークは各歩で確実に立つので、ピーク基準の相対判定なら取りこぼさず、かつ
     //    プラトーの始点を取れば被験者の蹴り方に依らず“着地”を捉えられる。
-    const W = 4;
+    const W = scaledFrames(4, 2); // ピーク判定窓（FPS連動）
     const minPeakVal = minY + range * 0.45; // この高さ未満は接地相ではない
     let peakIdx = -1;
     for (let i = W; i < N - W; i++) {
@@ -2453,8 +2461,8 @@ const [notesInput, setNotesInput] = useState<string>("");
   ): number | null => {
     if (!poseResults.length) return null;
 
-    // 🔒 前の接地から「最大○フレーム先」までだけを見る（飛び歩き防止）
-    const maxSearchFrames = 90; // 120fpsなら ≒0.75秒分
+    // 🔒 前の接地から「最大○フレーム先」までだけを見る（飛び歩き防止・FPS連動）
+    const maxSearchFrames = scaledFrames(90, 20); // ≒0.75秒分
     const from = Math.max(0, startFrame);
     const to = Math.min(
       poseResults.length - 1,
@@ -2509,9 +2517,9 @@ const [notesInput, setNotesInput] = useState<string>("");
 
     console.log(`🔍 離地検出開始（改訂版）: 接地フレーム=${contactFrame}`);
 
-    const minContactDuration = 8; // 少なくともこれだけは接地していると仮定
+    const minContactDuration = scaledFrames(8, 2); // 少なくともこれだけは接地していると仮定（FPS連動）
     const searchStart = contactFrame; // プラトー判定のため接地直後から見る
-    const searchEnd = Math.min(contactFrame + 60, poseResults.length - 1); // 最大 ≒0.5秒@120fps
+    const searchEnd = Math.min(contactFrame + scaledFrames(60, 10), poseResults.length - 1); // 最大 ≒0.5秒
 
     type ToePoint = { frame: number; y: number };
     const toePoints: ToePoint[] = [];
@@ -2603,8 +2611,8 @@ const [notesInput, setNotesInput] = useState<string>("");
       const riseDuration = riseFrames.length;
       
       // 条件1：明確に上昇開始（負の速度）
-      // 条件2：継続的に上昇（少なくとも3フレーム）
-      if (v1 < -velUp && avgVel < -velUp * 0.4 && riseDuration >= 3) {
+      // 条件2：継続的に上昇（FPS連動の最低フレーム数）
+      if (v1 < -velUp && avgVel < -velUp * 0.4 && riseDuration >= scaledFrames(3, 2)) {
         // スコア：上昇速度が大きく、継続期間が長いほど高い
         const score = Math.abs(avgVel) * riseDuration;
         toeOffCandidates.push({
@@ -2723,10 +2731,11 @@ type MarkKind = "contact" | "toeOff";
 //    おおまかに登録しても、近くの接地フレームに自動で吸着させる。
 function snapToLowestToe(frame: number, W: number = 6): number {
   if (!snapAssist) return frame;
+  const w = scaledFrames(W, 2); // 吸着窓はFPS連動（30fpsで±6コマ=±0.2秒だと1歩分ズレるため）
   let best = frame;
   let bestY = -Infinity;
-  const lo = Math.max(0, frame - W);
-  const hi = Math.min(poseResults.length - 1, frame + W);
+  const lo = Math.max(0, frame - w);
+  const hi = Math.min(poseResults.length - 1, frame + w);
   for (let fr = lo; fr <= hi; fr++) {
     const feat = getMultiJointFeatures(poseResults[fr]);
     if (!feat) continue;
@@ -2744,8 +2753,8 @@ function handleMarkAtCurrentFrame(kind?: MarkKind) {
   // 半自動：接地だけ手動、離地は自動検出
   if (calibrationType === 2) {
     const cf = snapToLowestToe(f);           // 接地はスナップ補助で吸着
-    // 重複防止: すでに近く(±3コマ)に接地がある場合は登録しない
-    if (manualContactFrames.some((c) => Math.abs(c - cf) <= 3)) {
+    // 重複防止: すでに近くに接地がある場合は登録しない（窓はFPS連動）
+    if (manualContactFrames.some((c) => Math.abs(c - cf) <= scaledFrames(3, 1))) {
       console.warn(`⚠️ 近くに既に接地があります（${cf}）。重複登録をスキップしました`);
       if (cf !== f) setCurrentFrame(cf);
       return;
@@ -2777,8 +2786,8 @@ function handleMarkAtCurrentFrame(kind?: MarkKind) {
 
     if (nextKind === "contact") {
       const cf = snapToLowestToe(f);         // 接地のみスナップ（離地は吸着しない）
-      // 重複防止: すでに近く(±3コマ)に接地がある場合は登録しない
-      if (manualContactFrames.some((c) => Math.abs(c - cf) <= 3)) {
+      // 重複防止: すでに近くに接地がある場合は登録しない（窓はFPS連動）
+      if (manualContactFrames.some((c) => Math.abs(c - cf) <= scaledFrames(3, 1))) {
         console.warn(`⚠️ 近くに既に接地があります（${cf}）。重複登録をスキップしました`);
         if (cf !== f) setCurrentFrame(cf);
         return;
@@ -2826,7 +2835,7 @@ function handleMarkAtCurrentFrame(kind?: MarkKind) {
     const range = mx - mn;
     if (!(range > 1e-4)) return [] as number[];
     const minPeak = mn + range * 0.45;
-    const W = 4;
+    const W = scaledFrames(4, 2); // ピーク判定窓（FPS連動）
     const peaks: number[] = [];
     for (let i = W; i < N - W; i++) {
       if (!Number.isFinite(sm[i]) || sm[i] < minPeak) continue;
@@ -2840,7 +2849,9 @@ function handleMarkAtCurrentFrame(kind?: MarkKind) {
     //    連続接地（左右交互）は実際 0.18〜0.25秒間隔なので、0.13秒以内の候補は
     //    同一接地とみなし、relativeToeHeight が大きい（足が低い）方だけ残す。
     const fps = usedTargetFps && usedTargetFps > 0 ? usedTargetFps : 60;
-    const minGap = Math.max(8, Math.round(fps * 0.13));
+    // 最低間隔は時間基準（0.13秒）。フレーム数の下限8は120fps前提だったため、
+    // 30fps動画で本物の接地候補まで削っていた → 下限は2コマに緩和
+    const minGap = Math.max(2, Math.round(fps * 0.13));
     const filtered: number[] = [];
     for (const p of peaks) {
       if (filtered.length === 0) { filtered.push(p); continue; }
