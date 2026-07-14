@@ -7498,25 +7498,19 @@ console.log(
   const isSlowBaked = fileFps < 40; // 30fps前後 → スロー焼き込み
 
   if (isSlowBaked) {
-    // タイプA: 30fpsコンテナ。スロー焼き込み（中身は高FPS）か、通常の30fps動画かで
-    // 時間換算が4倍変わるため、選択FPSと食い違う場合はユーザーに確認する
+    // タイプA: 30fpsコンテナ。選択FPSと食い違う場合は、ファイルの実FPSを自動採用する。
+    // （以前はダイアログで確認していたが、「120fpsで撮ったはず」という思い込みで
+    //   誤答すると全検出が破綻するため、ファイルの実測値を正とする）
     if (targetFps >= fileFps * 1.5) {
-      const isRealSlowMo = confirm(
-        `📹 この動画ファイルは約${Math.round(fileFps)}fpsで記録されています（選択FPS: ${targetFps}）。\n\n` +
-        `「スローモーション」モードで撮影した動画ですか？\n\n` +
-        `OK ＝ スロー撮影（${targetFps}fps相当として解析）\n` +
-        `キャンセル ＝ 通常撮影（${Math.round(fileFps)}fpsとして解析）\n\n` +
-        `※ 通常の「ビデオ」モードで撮った動画は「キャンセル」を押してください。\n` +
-        `※ 120fpsで測定したい場合は、カメラ設定を 1080p/120fps（またはスローモード）にして撮り直してください。`
+      const correctedFps = Math.max(1, Math.round(fileFps));
+      alert(
+        `📹 この動画ファイルは ${correctedFps}fps で記録されているため、${correctedFps}fps として解析します。\n\n` +
+        `（選択されていた ${targetFps}fps は使用しません。FPS表示が ${correctedFps} になるのは正常です）\n\n` +
+        `⚡ 120fpsで精密測定するには、撮影に使うiPhoneの\n` +
+        `「設定 → カメラ → ビデオ撮影 → 1080p/120fps」を有効にして撮り直してください。`
       );
-      if (isRealSlowMo) {
-        // スロー焼き込み: 抽出はコンテナfps（全フレーム取得）、実時間換算は本来のFPS
-        slowMoRealFps = targetFps;
-        console.log(`🎿 Slow-mo baked confirmed: analysis at ${targetFps}fps (extraction at ${fileFps.toFixed(2)}fps)`);
-      } else {
-        targetFps = Math.max(1, Math.round(fileFps));
-        console.log(`📉 Normal-speed video: analysisFps corrected to ${targetFps}fps (was mismatched with file)`);
-      }
+      targetFps = correctedFps;
+      console.log(`📉 File is ${fileFps.toFixed(2)}fps: analysisFps auto-corrected to ${targetFps}fps`);
     }
     console.log(`🟢 SINGLE-CAM TYPE A: Slow-motion baked (fileFps=${fileFps.toFixed(2)})`);
     console.log(`  - Container duration: ${duration}s`);
