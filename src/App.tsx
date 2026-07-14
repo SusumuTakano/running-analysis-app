@@ -8078,19 +8078,23 @@ if (totalFrames > MAX_FRAMES) {
       // アスペクト比を保持
       canvas.style.objectFit = 'contain';
     } else {
-      // PC/その他の場合: 親コンテナの幅いっぱいまで広げる（高さは比率で自動）
+      // PC/その他の場合: 「コンテナ幅」と「最大高さ」の両方に収まる最大サイズを
+      // アスペクト比を保ったまま計算する。
+      // ⚠️ 従来は幅を固定した後に maxHeight で高さだけ切り詰めていたため、
+      //    横長の大画面では映像が縦に潰れていた（アスペクト比崩れの原因）。
       const containerWidth = canvas.parentElement?.clientWidth || window.innerWidth;
       const videoAspectRatio = w / h;
-      const displayWidth = containerWidth;
-      const displayHeight = containerWidth / videoAspectRatio;
+      // 下の操作欄（前/次の接地・接地マーク等）が見えるよう、動画の高さを抑える。
+      // スマホは画面が狭いのでさらに低く（マーク欄が隠れないように）
+      const isSmallScreen = typeof window !== 'undefined' && window.innerWidth < 768;
+      const maxHeightPx = window.innerHeight * (isSmallScreen ? 0.24 : 0.42);
+      const displayWidth = Math.min(containerWidth, maxHeightPx * videoAspectRatio);
+      const displayHeight = displayWidth / videoAspectRatio;
 
       canvas.style.width = `${displayWidth}px`;
       canvas.style.height = `${displayHeight}px`;
       canvas.style.maxWidth = '100%';
-      // 下の操作欄（前/次の接地・接地マーク等）が見えるよう、動画の高さを抑える。
-      // スマホは画面が狭いのでさらに低く（マーク欄が隠れないように）
-      const isSmallScreen = typeof window !== 'undefined' && window.innerWidth < 768;
-      canvas.style.maxHeight = isSmallScreen ? '24vh' : '42vh';
+      canvas.style.maxHeight = '';
     }
 
     if (!footZoomEnabled) {

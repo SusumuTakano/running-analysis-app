@@ -25,7 +25,8 @@ import modal
 app = modal.App("pose-server")
 
 # ── モデル URL (halpe26 = 26キーポイント、MediaPipe互換変換あり) ──
-DET_URL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_tiny_8xb8-300e_humanart-6f3252f9.zip"
+# yolox_tiny(416固定) → yolox_m(640): 1080p映像で遠い/ブラーの強い走者の検出率を上げる
+DET_URL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_m_8xb8-300e_humanart-c2c7a14a.zip"
 POSE_URL = "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-l_simcc-body7_pt-body7-halpe26_700e-256x192-2abb7558_20230605.zip"
 
 
@@ -35,7 +36,7 @@ def _preload_models():
     from rtmlib import Body
     Body(
         det=DET_URL,
-        det_input_size=(416, 416),
+        det_input_size=(640, 640),
         pose=POSE_URL,
         pose_input_size=(192, 256),
         to_openpose=False,
@@ -86,7 +87,9 @@ class PoseServer:
         from rtmlib import Body
         self.body = Body(
             det=DET_URL,
-            det_input_size=(416, 416),
+            # 416→640: 1080p映像で遠い/ブラーの強い走者の検出率を上げる
+            # （T4では1フレームあたり数msの増加で済む）
+            det_input_size=(640, 640),
             pose=POSE_URL,
             pose_input_size=(192, 256),
             to_openpose=False,
@@ -261,41 +264,6 @@ class PoseServer:
                 if rotate_code in (90, 270):
                     w, h = h, w
 
-                samples = [total // 3, total // 2, total * 2 // 3]
-                best_area = 0
-                ref_hip_x = None
-                ref_frame = None
-                positions = []
-
-                for fi in samples:
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, fi)
-                    ret, frame_img = cap.read()
-                    if not ret:
-                        continue
-                    frame_img = _apply_rotation(frame_img)  # 📱 回転メタデータを適用
-                    if roi_rect:
-                        rx, ry, rw, rh = int(roi_rect[0]*w), int(roi_rect[1]*h), int(roi_rect[2]*w), int(roi_rect[3]*h)
-                        frame_img = frame_img[ry:ry+rh, rx:rx+rw]
-                    kps, _ = self.body(frame_img)
-                    for kp in kps:
-                        v = kp[kp[:, 0] > 0]
-                        if len(v) < 3:
-                            continue
-                        area = (v[:, 0].max() - v[:, 0].min()) * (v[:, 1].max() - v[:, 1].min())
-                        if area > best_area:
-                            best_area = area
-                            hip_x = float((kp[11, 0] + kp[12, 0]) / 2)
-                            if roi_rect:
-                                hip_x += roi_rect[0] * w
-                            positions.append((fi, hip_x))
-
-                velocity = 0
-                if len(positions) >= 2:
-                    positions.sort()
-                    velocity = (positions[-1][1] - positions[0][1]) / (positions[-1][0] - positions[0][0])
-                    ref_frame = positions[len(positions) // 2][0]
-                    ref_hip_x = positions[len(positions) // 2][1]
-
                 # 処理する範囲（フレーム番号）。範囲外は推論せず空ランドマークで埋め、
                 # 返却配列は常に全フレーム長を維持（フロントのフレーム対応をそのまま使える）。
                 sf = min(max(int(round(sf_frac * total)), 0), total)
@@ -304,18 +272,22 @@ class PoseServer:
                 def _empty_lm():
                     return [{"x": 0, "y": 0, "z": 0, "visibility": 0} for _ in range(33)]
 
-                all_landmarks = []
                 t0 = time.time()
 
-                # 範囲手前は推論スキップ
-                for _ in range(sf):
-                    all_landmarks.append(_empty_lm())
+                # 🏃 走者追跡方式:
+                #   従来は毎フレーム「最大の人物」を選んでいたが、見学者や寝ている人が
+                #   カメラに近い（＝大きく写る）と走者以外を拾ってしまう。
+                #   → 全フレームの候補者を集め、近傍マッチングでトラック（人物の軌跡）を作り、
+                #     「最も大きく水平移動したトラック」＝走者として採用する。
+                #     静止している見学者はトラックの移動量がほぼ0なので確実に除外される。
 
+                # 1) 各フレームの人物候補を収集
+                frame_cands = []  # index: fi - sf
                 cap.set(cv2.CAP_PROP_POS_FRAMES, sf)
                 for fi in range(sf, ef):
                     ret, frame_img = cap.read()
                     if not ret:
-                        all_landmarks.append([{"x": 0, "y": 0, "z": 0, "visibility": 0}] * 33)
+                        frame_cands.append([])
                         continue
 
                     frame_img = _apply_rotation(frame_img)  # 📱 回転メタデータを適用
@@ -330,32 +302,219 @@ class PoseServer:
                         offset_x, offset_y = rx, ry
 
                     kps, sc = self.body(frame_for_pose)
-
-                    # 速度予測は off (走者選択の一貫性確保のため毎フレーム最大人物を選ぶ)
-                    kp, scores = select_runner(kps, sc, None)
-
-                    if kp is not None:
+                    cands = []
+                    for kp, s in zip(kps, sc):
+                        v = kp[kp[:, 0] > 0]
+                        if len(v) < 3:
+                            continue
+                        area = float((v[:, 0].max() - v[:, 0].min()) * (v[:, 1].max() - v[:, 1].min()))
                         kp_full = kp.copy()
                         kp_full[:, 0] += offset_x
                         kp_full[:, 1] += offset_y
-                        landmarks = halpe_to_mediapipe(kp_full, scores, w, h)
-                    else:
-                        landmarks = [{"x": 0, "y": 0, "z": 0, "visibility": 0}] * 33
-
-                    all_landmarks.append(landmarks)
+                        hx = float((kp_full[11, 0] + kp_full[12, 0]) / 2)
+                        hy = float((kp_full[11, 1] + kp_full[12, 1]) / 2)
+                        cands.append({"kp": kp_full, "sc": s, "area": area, "hx": hx, "hy": hy})
+                    frame_cands.append(cands)
 
                     if fi % 60 == 0:
                         print(f"  Frame {fi}/{ef} (range {sf}-{ef}/{total}) ({time.time()-t0:.1f}s)")
 
-                # 範囲より後ろは推論スキップ（空で埋めて全長を維持）
+                # 2) 近傍マッチングでトラック構築（等速予測つき）
+                #    予測位置 = 前回位置 + 速度×経過フレーム。
+                #    これにより走者が静止した見学者とすれ違っても、トラックは走者の
+                #    進行方向を追い続け、静止人物に乗り移らない。
+                GATE = max(w, h) * 0.03   # 1フレームあたりの許容移動量（例: 1920pxで約58px）
+                MAX_SKIP = 30             # 検出抜けを許容するフレーム数
+                tracks = []
+                for idx, cands in enumerate(frame_cands):
+                    assigned = set()
+                    for tr in tracks:
+                        gap = idx - tr["last_idx"]
+                        if gap <= 0 or gap > MAX_SKIP:
+                            continue
+                        pred_x = tr["last_hx"] + tr["vx"] * gap
+                        pred_y = tr["last_hy"]
+                        best_j, best_d = None, None
+                        for j, c in enumerate(cands):
+                            if j in assigned:
+                                continue
+                            d = ((c["hx"] - pred_x) ** 2 + (c["hy"] - pred_y) ** 2) ** 0.5
+                            if best_d is None or d < best_d:
+                                best_j, best_d = j, d
+                        if best_j is not None and best_d <= GATE * min(gap, 5):
+                            c = cands[best_j]
+                            assigned.add(best_j)
+                            new_vx = (c["hx"] - tr["last_hx"]) / gap
+                            tr["vx"] = new_vx if tr["n"] < 2 else (0.6 * tr["vx"] + 0.4 * new_vx)
+                            tr["n"] += 1
+                            tr["items"][idx] = c
+                            tr["last_idx"] = idx
+                            tr["last_hx"] = c["hx"]
+                            tr["last_hy"] = c["hy"]
+                            tr["min_hx"] = min(tr["min_hx"], c["hx"])
+                            tr["max_hx"] = max(tr["max_hx"], c["hx"])
+                    for j, c in enumerate(cands):
+                        if j not in assigned:
+                            tracks.append({
+                                "items": {idx: c},
+                                "last_idx": idx,
+                                "last_hx": c["hx"], "last_hy": c["hy"],
+                                "min_hx": c["hx"], "max_hx": c["hx"],
+                                "vx": 0.0, "n": 1,
+                            })
+
+                # 3a) 各トラックの「静止区間」を刈り取る
+                #     すれ違いで静止人物に乗り移った尻尾や、静止見学者そのものを除去する。
+                #     （10フレームで幅1.2%未満しか動かない区間を静止とみなす。
+                #       検出ジッターは±10px程度あるため0.5%では静止人物を刈り取れない。
+                #       走者は最徐行でも10フレームで60px以上動くので誤刈りしない）
+                STILL_EPS = w * 0.012
+                STILL_WIN = 10
+
+                def _trim_static(items):
+                    idxs = sorted(items.keys())
+                    if len(idxs) < STILL_WIN:
+                        return items
+                    xs = {i: items[i]["hx"] for i in idxs}
+                    # 末尾から: 直近STILL_WINフレームの移動が小さい間は削る
+                    while len(idxs) >= STILL_WIN:
+                        tail = idxs[-STILL_WIN:]
+                        if max(xs[i] for i in tail) - min(xs[i] for i in tail) < STILL_EPS:
+                            idxs.pop()
+                        else:
+                            break
+                    # 先頭から同様
+                    while len(idxs) >= STILL_WIN:
+                        head = idxs[:STILL_WIN]
+                        if max(xs[i] for i in head) - min(xs[i] for i in head) < STILL_EPS:
+                            idxs.pop(0)
+                        else:
+                            break
+                    return {i: items[i] for i in idxs}
+
+                moving_tracks = []
+                for tr in tracks:
+                    items = _trim_static(tr["items"])
+                    if len(items) < 5:
+                        continue
+                    idxs = sorted(items.keys())
+                    xs = [items[i]["hx"] for i in idxs]
+                    span = max(xs) - min(xs)
+                    if span < w * 0.03:
+                        continue  # ほぼ動いていない → 走者ではない
+                    vx = (xs[-1] - xs[0]) / max(1, idxs[-1] - idxs[0])
+                    moving_tracks.append({
+                        "items": items, "start": idxs[0], "end": idxs[-1],
+                        "start_hx": xs[0], "end_hx": xs[-1], "vx": vx, "span": span,
+                    })
+
+                # 3b) 途切れた走者トラックを速度整合で縫合（すれ違いで分断された前後をつなぐ）
+                moving_tracks.sort(key=lambda t: t["start"])
+                stitched = []
+                for tr in moving_tracks:
+                    merged = False
+                    for st in stitched:
+                        gap = tr["start"] - st["end"]
+                        # すれ違い分断では数フレーム重なることがあるため、小さな重なりも許容
+                        if gap < -10 or gap > MAX_SKIP * 2:
+                            continue
+                        pred = st["end_hx"] + st["vx"] * gap
+                        same_dir = (st["vx"] * tr["vx"] > 0) or abs(tr["vx"]) < 1.0
+                        if same_dir and abs(tr["start_hx"] - pred) <= GATE * min(max(gap, 1), 8):
+                            st["items"].update(tr["items"])
+                            st["end"] = tr["end"]
+                            st["end_hx"] = tr["end_hx"]
+                            idxs = sorted(st["items"].keys())
+                            xs = [st["items"][i]["hx"] for i in idxs]
+                            st["span"] = max(xs) - min(xs)
+                            st["vx"] = (xs[-1] - xs[0]) / max(1, idxs[-1] - idxs[0])
+                            merged = True
+                            break
+                    if not merged:
+                        stitched.append(tr)
+
+                # 3c) 縫合後にもう一度静止区間を刈り、「最も水平移動した」トラック＝走者
+                runner = None
+                best_span = 0.0
+                for tr in stitched:
+                    tr["items"] = _trim_static(tr["items"])
+                    if len(tr["items"]) < 5:
+                        continue
+                    xs = [c["hx"] for c in tr["items"].values()]
+                    tr["span"] = max(xs) - min(xs)
+                    if tr["span"] > best_span:
+                        best_span, runner = tr["span"], tr
+
+                use_tracking = runner is not None and best_span > w * 0.15
+
+                # 3d) 走者トラックの欠測フレームを他トラックの整合候補で補完
+                #     （すれ違い時に別トラックへ流れた走者の検出を回収する）
+                if use_tracking:
+                    import bisect
+                    r_idxs = sorted(runner["items"].keys())
+                    r_xs = [runner["items"][i]["hx"] for i in r_idxs]
+
+                    def _interp_hx(i):
+                        p = bisect.bisect_left(r_idxs, i)
+                        if p <= 0 or p >= len(r_idxs):
+                            return None
+                        i0, i1 = r_idxs[p - 1], r_idxs[p]
+                        x0, x1 = r_xs[p - 1], r_xs[p]
+                        return x0 + (x1 - x0) * (i - i0) / max(1, i1 - i0)
+
+                    filled = 0
+                    for tr in stitched:
+                        if tr is runner:
+                            continue
+                        for i, c in tr["items"].items():
+                            if i in runner["items"]:
+                                continue
+                            exp = _interp_hx(i)
+                            if exp is not None and abs(c["hx"] - exp) <= GATE * 2:
+                                runner["items"][i] = c
+                                filled += 1
+                    if filled:
+                        print(f"🧩 欠測補完: 他トラックから{filled}フレーム回収")
+
+                if use_tracking:
+                    print(f"🏃 走者トラック採用: {len(runner['items'])}フレーム, 水平移動 {best_span:.0f}px / {w}px, トラック数={len(tracks)}")
+                else:
+                    print(f"⚠️ 移動トラックなし → 従来の最大人物方式にフォールバック (トラック数={len(tracks)}, best_span={best_span:.0f}px)")
+
+                # 4) ランドマーク列を構築（範囲外・欠測は空で埋める）
+                all_landmarks = [_empty_lm() for _ in range(sf)]
+                for idx in range(len(frame_cands)):
+                    if use_tracking:
+                        c = runner["items"].get(idx)
+                    else:
+                        cands = frame_cands[idx]
+                        c = max(cands, key=lambda x: x["area"]) if cands else None
+                    if c is not None:
+                        all_landmarks.append(halpe_to_mediapipe(c["kp"], c["sc"], w, h))
+                    else:
+                        all_landmarks.append(_empty_lm())
                 for _ in range(ef, total):
                     all_landmarks.append(_empty_lm())
+
+                # 走行方向は走者トラックの始点→終点から判定
+                velocity = 0.0
+                if use_tracking and len(runner["items"]) >= 2:
+                    idxs = sorted(runner["items"].keys())
+                    velocity = (runner["items"][idxs[-1]]["hx"] - runner["items"][idxs[0]]["hx"]) / max(1, idxs[-1] - idxs[0])
 
                 cap.release()
                 elapsed = time.time() - t0
 
+                debug_tracks = [
+                    {"start": t["start"], "end": t["end"],
+                     "startHx": round(t["start_hx"]), "endHx": round(t["end_hx"]),
+                     "vx": round(t["vx"], 2), "frames": len(t["items"]), "span": round(t["span"])}
+                    for t in stitched
+                ]
+
                 return JSONResponse({
                     "landmarks": all_landmarks,
+                    "debugTracks": debug_tracks,
                     "fps": fps,
                     "totalFrames": len(all_landmarks),
                     "width": w,
