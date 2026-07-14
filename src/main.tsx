@@ -351,15 +351,14 @@ const AppTopNav: React.FC = () => {
           >
             <span
               style={{
-                fontSize: isMobile ? 16 : 20,
-                fontWeight: 800,
+                fontSize: isMobile ? 13 : 16,
+                fontWeight: 700,
                 color: "#111827",
-                letterSpacing: "0.06em",
                 textOverflow: "ellipsis",
                 overflow: "hidden",
               }}
             >
-              ⚡ SPRINT&nbsp;TIMER
+              ランニング動作解析システム
             </span>
             {!isMobile && (
               <span

@@ -1192,54 +1192,6 @@ body {
   }
 }
 
-/* ★ 最重要: スマホ・タブレット・短い画面では固定(sticky)をやめ、ページ全体をスクロール可能に。
-   固定だとヘッダーが画面の大半を占め、下の一覧が1行しか見えなくなるため。
-   幅1366px以下（全iPad・ノートPC含む）または 高さ1024px以下（横向きタブレット等）で解除。 */
-@media (max-width: 1366px), (max-height: 1024px) {
-  .wizard-content.step-6 .step6-sticky {
-    position: static !important;
-    top: auto !important;
-    box-shadow: none !important;
-    border-bottom: none !important;
-  }
-}
-
-/* 📱 ステップ6: スマホでは中身も圧縮して一覧が見えるように */
-@media (max-width: 768px) {
-  .wizard-content.step-6 .step6-sticky-inner { padding: 5px 10px; }
-  .wizard-content.step-6 .step6-controls-row { margin: 3px 0; }
-
-  /* 表示オプション（足元拡大/倍率/スケルトン/クリア/スナップ）をコンパクトに */
-  .wizard-content.step-6 .mobile-view-options { gap: 6px; }
-  .wizard-content.step-6 .mobile-view-options .toggle-btn,
-  .wizard-content.step-6 .mobile-view-options .btn-ghost-small {
-    padding: 6px 10px;
-    font-size: 0.82rem;
-    min-height: 0;
-  }
-  .wizard-content.step-6 .mobile-view-options .zoom-control {
-    margin-top: 4px !important;
-    font-size: 0.82rem;
-  }
-
-  /* フレーム数表示・スライダー・コマ送り/接地ジャンプ行の余白を詰める */
-  .wizard-content.step-6 .frame-buttons-compact { margin: 4px 0 !important; gap: 8px; }
-  .wizard-content.step-6 .frame-range { margin: 4px 0 !important; }
-}
-
-/* 📄 レポート出力: 通常時は非表示、印刷時のみ表示（レポート以外を隠す） */
-.print-report { display: none; }
-@media print {
-  body * { visibility: hidden !important; }
-  .print-report, .print-report * { visibility: visible !important; }
-  .print-report {
-    display: block !important;
-    position: absolute; left: 0; top: 0; width: 100%;
-    padding: 24px; background: #fff; color: #000;
-  }
-  .no-print { display: none !important; }
-}
-
 /* 📊 結果テーブル: 横スクロール + 右端に fade インジケータ */
 .table-scroll {
   position: relative;
