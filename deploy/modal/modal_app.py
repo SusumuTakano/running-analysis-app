@@ -204,6 +204,7 @@ class PoseServer:
             roi: Optional[str] = Form(None),
             start_frac: Optional[str] = Form(None),
             end_frac: Optional[str] = Form(None),
+            mode: Optional[str] = Form(None),
         ):
             roi_rect = None
             if roi:
@@ -446,6 +447,15 @@ class PoseServer:
                         best_span, runner = tr["span"], tr
 
                 use_tracking = runner is not None and best_span > w * 0.15
+
+                # 🎥 パン撮影では走者追跡を使わない:
+                #    カメラが走者を追うため走者は画面内でほぼ静止し、逆に背景の人物が
+                #    画面を大きく横切る（見かけの移動量が最大になる）。
+                #    水平移動量による走者選択が成立しないので、従来の「毎フレーム最大人物」
+                #    方式（パン撮影で実績あり）を使う。
+                if mode == "panning":
+                    use_tracking = False
+                    print("🎥 panning mode: 走者追跡をスキップし従来方式（最大人物）を使用")
 
                 # 3d) 走者トラックの欠測フレームを他トラックの整合候補で補完
                 #     （すれ違い時に別トラックへ流れた走者の検出を回収する）

@@ -5849,6 +5849,9 @@ ${panningSprintAnalysis.intervals.map((int, idx) =>
             // 既定 0〜1 なら全区間＝従来動作。
             fd.append('start_frac', String(poseRangeStartFrac));
             fd.append('end_frac', String(poseRangeEndFrac));
+            // 撮影モードをサーバーへ伝える。固定カメラ＝走者追跡（水平移動最大の人物）、
+            // パン撮影＝従来方式（カメラが走者を追うため画面内移動では走者を特定できない）
+            fd.append('mode', analysisMode);
             console.log(`📐 姿勢推定の解析範囲: ${(poseRangeStartFrac * 100).toFixed(0)}% 〜 ${(poseRangeEndFrac * 100).toFixed(0)}%`);
 
             // タイムアウト10分（CPUプランでも完走できる余裕）
