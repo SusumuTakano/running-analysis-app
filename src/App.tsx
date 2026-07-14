@@ -6822,7 +6822,8 @@ const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
   const maxFpsForLength = Math.floor(MAX_FRAMES / Math.max(duration, 0.001));
 
 // ✅ analysisFps（接地・滞空など“時間換算”用）＝ユーザーが選択/確認したFPS
-const targetFps = Number((opts.fps ?? confirmedFps ?? selectedFps) ?? 30) || 30;
+// （動画ファイルの実FPSが選択値と食い違う場合は、後段の検出で補正されることがある）
+let targetFps = Number((opts.fps ?? confirmedFps ?? selectedFps) ?? 30) || 30;
 setUsedTargetFps(targetFps);
 console.log(`🎯 Target FPS set to: ${targetFps} (opts.fps=${opts.fps}, confirmedFps=${confirmedFps}, selectedFps=${selectedFps})`);
 
@@ -6955,9 +6956,24 @@ console.log(
   // TYPE B (Original high FPS): fileFps=120 → calculate frames with targetFps
   
   const isSlowBaked = fileFps < 40; // 30fps前後 → スロー焼き込み
-  
+
   if (isSlowBaked) {
-    // タイプA: スロー焼き込み（30fps container）
+    // タイプA: 30fpsコンテナ。スロー焼き込み（中身は高FPS）か、通常の30fps動画かで
+    // 時間換算が4倍変わるため、選択FPSと食い違う場合はユーザーに確認する
+    if (targetFps >= fileFps * 1.5) {
+      const isRealSlowMo = confirm(
+        `📹 この動画ファイルは約${Math.round(fileFps)}fpsで記録されています（選択FPS: ${targetFps}）。\n\n` +
+        `「スローモーション」モードで撮影した動画ですか？\n\n` +
+        `OK ＝ スロー撮影（${targetFps}fps相当として解析）\n` +
+        `キャンセル ＝ 通常撮影（${Math.round(fileFps)}fpsとして解析）\n\n` +
+        `※ 通常の「ビデオ」モードで撮った動画は「キャンセル」を押してください。\n` +
+        `※ 120fpsで測定したい場合は、カメラ設定を 1080p/120fps（またはスローモード）にして撮り直してください。`
+      );
+      if (!isRealSlowMo) {
+        targetFps = Math.max(1, Math.round(fileFps));
+        console.log(`📉 Normal-speed video: analysisFps corrected to ${targetFps}fps (was mismatched with file)`);
+      }
+    }
     console.log(`🟢 SINGLE-CAM TYPE A: Slow-motion baked (fileFps=${fileFps.toFixed(2)})`);
     console.log(`  - Container duration: ${duration}s`);
     console.log(`  - Using fileFps (${fileFps.toFixed(2)}) for extraction`);
