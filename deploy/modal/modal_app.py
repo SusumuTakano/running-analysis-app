@@ -283,15 +283,48 @@ class PoseServer:
                 #     静止している見学者はトラックの移動量がほぼ0なので確実に除外される。
 
                 # 1) 各フレームの人物候補を収集
+                #    パン撮影時は同じループで「黄色ポール」候補も検出（距離校正用）
                 frame_cands = []  # index: fi - sf
+                pole_cands = []   # index: fi - sf → [pole_screen_x(フル解像度px), ...]
+                PW, PH = 480, 270  # ポール検出の縮小解像度
                 cap.set(cv2.CAP_PROP_POS_FRAMES, sf)
                 for fi in range(sf, ef):
                     ret, frame_img = cap.read()
                     if not ret:
                         frame_cands.append([])
+                        pole_cands.append([])
                         continue
 
                     frame_img = _apply_rotation(frame_img)  # 📱 回転メタデータを適用
+
+                    if mode == "panning":
+                        # 🟡 黄色ポール検出: 細く縦に連続した黄色柱（日向の芝はG優勢なので R>=G で除外）
+                        small = cv2.resize(frame_img, (PW, PH), interpolation=cv2.INTER_AREA)
+                        bs = small[..., 0].astype(np.int16)  # OpenCVはBGR順
+                        gs = small[..., 1].astype(np.int16)
+                        rs = small[..., 2].astype(np.int16)
+                        yellow = (rs - bs > 60) & (rs > 160) & (rs >= gs) & (gs - bs > 30)
+                        band = yellow[int(PH * 0.25):int(PH * 0.95), :]
+                        bh = band.shape[0]
+                        runs = np.zeros(PW, dtype=np.int32)
+                        cur = np.zeros(PW, dtype=np.int32)
+                        for row in band:
+                            cur = (cur + 1) * row
+                            runs = np.maximum(runs, cur)
+                        cols = np.where(runs >= int(bh * 0.20))[0]
+                        clusters = []
+                        if len(cols):
+                            s0 = cols[0]; pg = cols[0]
+                            for c in cols[1:]:
+                                if c - pg > 3:
+                                    clusters.append((s0, pg)); s0 = c
+                                pg = c
+                            clusters.append((s0, pg))
+                        pole_cands.append([
+                            (a + b) / 2 * w / PW for (a, b) in clusters if (b - a + 1) <= 10
+                        ])
+                    else:
+                        pole_cands.append([])
                     frame_for_pose = frame_img
                     offset_x, offset_y = 0, 0
                     if roi_rect:
@@ -522,9 +555,56 @@ class PoseServer:
                     for t in stitched
                 ]
 
+                # 🟡 ポールトラック構築（パン距離校正用）:
+                #    候補を近傍マッチングで追跡し、「画面を大きく横切る細い縦柱」だけをポールとする。
+                #    走者の黄色い靴等は画面中央に留まるため横断条件で除外される。
+                pole_tracks_out = []
+                if mode == "panning" and any(pole_cands):
+                    P_GATE = w * 0.025  # 1フレームあたり許容移動
+                    ptracks = []
+                    for idx, cands_ in enumerate(pole_cands):
+                        used_ = set()
+                        for tr in ptracks:
+                            gap = idx - tr["li"]
+                            if gap <= 0 or gap > 12:
+                                continue
+                            pred = tr["lx"] + tr["vx"] * gap
+                            bj, bd = None, None
+                            for j, x in enumerate(cands_):
+                                if j in used_:
+                                    continue
+                                d_ = abs(x - pred)
+                                if bd is None or d_ < bd:
+                                    bj, bd = j, d_
+                            if bj is not None and bd <= P_GATE * gap:
+                                x = cands_[bj]; used_.add(bj)
+                                nv = (x - tr["lx"]) / gap
+                                tr["vx"] = nv if tr["n"] < 2 else 0.5 * tr["vx"] + 0.5 * nv
+                                tr["n"] += 1
+                                tr["pts"][idx] = x
+                                tr["li"], tr["lx"] = idx, x
+                        for j, x in enumerate(cands_):
+                            if j not in used_:
+                                ptracks.append({"pts": {idx: x}, "li": idx, "lx": x, "vx": 0.0, "n": 1})
+                    min_life = max(20, int(round((fps if fps and fps > 1 else 60) * 0.2)))
+                    for tr in ptracks:
+                        if len(tr["pts"]) < min_life:
+                            continue
+                        xs_ = list(tr["pts"].values())
+                        if max(xs_) - min(xs_) < w * 0.3:
+                            continue
+                        idxs_ = sorted(tr["pts"].keys())
+                        pole_tracks_out.append({
+                            "frames": [i + sf for i in idxs_],
+                            "xs": [round(tr["pts"][i], 1) for i in idxs_],
+                        })
+                    pole_tracks_out.sort(key=lambda p: p["frames"][0])
+                    print(f"🟡 ポールトラック: {len(pole_tracks_out)}本検出")
+
                 return JSONResponse({
                     "landmarks": all_landmarks,
                     "debugTracks": debug_tracks,
+                    "poleTracks": pole_tracks_out,
                     "fps": fps,
                     "totalFrames": len(all_landmarks),
                     "width": w,

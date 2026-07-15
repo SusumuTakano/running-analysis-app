@@ -972,6 +972,11 @@ useEffect(() => {
   }
   const [panningSplits, setPanningSplits] = useState<PanningSplit[]>([]);
   const [panningSplitsBackup, setPanningSplitsBackup] = useState<PanningSplit[] | null>(null); // 自動微調整前のバックアップ
+  // 🟡 ポール距離校正（パン）: サーバーが検出した黄色ポールのトラックと、ユーザー設定のポール配置
+  const [poleTracks, setPoleTracks] = useState<Array<{ frames: number[]; xs: number[] }>>([]);
+  const [poleDistancesInput, setPoleDistancesInput] = useState<string>(() => {
+    try { return localStorage.getItem('poleDistances') || '0,5,10,20,30'; } catch { return '0,5,10,20,30'; }
+  });
   const [panningStartIndex, setPanningStartIndex] = useState<number | null>(null);
   const [panningEndIndex, setPanningEndIndex] = useState<number | null>(null);
   const [panningZoomLevel, setPanningZoomLevel] = useState<number>(1); // ズームレベル (1=100%, 2=200%, etc.)
@@ -4310,6 +4315,143 @@ const clearMarksByButton = () => {
     return { steps, avgStride, maxStride };
   }, [analysisMode, panningSplits, usedTargetFps, toeContactCandidates, panningContacts, panningStartIndex, panningEndIndex, contactFootSide]);
 
+  // 🟡 ポール距離校正: サーバー検出のポールトラックにユーザー設定距離を割り当て、
+  //    走者の通過フレーム（自動スプリット）を算出する。
+  //    割り当ては「末尾合わせ」: 序盤のポールはカメラが静止していて検出されないことがあるため、
+  //    最後に横切ったポール＝距離リストの最後、と後ろから対応させる。
+  const poleCalibration = useMemo(() => {
+    if (analysisMode !== 'panning' || poleTracks.length < 1 || !usedTargetFps || !poseResults.length) return null;
+    const W = videoWidth || 1920;
+    const dists = poleDistancesInput.split(/[,、\s]+/).map(s => parseFloat(s)).filter(v => Number.isFinite(v) && v >= 0).sort((a, b) => a - b);
+    if (dists.length < 2) return null;
+    const k = Math.min(poleTracks.length, dists.length);
+    const assigned = poleTracks.slice(poleTracks.length - k).map((t, i) => ({ track: t, distance: dists[dists.length - k + i] }));
+
+    const poleXAt = (t: { frames: number[]; xs: number[] }, f: number): number | null => {
+      const fr = t.frames;
+      if (f < fr[0] || f > fr[fr.length - 1]) return null;
+      let lo = 0, hi = fr.length - 1;
+      while (lo < hi) { const m = (lo + hi) >> 1; if (fr[m] < f) lo = m + 1; else hi = m; }
+      if (fr[lo] === f) return t.xs[lo];
+      if (lo === 0) return null;
+      const f0 = fr[lo - 1], f1 = fr[lo];
+      return t.xs[lo - 1] + (t.xs[lo] - t.xs[lo - 1]) * (f - f0) / (f1 - f0);
+    };
+    const hipPx = (f: number): number | null => {
+      const lm = poseResults[f]?.landmarks;
+      if (!lm) return null;
+      const l = lm[23], r = lm[24];
+      if (!l || !r || ((l.visibility ?? 0) < 0.3 && (r.visibility ?? 0) < 0.3)) return null;
+      return ((l.x + r.x) / 2) * W;
+    };
+    // 各ポールの通過フレーム = |腰x - ポールx| が最小のフレーム
+    const crossings: Array<{ frame: number; distance: number }> = [];
+    for (const { track, distance } of assigned) {
+      let bf: number | null = null, bd = Infinity;
+      for (const f of track.frames) {
+        const h = hipPx(f); const p = poleXAt(track, f);
+        if (h == null || p == null) continue;
+        const d = Math.abs(h - p);
+        if (d < bd) { bd = d; bf = f; }
+      }
+      if (bf != null && bd < W * 0.2) crossings.push({ frame: bf, distance });
+    }
+    crossings.sort((a, b) => a.frame - b.frame);
+    return { assigned, crossings, W, poleXAt };
+  }, [analysisMode, poleTracks, poleDistancesInput, usedTargetFps, poseResults, videoWidth]);
+
+  // 🟡 位置ベースストライド: 接地中の支持足つま先の「ワールド位置」をポール基準で実測。
+  //    スケールはポール2本が同時に見える瞬間の画面距離から絶対化し、
+  //    フレームごとの脚長（腰-足首px）で遠近補正する。
+  //    ポールが見えないフレームの接地は算出しない（正直に欠測＝参考値を混ぜない）。
+  const polePositionalStride = useMemo(() => {
+    if (!poleCalibration || !usedTargetFps) return null;
+    const { assigned, W, poleXAt } = poleCalibration;
+    if (assigned.length < 2) return null;
+    const H = videoHeight || 1080;
+    const legPx = (f: number): number | null => {
+      const lm = poseResults[f]?.landmarks; if (!lm) return null;
+      if (((lm[27]?.visibility ?? 0) < 0.3) || ((lm[28]?.visibility ?? 0) < 0.3)) return null;
+      const ly = ((lm[23]?.y ?? 0) + (lm[24]?.y ?? 0)) / 2;
+      const ay = ((lm[27]?.y ?? 0) + (lm[28]?.y ?? 0)) / 2;
+      const d = (ay - ly) * H;
+      return d > 0 ? d : null;
+    };
+    const legCache = new Map<number, number | null>();
+    const legSm = (f: number): number | null => {
+      const hit = legCache.get(f);
+      if (hit !== undefined) return hit;
+      const win: number[] = [];
+      for (let k2 = Math.max(0, f - 15); k2 < Math.min(poseResults.length, f + 16); k2++) {
+        const v = legPx(k2); if (v != null) win.push(v);
+      }
+      const r = win.length ? win.sort((a, b) => a - b)[Math.floor(win.length / 2)] : null;
+      legCache.set(f, r); return r;
+    };
+    // スケール基準（隣接ポール同時可視）
+    let sRef: number | null = null, bodyRef: number | null = null;
+    outer:
+    for (let a = 0; a < assigned.length - 1; a++) {
+      const A = assigned[a], B = assigned[a + 1];
+      const f0 = Math.max(A.track.frames[0], B.track.frames[0]);
+      const f1 = Math.min(A.track.frames[A.track.frames.length - 1], B.track.frames[B.track.frames.length - 1]);
+      for (let f = f0; f <= f1; f++) {
+        const xa = poleXAt(A.track, f), xb = poleXAt(B.track, f);
+        if (xa == null || xb == null) continue;
+        const dx = Math.abs(xa - xb);
+        if (dx > 100) {
+          const lg = legSm(f);
+          if (lg) { sRef = Math.abs(B.distance - A.distance) / dx; bodyRef = lg; break outer; }
+        }
+      }
+    }
+    if (sRef == null || bodyRef == null) return null;
+    const scaleAt = (f: number) => { const lg = legSm(f); return lg ? (sRef as number) * (bodyRef as number) / lg : (sRef as number); };
+    const lowToe = (f: number): { x: number; side: 'L' | 'R' } | null => {
+      const lm = poseResults[f]?.landmarks; if (!lm) return null;
+      const cands: Array<{ x: number; y: number; side: 'L' | 'R' }> = [];
+      if ((lm[31]?.visibility ?? 0) > 0.3) cands.push({ x: lm[31].x * W, y: lm[31].y, side: 'L' });
+      if ((lm[32]?.visibility ?? 0) > 0.3) cands.push({ x: lm[32].x * W, y: lm[32].y, side: 'R' });
+      if (!cands.length) return null;
+      cands.sort((a, b) => b.y - a.y);
+      return { x: cands[0].x, side: cands[0].side };
+    };
+    const toeWorld = (f: number): number | null => {
+      const base = lowToe(f); if (!base) return null;
+      const xs: number[] = [];
+      for (let k2 = Math.max(0, f - 5); k2 < Math.min(poseResults.length, f + 6); k2++) {
+        const t = lowToe(k2); if (t && t.side === base.side) xs.push(t.x);
+      }
+      if (!xs.length) return null;
+      xs.sort((a, b) => a - b);
+      const tx = xs[Math.floor(xs.length / 2)];
+      const ests: number[] = [];
+      for (const { track, distance } of assigned) {
+        const xp = poleXAt(track, f); if (xp == null) continue;
+        ests.push(distance + (tx - xp) * scaleAt(f));
+      }
+      return ests.length ? ests.reduce((a, b) => a + b, 0) / ests.length : null;
+    };
+    const contactsAll = (panningContacts ?? toeContactCandidates).slice().sort((a, b) => a - b);
+    const rows: Array<{ frame: number; side: 'L' | 'R' | null; world: number; stride: number | null }> = [];
+    let prev: { frame: number; world: number } | null = null;
+    for (const cf of contactsAll) {
+      const w2 = toeWorld(cf);
+      if (w2 == null) { prev = null; continue; }
+      const stride = prev ? w2 - prev.world : null;
+      rows.push({
+        frame: cf,
+        side: lowToe(cf)?.side ?? null,
+        world: w2,
+        stride: stride != null && stride > 0.3 && stride < 3.5 ? stride : null,
+      });
+      prev = { frame: cf, world: w2 };
+    }
+    const valid = rows.filter(r => r.stride != null) as Array<{ stride: number }>;
+    if (!valid.length) return null;
+    return { rows, mmPerPx: (sRef as number) * 1000 };
+  }, [poleCalibration, poseResults, usedTargetFps, panningContacts, toeContactCandidates, videoHeight]);
+
   // 📊 区間ごとの平均ストライド（左右ブレに強い）。区間距離は正確なので
   //    平均ストライド = 区間距離 ÷ 区間内の歩数。1歩ごとの検出ノイズが相殺され、増加傾向がきれいに出る。
   const panningSegmentStride = useMemo(() => {
@@ -5875,6 +6017,8 @@ ${panningSprintAnalysis.intervals.map((int, idx) =>
               const data = await res.json();
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const landmarksArr: any[][] = Array.isArray(data?.landmarks) ? data.landmarks : [];
+              // 🟡 ポールトラック（パン距離校正用）を保存
+              setPoleTracks(Array.isArray(data?.poleTracks) ? data.poleTracks : []);
 
               if (landmarksArr.length > 0) {
                 // フレーム数が一致しない場合は長さを揃える
@@ -14255,6 +14399,59 @@ case 6: {
                       {panningSplits.length === 0 ? '🏁 スタート登録（手が地面を離れた瞬間）' : '⏱️ スプリット地点を登録'}
                     </div>
 
+                    {/* 🟡 ポール自動校正（サーバーが黄色ポールを検出済みの場合） */}
+                    {poleTracks.length >= 2 && (
+                      <div style={{
+                        marginBottom: '12px', padding: '12px',
+                        background: 'rgba(250, 204, 21, 0.15)', border: '1px solid rgba(250, 204, 21, 0.5)',
+                        borderRadius: '8px', fontSize: '0.9rem',
+                      }}>
+                        <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                          🟡 ポール自動校正: 動画から {poleTracks.length} 本のポールを検出
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                          <label style={{ fontSize: '0.85rem' }}>ポール配置 (m):</label>
+                          <input
+                            type="text"
+                            value={poleDistancesInput}
+                            onChange={(e) => {
+                              setPoleDistancesInput(e.target.value);
+                              try { localStorage.setItem('poleDistances', e.target.value); } catch { /* noop */ }
+                            }}
+                            placeholder="例: 0,5,10,20,30"
+                            style={{ flex: 1, minWidth: 140, padding: '6px 10px', borderRadius: 6, border: 'none', color: '#1e293b' }}
+                          />
+                        </div>
+                        <div style={{ fontSize: '0.78rem', opacity: 0.85, marginBottom: 8 }}>
+                          ※ 検出ポールには配置リストの<strong>後ろから順に</strong>距離を割り当てます
+                          （カメラが動き出す前のポールは検出されないことがあるため）。
+                          間隔は等間隔でなくてもOK（例: 0,5,10,20,30）。
+                        </div>
+                        <button
+                          disabled={!poleCalibration || poleCalibration.crossings.length < 2}
+                          onClick={() => {
+                            if (!poleCalibration || !usedTargetFps) return;
+                            const cr = poleCalibration.crossings;
+                            // 既存の手動登録（最初の通過より前＝0mスタート等）は保持して先頭に置く
+                            const keep = panningSplits.filter(s => s.frame < cr[0].frame && s.distance < cr[0].distance);
+                            const baseFrame = keep.length ? keep[0].frame : cr[0].frame;
+                            const rebuilt: PanningSplit[] = [
+                              ...keep,
+                              ...cr.map(c => ({ frame: c.frame, time: 0, distance: c.distance })),
+                            ].map(s => ({ ...s, time: (s.frame - baseFrame) / usedTargetFps }));
+                            setPanningSplits(rebuilt);
+                            console.log('🟡 ポール自動スプリット:', rebuilt.map(s => `${s.distance}m@F${s.frame}`).join(', '));
+                          }}
+                          style={{
+                            padding: '10px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                            fontWeight: 700, background: '#facc15', color: '#1e293b',
+                          }}
+                        >
+                          🟡 通過フレームを自動セット（{poleCalibration?.crossings.length ?? 0}地点）
+                        </button>
+                      </div>
+                    )}
+
                     {/* スタート地点の説明 */}
                     {panningSplits.length === 0 && (
                       <div style={{
@@ -15304,6 +15501,42 @@ case 6: {
                                 </tbody>
                               </table>
                             </div>
+                            {/* 🟡 位置ベースストライド（ポール校正・実測） */}
+                            {polePositionalStride && polePositionalStride.rows.some(r => r.stride != null) && (
+                              <div style={{ marginTop: 14, padding: 12, background: 'rgba(250,204,21,0.12)', border: '1px solid rgba(250,204,21,0.45)', borderRadius: 8 }}>
+                                <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                                  🟡 位置ベースストライド（ポール校正・実測）
+                                </div>
+                                <div style={{ fontSize: '0.78rem', opacity: 0.85, marginBottom: 8 }}>
+                                  接地した足の位置をポール基準で実測した1歩ごとの距離です（時間近似ではありません）。
+                                  ポールが映っていない瞬間の接地は表示されません。スケール: {polePositionalStride.mmPerPx.toFixed(2)} mm/px
+                                </div>
+                                <div style={{ overflowX: 'auto' }}>
+                                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                    <thead>
+                                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.3)' }}>
+                                        <th style={{ textAlign: 'left', padding: '4px 8px' }}>接地F</th>
+                                        <th style={{ textAlign: 'left', padding: '4px 8px' }}>足</th>
+                                        <th style={{ textAlign: 'right', padding: '4px 8px' }}>位置 (m)</th>
+                                        <th style={{ textAlign: 'right', padding: '4px 8px' }}>ストライド (m)</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {polePositionalStride.rows.map((r) => (
+                                        <tr key={r.frame} style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                          <td style={{ padding: '4px 8px' }}>{r.frame}</td>
+                                          <td style={{ padding: '4px 8px' }}>{r.side === 'L' ? '左' : r.side === 'R' ? '右' : '-'}</td>
+                                          <td style={{ textAlign: 'right', padding: '4px 8px' }}>{r.world.toFixed(2)}</td>
+                                          <td style={{ textAlign: 'right', padding: '4px 8px', fontWeight: 700, color: '#fde047' }}>
+                                            {r.stride != null ? r.stride.toFixed(2) : '—'}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
                           </>
                         )}
                       </div>
