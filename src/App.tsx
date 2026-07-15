@@ -3804,7 +3804,7 @@ const clearMarksByButton = () => {
     if (analysisMode !== 'panning') {
       return null;
     }
-    
+
     if (panningStartIndex === null || panningEndIndex === null || panningStartIndex >= panningEndIndex) {
       return null;
     }
@@ -7899,7 +7899,17 @@ if (totalFrames > MAX_FRAMES) {
       const onSeeked = () => {
         video.removeEventListener("seeked", onSeeked);
 
-        requestAnimationFrame(() => {
+        // ⚠️ requestAnimationFrame はタブ/ウインドウが非表示だと発火しない
+        //    （抽出中に別タブへ切り替えると永久に止まる実バグの原因だった）。
+        //    表示中は rAF（描画同期で確実）、非表示中は setTimeout で継続する。
+        const schedule = (cb: () => void) => {
+          if (document.visibilityState === 'visible') {
+            requestAnimationFrame(cb);
+          } else {
+            setTimeout(cb, 0);
+          }
+        };
+        schedule(() => {
           try {
             ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
             
@@ -14440,6 +14450,9 @@ case 6: {
                               ...cr.map(c => ({ frame: c.frame, time: 0, distance: c.distance })),
                             ].map(s => ({ ...s, time: (s.frame - baseFrame) / usedTargetFps }));
                             setPanningSplits(rebuilt);
+                            // 測定区間も自動選択（開始=最初の地点、終了=最後の地点。後から変更可）
+                            setPanningStartIndex(0);
+                            setPanningEndIndex(rebuilt.length - 1);
                             console.log('🟡 ポール自動スプリット:', rebuilt.map(s => `${s.distance}m@F${s.frame}`).join(', '));
                           }}
                           style={{
