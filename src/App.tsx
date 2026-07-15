@@ -4262,7 +4262,7 @@ const clearMarksByButton = () => {
     const contacts = candidates.filter((f) => f >= loF && f <= hiFExt).sort((a, b) => a - b);
     if (contacts.length < 2) return null;
 
-    const steps: Array<{ stepNo: number; frame: number; distance: number; time: number; side: 'L' | 'R' | null; stride: number | null; frequency: number | null; trend: number | null; extrapolated: boolean }> = [];
+    const steps: Array<{ stepNo: number; frame: number; distance: number; time: number; side: 'L' | 'R' | null; stride: number | null; frequency: number | null; trend: number | null; pairAvg: number | null; extrapolated: boolean }> = [];
     for (let i = 0; i < contacts.length; i++) {
       const f = contacts[i];
       const d = distAt(f);
@@ -4278,7 +4278,15 @@ const clearMarksByButton = () => {
         const dt = tm - pt;
         frequency = dt > 0 ? 1 / dt : null;
       }
-      steps.push({ stepNo: i + 1, frame: f, distance: d, time: tm, side: contactFootSide(f), stride, frequency, trend: null, extrapolated });
+      steps.push({ stepNo: i + 1, frame: f, distance: d, time: tm, side: contactFootSide(f), stride, frequency, trend: null, pairAvg: null, extrapolated });
+    }
+    // 👣 2歩ペア平均: 隣接する右+左の2歩を平均して、pose系統差による
+    //    「長-短-長-短」の左右交互振動をキャンセルする（固定カメラの2歩ペア平均と同じ考え方）
+    for (let i = 1; i < steps.length; i++) {
+      const a = steps[i - 1], b = steps[i];
+      if (a.stride != null && b.stride != null && !a.extrapolated && !b.extrapolated) {
+        b.pairAvg = (a.stride + b.stride) / 2;
+      }
     }
     // 📈 トレンド（移動中央値→平均）: 左右交互のブレ＋取りこぼし外れ値を相殺して
     //    「徐々に伸びる」傾向を出す。幅±3（7歩）。まず中央値で外れ値を抑え、近傍平均で滑らかに。
@@ -15230,6 +15238,16 @@ case 6: {
                                       pointRadius: 0,
                                     },
                                     {
+                                      label: '2歩ペア平均（左右キャンセル）',
+                                      data: panningStrideAnalysis.steps.filter(s => s.stride != null && !s.extrapolated).map(s => s.pairAvg),
+                                      borderColor: '#ea580c',
+                                      backgroundColor: 'transparent',
+                                      borderWidth: 2,
+                                      tension: 0.35,
+                                      pointRadius: 2,
+                                      spanGaps: true,
+                                    },
+                                    {
                                       label: 'ストライド（各歩）',
                                       data: panningStrideAnalysis.steps.filter(s => s.stride != null && !s.extrapolated).map(s => s.stride as number),
                                       borderColor: 'rgba(5,150,105,0.55)',
@@ -15256,6 +15274,7 @@ case 6: {
                                     <th style={{ textAlign: 'left', padding: '4px 8px' }}>足</th>
                                     <th style={{ textAlign: 'right', padding: '4px 8px' }}>距離(m)</th>
                                     <th style={{ textAlign: 'right', padding: '4px 8px' }}>ストライド 平滑<span style={{ opacity: 0.6, fontWeight: 400 }}>(生)</span></th>
+                                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>2歩ペア平均</th>
                                     <th style={{ textAlign: 'right', padding: '4px 8px' }}>ピッチ(歩/s)</th>
                                   </tr>
                                 </thead>
@@ -15277,7 +15296,8 @@ case 6: {
                                             {s.stride != null && <span style={{ opacity: 0.5, fontSize: '0.8em', marginLeft: 4 }}>({s.stride.toFixed(2)})</span>}
                                           </>
                                         )}
-                                      </td>
+                      </td>
+                                      <td style={{ textAlign: 'right', padding: '4px 8px', color: '#fdba74', fontWeight: 600 }}>{s.pairAvg != null ? s.pairAvg.toFixed(2) : '-'}</td>
                                       <td style={{ textAlign: 'right', padding: '4px 8px' }}>{s.frequency != null ? s.frequency.toFixed(2) : '-'}</td>
                                     </tr>
                                   ))}
