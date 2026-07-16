@@ -15702,8 +15702,10 @@ case 6: {
                       )}
                     </div>
                     
-                    {/* H-FVP分析（サブアコーディオン）— レース(100m以上/タイムのみ)モードでは非表示 */}
-                    {panningSprintAnalysis.hfvpData && panningPoseMode !== 'timeOnly' && (
+                    {/* H-FVP分析（サブアコーディオン）— レース(100m以上/タイムのみ)モードでは非表示。
+                        ⚡指数モデル有効時も非表示（旧計算の数値と混在して矛盾表示になるため。
+                        高精度版は下の「H-FVP結果」パネルに集約） */}
+                    {hfvpDashboard?.method !== 'expo' && panningSprintAnalysis.hfvpData && panningPoseMode !== 'timeOnly' && (
                     <div style={{ marginTop: '24px' }}>
                       <h4 style={{ 
                         margin: '0 0 12px 0',
