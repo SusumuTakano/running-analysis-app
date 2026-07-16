@@ -3955,14 +3955,18 @@ const clearMarksByButton = () => {
       // 🎯 AI改善提案の生成
       const generateImprovementGoals = () => {
         const goals = [];
-        
-        // 体重別の標準値（アスリートレベル）
+
+        // 基準値は文献のエリート域に基づく（男女別）
+        //   F0: Rabita et al. 2015（エリート男子 9-10 N/kg）
+        //   V0: Morin et al. 2012（エリート男子 11-13 m/s）
+        //   Pmax: Samozino et al. 2016（エリート男子 25 W/kg 前後）
         const weight = athleteInfo.weight_kg;
-        
+        const isFemale = athleteInfo.gender === 'female';
+
         // F0の評価と目標
-        const F0_target = weight * 4.5; // 理想値: 体重×4.5 N/kg
-        const F0_excellent = weight * 5.5; // 優秀: 体重×5.5 N/kg
-        const F0_percent = (F0 / F0_target) * 100;
+        const F0_target = weight * (isFemale ? 7.0 : 8.0);     // 理想値 N
+        const F0_excellent = weight * (isFemale ? 8.0 : 9.5);  // 優秀 N
+        const F0_percent = Math.min(100, (F0 / F0_target) * 100); // 100%でキャップ（水増し防止）
         
         if (F0 < F0_target) {
           goals.push({
@@ -3977,9 +3981,9 @@ const clearMarksByButton = () => {
         }
         
         // V0の評価と目標
-        const V0_target = 11.0; // 理想値: 11.0 m/s
-        const V0_excellent = 12.0; // 優秀: 12.0 m/s
-        const V0_percent = (v0 / V0_target) * 100;
+        const V0_target = isFemale ? 9.5 : 10.5;    // 理想値 m/s
+        const V0_excellent = isFemale ? 10.5 : 11.5; // 優秀 m/s
+        const V0_percent = Math.min(100, (v0 / V0_target) * 100);
         
         if (v0 < V0_target) {
           goals.push({
@@ -3994,9 +3998,9 @@ const clearMarksByButton = () => {
         }
         
         // Pmaxの評価と目標
-        const Pmax_target = weight * 15; // 理想値: 体重×15 W/kg
-        const Pmax_excellent = weight * 20; // 優秀: 体重×20 W/kg
-        const Pmax_percent = (Pmax / Pmax_target) * 100;
+        const Pmax_target = weight * (isFemale ? 17 : 21);    // 理想値 W
+        const Pmax_excellent = weight * (isFemale ? 20 : 25); // 優秀 W
+        const Pmax_percent = Math.min(100, (Pmax / Pmax_target) * 100);
         
         if (Pmax < Pmax_target) {
           goals.push({
@@ -4029,11 +4033,23 @@ const clearMarksByButton = () => {
         
         // 全体評価
         const overall_score = (F0_percent + V0_percent + Pmax_percent) / 3;
-        
+
+        // 総合レベルは「実測の最高速度」を主軸に判定する。
+        // F0/V0/Pmaxの達成率平均だと、加速型の選手（F0が高くV0が低い）が
+        // 実際の走力に対して過大評価される（例: 100m 13秒の選手がエリート判定）ため。
+        // 目安バンド（男子）: <7.5 初級 / 7.5-8.5 中級 / 8.5-9.6 上級 / >9.6 エリート
+        //   （エリート男子のトップスピードは11m/s超・100m10秒台前半で9.6m/s以上が目安）
+        const vmaxMeasured = intervals.length ? Math.max(...intervals.map((iv) => iv.speed || 0)) : 0;
+        const vmaxBands = isFemale ? [6.6, 7.5, 8.5] : [7.5, 8.5, 9.6];
+        const overall_level =
+          vmaxMeasured < vmaxBands[0] ? '初級'
+          : vmaxMeasured < vmaxBands[1] ? '中級'
+          : vmaxMeasured < vmaxBands[2] ? '上級' : 'エリート';
+
         return {
           goals,
           overall_score: overall_score.toFixed(1),
-          overall_level: overall_score < 70 ? '初級' : overall_score < 85 ? '中級' : overall_score < 95 ? '上級' : 'エリート',
+          overall_level,
           summary: overall_score >= 95 
             ? '素晴らしいパフォーマンスです！現状維持と微調整に集中しましょう。' 
             : overall_score >= 85 
