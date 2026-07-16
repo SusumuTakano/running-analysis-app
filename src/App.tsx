@@ -1652,43 +1652,23 @@ const [notesInput, setNotesInput] = useState<string>("");
 
   // 🆕 姿勢推定の解析範囲（割合 0〜1）。既定は全区間。区間を絞ると姿勢推定が高速化する。
   //    前回指定した範囲を localStorage に保存し、次の動画でも初期値として引き継ぐ。
-  const [poseRangeStartFrac, setPoseRangeStartFrac] = useState<number>(() => {
-    if (typeof window === 'undefined') return 0;
-    const v = Number(window.localStorage.getItem('poseRangeStartFrac'));
-    return Number.isFinite(v) && v >= 0 && v < 1 ? v : 0;
-  });
-  const [poseRangeEndFrac, setPoseRangeEndFrac] = useState<number>(() => {
-    if (typeof window === 'undefined') return 1;
-    const v = Number(window.localStorage.getItem('poseRangeEndFrac'));
-    return Number.isFinite(v) && v > 0 && v <= 1 ? v : 1;
-  });
-  // 範囲が変わるたびに保存（次の動画・次回起動でも引き継ぐ）
-  useEffect(() => {
-    try {
-      window.localStorage.setItem('poseRangeStartFrac', String(poseRangeStartFrac));
-      window.localStorage.setItem('poseRangeEndFrac', String(poseRangeEndFrac));
-    } catch { /* localStorage 不可環境は無視 */ }
-  }, [poseRangeStartFrac, poseRangeEndFrac]);
+  // ⚠️ 姿勢推定範囲は動画ごとに設定するもの。以前はlocalStorageで次の動画へ持ち越して
+  //    いたが、「前の動画の範囲比率が新しい動画の走行中に食い込み、スタート/フィニッシュ
+  //    前後の姿勢が推定されない」事故の原因だったため、持ち越しを廃止（既定=全範囲）。
+  const [poseRangeStartFrac, setPoseRangeStartFrac] = useState<number>(0);
+  const [poseRangeEndFrac, setPoseRangeEndFrac] = useState<number>(1);
   // 🆕 アップロード画面で粗く指定するスタート/フィニッシュ地点（割合 0〜1, 未指定は null）。
   //    抽出後に sectionStartFrame/sectionEndFrame の初期値となり、ステップ5で微調整する。
-  const [roughStartFrac, setRoughStartFrac] = useState<number | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const v = Number(window.localStorage.getItem('roughStartFrac'));
-    return Number.isFinite(v) && v >= 0 && v < 1 ? v : null;
-  });
-  const [roughFinishFrac, setRoughFinishFrac] = useState<number | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const v = Number(window.localStorage.getItem('roughFinishFrac'));
-    return Number.isFinite(v) && v > 0 && v <= 1 ? v : null;
-  });
+  //    ※ 姿勢推定範囲と同じく持ち越し事故防止のためlocalStorage永続は廃止（動画ごとに指定）
+  const [roughStartFrac, setRoughStartFrac] = useState<number | null>(null);
+  const [roughFinishFrac, setRoughFinishFrac] = useState<number | null>(null);
+  // 動画ファイルが変わったら範囲指定をすべてリセット（前の動画の範囲を新しい動画に適用しない）
   useEffect(() => {
-    try {
-      if (roughStartFrac == null) window.localStorage.removeItem('roughStartFrac');
-      else window.localStorage.setItem('roughStartFrac', String(roughStartFrac));
-      if (roughFinishFrac == null) window.localStorage.removeItem('roughFinishFrac');
-      else window.localStorage.setItem('roughFinishFrac', String(roughFinishFrac));
-    } catch { /* localStorage 不可環境は無視 */ }
-  }, [roughStartFrac, roughFinishFrac]);
+    setPoseRangeStartFrac(0);
+    setPoseRangeEndFrac(1);
+    setRoughStartFrac(null);
+    setRoughFinishFrac(null);
+  }, [videoFile]);
 
   // 抽出後に「範囲指定」を挟むか（自動でフル推定する従来動作とは別経路）
   const [awaitingPoseRange, setAwaitingPoseRange] = useState<boolean>(false);
@@ -12016,9 +11996,11 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
                 if (v && v.duration > 0) {
                   const f = Math.min(Math.max(v.currentTime / v.duration, 0), 0.97);
                   setRoughStartFrac(f);
-                  // 姿勢推定範囲は前後に余裕(10%)を付けて自動設定
-                  setPoseRangeStartFrac(Math.max(0, f - 0.1));
-                  if (roughFinishFrac != null) setPoseRangeEndFrac(Math.min(1, roughFinishFrac + 0.1));
+                  // 姿勢推定範囲は前後に「時間で2秒」の余裕を自動設定
+                  // （固定10%だと長い動画で無駄・短い動画で不足し、スタート/フィニッシュ前後の姿勢が欠けるため）
+                  const margin = Math.max(0.1, 2.0 / v.duration);
+                  setPoseRangeStartFrac(Math.max(0, f - margin));
+                  if (roughFinishFrac != null) setPoseRangeEndFrac(Math.min(1, roughFinishFrac + margin));
                 }
               }}
               style={{ padding: '8px 14px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
@@ -12032,8 +12014,10 @@ if (false /* multi mode disabled */ && isMultiCameraSetup) {
                 if (v && v.duration > 0) {
                   const f = Math.min(Math.max(v.currentTime / v.duration, 0.03), 1);
                   setRoughFinishFrac(f);
-                  setPoseRangeEndFrac(Math.min(1, f + 0.1));
-                  if (roughStartFrac != null) setPoseRangeStartFrac(Math.max(0, roughStartFrac - 0.1));
+                  // 前後に「時間で2秒」の余裕（フィニッシュ後の減速局面も姿勢推定に含める）
+                  const margin = Math.max(0.1, 2.0 / v.duration);
+                  setPoseRangeEndFrac(Math.min(1, f + margin));
+                  if (roughStartFrac != null) setPoseRangeStartFrac(Math.max(0, roughStartFrac - margin));
                 }
               }}
               style={{ padding: '8px 14px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
