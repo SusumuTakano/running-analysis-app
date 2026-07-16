@@ -15963,24 +15963,24 @@ case 6: {
                             background: 'rgba(255,255,255,0.15)',
                             borderRadius: '8px'
                           }}>
-                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>50mタイム（実測）</div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>{panningSprintAnalysis.totalDistance.toFixed(0)}mタイム（実測）</div>
                             <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
                               {panningSprintAnalysis.totalTime.toFixed(2)}
                             </div>
                             <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>秒</div>
                           </div>
-                          
+
                           <div style={{
                             padding: '14px',
                             background: 'rgba(139,92,246,0.3)',
                             borderRadius: '8px',
                             border: '2px solid rgba(139,92,246,0.5)'
                           }}>
-                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>100m予測タイム</div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '4px' }}>100m換算（F-Vモデル）</div>
                             <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
-                              {panningSprintAnalysis.estimated100mTime.toFixed(2)}
+                              {goalAchievement.estimated100mTime.toFixed(2)}
                             </div>
-                            <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>秒</div>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>秒 ※不足・達成度と同じ計算</div>
                           </div>
                           
                           <div style={{
