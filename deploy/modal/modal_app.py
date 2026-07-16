@@ -270,6 +270,14 @@ class PoseServer:
                 sf = min(max(int(round(sf_frac * total)), 0), total)
                 ef = min(max(int(round(ef_frac * total)), sf), total)
 
+                # 🛡️ 安全マージン: クライアント指定の範囲に前後2秒ぶんを必ず追加する。
+                #    範囲指定が狭すぎる/古いクライアントでも、スタートの構えや
+                #    フィニッシュ後の減速局面の姿勢が欠けないようにする（コスト増は僅か）。
+                if sf > 0 or ef < total:
+                    margin_f = int(round((fps if fps and fps > 1 else 60) * 2.0))
+                    sf = max(0, sf - margin_f)
+                    ef = min(total, ef + margin_f)
+
                 def _empty_lm():
                     return [{"x": 0, "y": 0, "z": 0, "visibility": 0} for _ in range(33)]
 
