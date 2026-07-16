@@ -4264,7 +4264,7 @@ const clearMarksByButton = () => {
     const contacts = candidates.filter((f) => f >= loF && f <= hiFExt).sort((a, b) => a - b);
     if (contacts.length < 2) return null;
 
-    const steps: Array<{ stepNo: number; frame: number; distance: number; time: number; side: 'L' | 'R' | null; stride: number | null; frequency: number | null; trend: number | null; pairAvg: number | null; extrapolated: boolean }> = [];
+    const steps: Array<{ stepNo: number; frame: number; distance: number; time: number; side: 'L' | 'R' | null; stride: number | null; frequency: number | null; trend: number | null; pairAvg: number | null; pairFrequency: number | null; flagged: boolean; extrapolated: boolean }> = [];
     for (let i = 0; i < contacts.length; i++) {
       const f = contacts[i];
       const d = distAt(f);
@@ -4280,7 +4280,7 @@ const clearMarksByButton = () => {
         const dt = tm - pt;
         frequency = dt > 0 ? 1 / dt : null;
       }
-      steps.push({ stepNo: i + 1, frame: f, distance: d, time: tm, side: contactFootSide(f), stride, frequency, trend: null, pairAvg: null, extrapolated });
+      steps.push({ stepNo: i + 1, frame: f, distance: d, time: tm, side: contactFootSide(f), stride, frequency, trend: null, pairAvg: null, pairFrequency: null, flagged: false, extrapolated });
     }
     // 👣 2歩ペア平均: 隣接する右+左の2歩を平均して、pose系統差による
     //    「長-短-長-短」の左右交互振動をキャンセルする（固定カメラの2歩ペア平均と同じ考え方）
@@ -4288,6 +4288,31 @@ const clearMarksByButton = () => {
       const a = steps[i - 1], b = steps[i];
       if (a.stride != null && b.stride != null && !a.extrapolated && !b.extrapolated) {
         b.pairAvg = (a.stride + b.stride) / 2;
+      }
+    }
+    // ⏱️ ピッチも同様に2歩ペア平均を主値とする（接地検出の±1コマ誤差が
+    //    1歩ピッチでは±0.2歩/s級の振れになるため。2歩合計時間なら誤差が半減）
+    // ＋ 歩時間が近傍中央値から15%超ずれる歩に「要確認」フラグ（接地マークずれの検出）
+    const stepDts: Array<number | null> = steps.map((s, i) =>
+      i > 0 ? s.time - steps[i - 1].time : null
+    );
+    for (let i = 1; i < steps.length; i++) {
+      const dtCur = stepDts[i];
+      const dtPrev = i >= 2 ? stepDts[i - 1] : null;
+      if (dtCur != null && dtPrev != null && dtCur > 0 && dtPrev > 0) {
+        steps[i].pairFrequency = 2 / (dtCur + dtPrev);
+      }
+      if (dtCur != null && dtCur > 0) {
+        const nb: number[] = [];
+        for (let k = Math.max(1, i - 3); k <= Math.min(steps.length - 1, i + 3); k++) {
+          const v = stepDts[k];
+          if (v != null && v > 0) nb.push(v);
+        }
+        if (nb.length >= 3) {
+          nb.sort((x, y) => x - y);
+          const med = nb[Math.floor(nb.length / 2)];
+          if (Math.abs(dtCur - med) > 0.15 * med) steps[i].flagged = true;
+        }
       }
     }
     // 📈 トレンド（移動中央値→平均）: 左右交互のブレ＋取りこぼし外れ値を相殺して
@@ -15623,7 +15648,7 @@ case 6: {
                                     <th style={{ textAlign: 'right', padding: '4px 8px' }}>距離(m)</th>
                                     <th style={{ textAlign: 'right', padding: '4px 8px' }}>ストライド 平滑<span style={{ opacity: 0.6, fontWeight: 400 }}>(生)</span></th>
                                     <th style={{ textAlign: 'right', padding: '4px 8px' }}>2歩ペア平均</th>
-                                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>ピッチ(歩/s)</th>
+                                    <th style={{ textAlign: 'right', padding: '4px 8px' }}>ピッチ 2歩ペア<span style={{ opacity: 0.6, fontWeight: 400 }}>(生)</span> 歩/s</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -15646,7 +15671,15 @@ case 6: {
                                         )}
                       </td>
                                       <td style={{ textAlign: 'right', padding: '4px 8px', color: '#fdba74', fontWeight: 600 }}>{s.pairAvg != null ? s.pairAvg.toFixed(2) : '-'}</td>
-                                      <td style={{ textAlign: 'right', padding: '4px 8px' }}>{s.frequency != null ? s.frequency.toFixed(2) : '-'}</td>
+                                      <td style={{ textAlign: 'right', padding: '4px 8px' }}>
+                                        <strong>{s.pairFrequency != null ? s.pairFrequency.toFixed(2) : (s.frequency != null ? s.frequency.toFixed(2) : '-')}</strong>
+                                        {s.pairFrequency != null && s.frequency != null && (
+                                          <span style={{ opacity: 0.5, fontSize: '0.8em', marginLeft: 4 }}>({s.frequency.toFixed(2)})</span>
+                                        )}
+                                        {s.flagged && (
+                                          <span title="歩時間が前後と大きく異なります。接地マークのずれの可能性（±1で微調整推奨）" style={{ marginLeft: 4, cursor: 'help' }}>⚠️</span>
+                                        )}
+                                      </td>
                                     </tr>
                                   ))}
                                 </tbody>
