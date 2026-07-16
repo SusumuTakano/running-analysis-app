@@ -2721,16 +2721,36 @@ type MarkKind = "contact" | "toeOff";
 function snapToLowestToe(frame: number, W: number = 6): number {
   if (!snapAssist) return frame;
   const w = scaledFrames(W, 2); // 吸着窓はFPS連動（30fpsで±6コマ=±0.2秒だと1歩分ズレるため）
-  let best = frame;
-  let bestY = -Infinity;
   const lo = Math.max(0, frame - w);
-  const hi = Math.min(poseResults.length - 1, frame + w);
+  const hi = Math.min(poseResults.length - 1, frame + w + scaledFrames(4, 1));
+  // 窓内の「足の最低点」高さを収集。つま先だけでなく踵も見る:
+  // 踵接地の選手はつま先が接地の数コマ後まで高いままのため、つま先だけだと吸着が遅れる
+  const ys: Array<number | null> = [];
   for (let fr = lo; fr <= hi; fr++) {
-    const feat = getMultiJointFeatures(poseResults[fr]);
-    if (!feat) continue;
-    if (feat.relativeToeHeight > bestY) { bestY = feat.relativeToeHeight; best = fr; }
+    const lm = poseResults[fr]?.landmarks;
+    if (!lm) { ys.push(null); continue; }
+    const hipY = (((lm[23]?.y ?? 0) + (lm[24]?.y ?? 0)) / 2);
+    const parts = [lm[29], lm[30], lm[31], lm[32]].filter(p => p && (p.visibility ?? 0) > 0.3);
+    if (!parts.length || !(hipY > 0)) { ys.push(null); continue; }
+    const footY = Math.max(...parts.map(p => p!.y));
+    ys.push(footY - hipY);
   }
-  return best;
+  // ピーク（最低点＝足裏が最も沈むコマ）を探す
+  let peakIdx = -1, peakY = -Infinity, minY = Infinity;
+  ys.forEach((y, i) => {
+    if (y == null) return;
+    if (y > peakY) { peakY = y; peakIdx = i; }
+    if (y < minY) minY = y;
+  });
+  if (peakIdx < 0) return frame;
+  // ⚠️ 「最低点」は着地の3〜5コマ後（足裏が潰れて沈み込んだ後）に来るため、
+  //    ピークからプラトーの【始まり】まで遡る＝実際の接地の瞬間に吸着する
+  //    （サーバー側の全自動検出と同じ考え方。閾値=ピークから局所レンジの6%以内）
+  const range = peakY - minY;
+  const thresh = peakY - (range > 1e-6 ? range * 0.12 : 0);
+  let td = peakIdx;
+  while (td > 0 && ys[td - 1] != null && (ys[td - 1] as number) >= thresh) td--;
+  return lo + td;
 }
 
 function handleMarkAtCurrentFrame(kind?: MarkKind) {
@@ -2851,7 +2871,20 @@ function handleMarkAtCurrentFrame(kind?: MarkKind) {
         filtered.push(p);
       }
     }
-    return filtered;
+    // ⚠️ ピーク（つま先最低点）は着地の3〜5コマ後に来るため、
+    //    各候補をプラトーの始まり（＝実際の接地の瞬間）まで遡らせる
+    const touchdown = filtered.map((p) => {
+      const lo = Math.max(0, p - Math.max(4, Math.round(fps * 0.08)));
+      let vmin = Infinity;
+      for (let k = lo; k <= p; k++) { const v = sm[k]; if (v != null && Number.isFinite(v) && v < vmin) vmin = v; }
+      const pv = sm[p];
+      if (pv == null || !Number.isFinite(pv) || !(pv > vmin)) return p;
+      const thresh = pv - (pv - vmin) * 0.12;
+      let td = p;
+      while (td > lo && sm[td - 1] != null && Number.isFinite(sm[td - 1]) && (sm[td - 1] as number) >= thresh) td--;
+      return td;
+    });
+    return touchdown;
   }, [poseResults, usedTargetFps]);
 
   // J=次の接地候補へ / K=前の接地候補へ ジャンプ（ボタンからも使う）
