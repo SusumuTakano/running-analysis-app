@@ -4282,26 +4282,14 @@ const clearMarksByButton = () => {
       }
       steps.push({ stepNo: i + 1, frame: f, distance: d, time: tm, side: contactFootSide(f), stride, frequency, trend: null, pairAvg: null, pairFrequency: null, flagged: false, extrapolated });
     }
-    // 👣 2歩ペア平均: 隣接する右+左の2歩を平均して、pose系統差による
-    //    「長-短-長-短」の左右交互振動をキャンセルする（固定カメラの2歩ペア平均と同じ考え方）
-    for (let i = 1; i < steps.length; i++) {
-      const a = steps[i - 1], b = steps[i];
-      if (a.stride != null && b.stride != null && !a.extrapolated && !b.extrapolated) {
-        b.pairAvg = (a.stride + b.stride) / 2;
-      }
-    }
-    // ⏱️ ピッチも同様に2歩ペア平均を主値とする（接地検出の±1コマ誤差が
-    //    1歩ピッチでは±0.2歩/s級の振れになるため。2歩合計時間なら誤差が半減）
-    // ＋ 歩時間が近傍中央値から15%超ずれる歩に「要確認」フラグ（接地マークずれの検出）
+    // ⏱️ 歩時間が近傍中央値から15%超ずれる歩に「要確認」フラグ（接地マークずれの検出）。
+    //    先に判定し、以降のペア平均計算から異常歩を除外する（1つの誤マークが
+    //    ペア2つ分を汚染してグラフに偽の山谷を作るのを防ぐ）
     const stepDts: Array<number | null> = steps.map((s, i) =>
       i > 0 ? s.time - steps[i - 1].time : null
     );
     for (let i = 1; i < steps.length; i++) {
       const dtCur = stepDts[i];
-      const dtPrev = i >= 2 ? stepDts[i - 1] : null;
-      if (dtCur != null && dtPrev != null && dtCur > 0 && dtPrev > 0) {
-        steps[i].pairFrequency = 2 / (dtCur + dtPrev);
-      }
       if (dtCur != null && dtCur > 0) {
         const nb: number[] = [];
         for (let k = Math.max(1, i - 3); k <= Math.min(steps.length - 1, i + 3); k++) {
@@ -4313,6 +4301,24 @@ const clearMarksByButton = () => {
           const med = nb[Math.floor(nb.length / 2)];
           if (Math.abs(dtCur - med) > 0.15 * med) steps[i].flagged = true;
         }
+      }
+    }
+
+    // 👣 2歩ペア平均: 隣接する右+左の2歩を平均して、pose系統差による
+    //    「長-短-長-短」の左右交互振動をキャンセルする（固定カメラの2歩ペア平均と同じ考え方）。
+    //    ⚠️フラグ歩（接地マークずれの疑い）はペアから除外して汚染を防ぐ。
+    for (let i = 1; i < steps.length; i++) {
+      const a = steps[i - 1], b = steps[i];
+      if (a.stride != null && b.stride != null && !a.extrapolated && !b.extrapolated && !a.flagged && !b.flagged) {
+        b.pairAvg = (a.stride + b.stride) / 2;
+      }
+    }
+    // ピッチも同様（⚠️歩は除外）
+    for (let i = 1; i < steps.length; i++) {
+      const dtCur = stepDts[i];
+      const dtPrev = i >= 2 ? stepDts[i - 1] : null;
+      if (dtCur != null && dtPrev != null && dtCur > 0 && dtPrev > 0 && !steps[i].flagged && !steps[i - 1].flagged) {
+        steps[i].pairFrequency = 2 / (dtCur + dtPrev);
       }
     }
     // 📈 トレンド（移動中央値→平均）: 左右交互のブレ＋取りこぼし外れ値を相殺して
@@ -15599,42 +15605,55 @@ case 6: {
                             <div style={{ background: 'rgba(255,255,255,0.95)', borderRadius: 8, padding: 10, marginBottom: 12 }}>
                               <Line
                                 data={{
-                                  labels: panningStrideAnalysis.steps.filter(s => s.stride != null && !s.extrapolated).map(s => s.distance.toFixed(1)),
                                   datasets: [
+                                    // 🟡 位置ベース実測（ポール校正）: 最も正確な1歩実測。あれば主役
+                                    ...(polePositionalStride && polePositionalStride.rows.some(r => r.stride != null) ? [{
+                                      label: '位置ベース実測（ポール校正）',
+                                      data: polePositionalStride.rows.filter(r => r.stride != null).map(r => ({ x: r.world, y: r.stride as number })),
+                                      borderColor: '#ca8a04',
+                                      backgroundColor: '#facc15',
+                                      borderWidth: 2.5,
+                                      tension: 0.15,
+                                      pointRadius: 3.5,
+                                      spanGaps: true,
+                                    }] : []),
                                     {
                                       label: 'トレンド（移動平均）',
-                                      data: panningStrideAnalysis.steps.filter(s => s.stride != null && !s.extrapolated).map(s => s.trend as number),
+                                      data: panningStrideAnalysis.steps.filter(s => s.stride != null && !s.extrapolated).map(s => ({ x: s.distance, y: s.trend as number })),
                                       borderColor: '#1d4ed8',
                                       backgroundColor: 'transparent',
                                       borderWidth: 3,
-                                      tension: 0.4,
+                                      tension: 0.3,
                                       pointRadius: 0,
                                     },
                                     {
-                                      label: '2歩ペア平均（左右キャンセル）',
-                                      data: panningStrideAnalysis.steps.filter(s => s.stride != null && !s.extrapolated).map(s => s.pairAvg),
+                                      label: '2歩ペア平均（左右キャンセル・⚠️歩除外）',
+                                      data: panningStrideAnalysis.steps.filter(s => s.stride != null && !s.extrapolated && s.pairAvg != null).map(s => ({ x: s.distance, y: s.pairAvg as number })),
                                       borderColor: '#ea580c',
                                       backgroundColor: 'transparent',
                                       borderWidth: 2,
-                                      tension: 0.35,
-                                      pointRadius: 2,
+                                      tension: 0.15,
+                                      pointRadius: 2.5,
                                       spanGaps: true,
                                     },
                                     {
-                                      label: 'ストライド（各歩）',
-                                      data: panningStrideAnalysis.steps.filter(s => s.stride != null && !s.extrapolated).map(s => s.stride as number),
-                                      borderColor: 'rgba(5,150,105,0.55)',
-                                      backgroundColor: 'rgba(5,150,105,0.10)',
-                                      borderWidth: 1,
-                                      tension: 0.3,
-                                      pointRadius: 2,
+                                      label: '各歩の生値（参考・点のみ）',
+                                      data: panningStrideAnalysis.steps.filter(s => s.stride != null && !s.extrapolated).map(s => ({ x: s.distance, y: s.stride as number })),
+                                      borderColor: 'rgba(5,150,105,0.45)',
+                                      backgroundColor: 'rgba(5,150,105,0.35)',
+                                      borderWidth: 0,
+                                      showLine: false,
+                                      pointRadius: 2.5,
                                     },
                                   ],
                                 }}
                                 options={{
                                   responsive: true,
                                   plugins: { legend: { display: true }, title: { display: true, text: 'ストライドの変化（横軸: スタートからの距離 m）' } },
-                                  scales: { y: { title: { display: true, text: 'ストライド (m)' } }, x: { title: { display: true, text: '距離 (m)' } } },
+                                  scales: {
+                                    y: { title: { display: true, text: 'ストライド (m)' } },
+                                    x: { type: 'linear' as const, title: { display: true, text: '距離 (m)' } },
+                                  },
                                 }}
                               />
                             </div>
