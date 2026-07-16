@@ -1646,7 +1646,10 @@ const [notesInput, setNotesInput] = useState<string>("");
   // 🆕 スナップ補助：接地登録時に近くの「足が最も低いフレーム」に吸着（手動の高速化）
   const [snapAssist, setSnapAssist] = useState<boolean>(true);
   // 🔁 連続マーク：接地を登録したら自動で次の接地候補へジャンプ（マーク作業の高速化）
-  const [autoAdvanceMark, setAutoAdvanceMark] = useState<boolean>(true);
+  // 連続マーク（登録後に次の接地候補へ自動ジャンプ）。
+  // デフォルトOFF: ユーザーの基本ワークフローは「スクラブ→Spaceでその場マーク」であり、
+  // 勝手にコマが進むのは混乱のもとという運用フィードバックによる（使う人だけONにする）
+  const [autoAdvanceMark, setAutoAdvanceMark] = useState<boolean>(false);
   // 🆕 動画ファイルのドラッグ＆ドロップ中フラグ（見た目のハイライト用）
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
 
