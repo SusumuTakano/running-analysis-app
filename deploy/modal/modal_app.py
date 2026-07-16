@@ -448,6 +448,7 @@ class PoseServer:
                     moving_tracks.append({
                         "items": items, "start": idxs[0], "end": idxs[-1],
                         "start_hx": xs[0], "end_hx": xs[-1], "vx": vx, "span": span,
+                        "orig_items": tr["items"],  # 刈り取り前（冒頭復元用）
                     })
 
                 # 3b) 途切れた走者トラックを速度整合で縫合（すれ違いで分断された前後をつなぐ）
@@ -526,6 +527,21 @@ class PoseServer:
                                 filled += 1
                     if filled:
                         print(f"🧩 欠測補完: 他トラックから{filled}フレーム回収")
+
+                # 3e) 走り出し前の静止区間を復元:
+                #     クラウチング姿勢等は「静止」として刈られるが、スタート姿勢の分析に
+                #     必要なので、走者トラック開始点と同じ場所に居た冒頭フレームは出力に含める。
+                #     （静止した見学者は場所が違うため復元されない）
+                if use_tracking and runner.get("orig_items"):
+                    r_start = min(runner["items"].keys())
+                    r_start_hx = runner["items"][r_start]["hx"]
+                    restored = 0
+                    for i, c in runner["orig_items"].items():
+                        if i < r_start and i not in runner["items"] and abs(c["hx"] - r_start_hx) <= GATE * 5:
+                            runner["items"][i] = c
+                            restored += 1
+                    if restored:
+                        print(f"🏁 スタート前の静止姿勢を{restored}フレーム復元")
 
                 if use_tracking:
                     print(f"🏃 走者トラック採用: {len(runner['items'])}フレーム, 水平移動 {best_span:.0f}px / {w}px, トラック数={len(tracks)}")
