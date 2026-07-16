@@ -34,6 +34,7 @@ import MultiCameraAnalyzer from "./components/MultiCameraAnalyzer";
 import { parseMedia } from "@remotion/media-parser";
 import { calculateHFVP, calculateHFVPFromPanningSplits, type HFVPResult, type StepDataForHFVP, type PanningSplitDataForHFVP } from './utils/hfvpCalculator';
 import { computeHFVP, type HFVPResult as HFVPMixedResult } from './lib/hfvpMixed';
+import { computeHFVPExpo, compareWithGoal, type ExpoPoint } from './lib/hfvpExpo';
 // ===== 検定モード (Phase 4) =====
 import CertificationMode from './components/Certification/CertificationMode';
 
@@ -4723,7 +4724,57 @@ const clearMarksByButton = () => {
   }, [pendingCertification, appMode, athleteOptions]);
 
   // ===== H-FVP dashboard values (ADD) =====
+  // ⚡ 高精度H-FVP（Samozino指数モデル）:
+  //    スプリット通過点＋位置ベース接地位置（ポール校正）を v(t)=Vmax(1-e^(-t/τ)) にフィット。
+  //    区間平均速度の差分と違い、個々のタイム誤差が加速度に増幅されない。空気抵抗も考慮。
+  const hfvpExpoResult = useMemo(() => {
+    if (analysisMode !== 'panning' || !usedTargetFps) return null;
+    const mass = athleteInfo.weight_kg;
+    const heightM = (athleteInfo.height_cm || 175) / 100;
+    if (!(mass > 0)) return null;
+    if (panningStartIndex == null || panningEndIndex == null || panningStartIndex >= panningEndIndex) return null;
+    const splits = panningSplits.slice(panningStartIndex, panningEndIndex + 1);
+    if (splits.length < 3) return null;
+    const points: ExpoPoint[] = splits.map(s => ({ t: s.time, x: s.distance, w: 3, label: `${s.distance}m地点` }));
+    // 🟡 ポール校正の接地位置（実測）があればデータ点として追加（フィットが約5倍のデータ量に）
+    if (polePositionalStride) {
+      const s0 = splits[0];
+      for (const r of polePositionalStride.rows) {
+        const t = s0.time + (r.frame - s0.frame) / usedTargetFps;
+        points.push({ t, x: r.world, w: 1, label: `接地F${r.frame}` });
+      }
+    }
+    const hasStandingStart = splits[0].distance <= 0.01;
+    const maxCourseX = splits[splits.length - 1].distance;
+    const result = computeHFVPExpo(points, mass, heightM, { maxCourseX, hasStandingStart });
+    if (result) {
+      console.log(`⚡ H-FVP(指数モデル): F0=${result.f0RelNkg.toFixed(2)}N/kg V0=${result.v0.toFixed(2)}m/s ` +
+        `Pmax=${result.pmaxRelWkg.toFixed(1)}W/kg τ=${result.fit.tau.toFixed(2)}s 位置R²=${result.fit.posR2.toFixed(4)} (${result.fit.usedPoints}点)`);
+    }
+    return result;
+  }, [analysisMode, usedTargetFps, athleteInfo.weight_kg, athleteInfo.height_cm, panningSplits, panningStartIndex, panningEndIndex, polePositionalStride]);
+
   const hfvpDashboard = useMemo(() => {
+    // ⚡ 指数モデルの結果があればそれを正とする（高精度・空気抵抗込み）
+    if (hfvpExpoResult) {
+      const e = hfvpExpoResult;
+      return {
+        f0Rel: round(e.f0RelNkg, 2),
+        v0: round(e.v0, 2),
+        pmaxRel: round(e.pmaxRelWkg, 2),
+        rfmax: Number.isFinite(e.rfMax) ? round(Math.max(0, Math.min(100, e.rfMax)), 1) : null,
+        drf: Number.isFinite(e.drf) ? round(e.drf, 2) : null,
+        vmax: round(e.vmaxMeasured, 2),
+        tau: round(e.fit.tau, 2),
+        fvR2: round(e.fvR2, 3),
+        posR2: round(e.fit.posR2, 3),
+        fvQuality: qualityLabel(e.fvR2),
+        posQuality: qualityLabel(e.fit.posR2),
+        method: 'expo' as const,
+        expo: e,
+      };
+    }
+
     // --- 既存変数名に合わせて置換 ---
     // 1) 体重(kg)
     const massKg = athleteInfo.weight_kg ?? 60;
@@ -4799,8 +4850,10 @@ const clearMarksByButton = () => {
       posR2: posR2 !== null ? round(posR2, 3) : null,
       fvQuality: qualityLabel(fvReg ? fvReg.r2 : null),
       posQuality: qualityLabel(posR2),
+      method: 'legacy' as const,
+      expo: null,
     };
-  }, [athleteInfo.weight_kg, panningSprintAnalysis]);
+  }, [athleteInfo.weight_kg, panningSprintAnalysis, hfvpExpoResult]);
 
   // ===== 目標達成カード計算 (ADD) =====
   const goalAchievement = useMemo(() => {
@@ -4835,7 +4888,50 @@ const clearMarksByButton = () => {
     }
     
     if (!goalTime || !isFiniteNumber(goalTime) || goalTime <= 0) return null;
-    
+
+    // ⚡ 指数モデルがあれば「F-Vプロファイルからの数値シミュレーション」で精密比較。
+    //    必要なF0/V0の逆算（3シナリオ）と、+1%あたりの効率（感度）も算出する。
+    if (hfvpDashboard.expo) {
+      const goal = compareWithGoal(hfvpDashboard.expo, 100, goalTime);
+      if (goal) {
+        const suggestions: string[] = [];
+        if (!goal.achieved) {
+          for (const sc of goal.scenarios) {
+            const parts: string[] = [];
+            if (sc.deltaF0Pct > 0) parts.push(`F0 +${sc.deltaF0Pct.toFixed(1)}% → ${sc.f0RelNkg.toFixed(2)} N/kg`);
+            if (sc.deltaV0Pct > 0) parts.push(`V0 +${sc.deltaV0Pct.toFixed(1)}% → ${sc.v0.toFixed(2)} m/s`);
+            suggestions.push(`${sc.label}: ${parts.join('、')}`);
+          }
+          if (goal.scenarios.length === 0) {
+            suggestions.push('目標との差が大きく、単一要素の強化（+60%以内）では届きません。段階的な中間目標の設定を推奨します。');
+          }
+          const s = goal.sensitivity;
+          const dir = goal.recommendation === 'F0' ? '加速局面（F0）' : goal.recommendation === 'V0' ? '最高速域（V0）' : '両方バランス良く';
+          suggestions.push(`改善効率: F0+1%＝${(s.f0Gain1pct * 1000).toFixed(0)}ms短縮 ／ V0+1%＝${(s.v0Gain1pct * 1000).toFixed(0)}ms短縮 → 伸びしろは${dir}`);
+          suggestions.push(
+            goal.recommendation === 'F0'
+              ? '推奨トレーニング: そり牽引・坂ダッシュなどのレジスタンス走＋瞬発系筋力で加速局面を強化'
+              : goal.recommendation === 'V0'
+                ? '推奨トレーニング: フライングスプリント・アシスト走など最高速域の刺激＋スピード維持走'
+                : '推奨トレーニング: 加速局面と最高速域をバランス良く強化'
+          );
+        } else {
+          suggestions.push('🎉 現在のF-Vプロファイルで目標達成圏内です！');
+          suggestions.push('さらなる記録更新を目指しましょう');
+        }
+        suggestions.push('※ 100m換算はF-Vモデルの理論値（リアクション・終盤の減速を含まない）。同一条件での比較・推移把握に使ってください。');
+        return {
+          goalTime: round(goalTime, 2),
+          currentTime: round(currentTime, 2),
+          estimated100mTime: round(goal.currentTime, 2),
+          gap: round(goal.gap, 3),
+          achievement: round(Math.min(100, (goalTime / goal.currentTime) * 100), 1),
+          isAchieved: goal.achieved,
+          suggestions,
+        };
+      }
+    }
+
     // 50mタイムと100m予測タイムを取得
     let scaled50mTime = currentTime;
     
@@ -9612,27 +9708,32 @@ if (totalFrames > MAX_FRAMES) {
     
     const hfvp = panningSprintAnalysis.hfvpData;
     const canvas = document.getElementById('fv-curve-chart') as HTMLCanvasElement;
-    
+
     if (!canvas) return;
-    
+
     // 既存のグラフを破棄
     const existingChart = Chart.getChart(canvas);
     if (existingChart) {
       existingChart.destroy();
     }
-    
-    // データポイント: 各地点の速度と力
-    const dataPoints = hfvp.points.map(p => ({
+
+    // ⚡ 指数モデルが有効なら、その F0/V0 で描画（パネル数値との整合性を保つ）
+    const useExpo = hfvpDashboard?.method === 'expo' && hfvpDashboard.expo != null;
+    const chartF0 = useExpo ? hfvpDashboard.expo!.f0N : hfvp.F0;
+    const chartV0 = useExpo ? hfvpDashboard.expo!.v0 : hfvp.v0;
+
+    // データポイント: 各地点の速度と力（指数モデル時は区間代表値を混ぜない）
+    const dataPoints = useExpo ? [] : hfvp.points.map(p => ({
       x: p.velocity,
       y: p.force
     }));
-    
+
     // 理論曲線: F = F0 * (1 - v/v0)
     const theoreticalCurve = [];
-    for (let v = 0; v <= hfvp.v0; v += hfvp.v0 / 50) {
+    for (let v = 0; v <= chartV0; v += chartV0 / 50) {
       theoreticalCurve.push({
         x: v,
-        y: hfvp.F0 * (1 - v / hfvp.v0)
+        y: chartF0 * (1 - v / chartV0)
       });
     }
     
@@ -9734,7 +9835,7 @@ if (totalFrames > MAX_FRAMES) {
         }
       }
     });
-  }, [analysisMode, panningSprintAnalysis]);
+  }, [analysisMode, panningSprintAnalysis, hfvpDashboard]);
 
   // 認証ハンドラー
   // 認証は AppWithAuth で処理済み
@@ -15900,15 +16001,33 @@ case 6: {
                           gap: '8px'
                         }}>
                           🔬 H-FVP結果
-                          <span style={{ 
-                            fontSize: '0.7rem', 
-                            padding: '2px 6px', 
-                            background: 'rgba(255,255,255,0.2)', 
-                            borderRadius: '4px' 
+                          <span style={{
+                            fontSize: '0.7rem',
+                            padding: '2px 6px',
+                            background: 'rgba(255,255,255,0.2)',
+                            borderRadius: '4px'
                           }}>
                             Horizontal Force-Velocity Profile
                           </span>
+                          {hfvpDashboard.method === 'expo' && hfvpDashboard.expo && (
+                            <span style={{
+                              fontSize: '0.72rem', padding: '3px 8px', borderRadius: 6, fontWeight: 700,
+                              background: 'rgba(16,185,129,0.35)', border: '1px solid rgba(16,185,129,0.6)',
+                            }}>
+                              ⚡ 高精度：指数モデル（{hfvpDashboard.expo.fit.usedPoints}点・空気抵抗考慮）
+                            </span>
+                          )}
                         </h4>
+                        {hfvpDashboard.method === 'expo' && hfvpDashboard.expo && hfvpDashboard.expo.warnings.length > 0 && (
+                          <div style={{
+                            marginBottom: 12, padding: '8px 12px', fontSize: '0.8rem',
+                            background: 'rgba(250,204,21,0.15)', border: '1px solid rgba(250,204,21,0.4)', borderRadius: 8,
+                          }}>
+                            {hfvpDashboard.expo.warnings.map((w, i) => (
+                              <div key={i}>⚠️ {w}</div>
+                            ))}
+                          </div>
+                        )}
 
                         {/* かんたん解説（折りたたみ）— 一般の方でも各指標の意味が分かるように */}
                         <details style={{
@@ -16086,8 +16205,8 @@ case 6: {
                           </div>
                         </div>
 
-                        {/* 回帰採用点・除外点の表示 */}
-                        {panningSprintAnalysis.hfvpData?.summary && (
+                        {/* 回帰採用点・除外点の表示（旧計算の詳細。⚡指数モデル時は非表示＝数値の混在を防ぐ） */}
+                        {hfvpDashboard.method !== 'expo' && panningSprintAnalysis.hfvpData?.summary && (
                           <div style={{
                             marginTop: '16px',
                             padding: '12px',
@@ -16123,8 +16242,9 @@ case 6: {
                         )}
 
                         {/* 各区間代表値のH-FVP指標 */}
+                        {hfvpDashboard.method !== 'expo' && (
                         <div style={{ marginTop: '20px' }}>
-                          <h5 style={{ 
+                          <h5 style={{
                             margin: '0 0 12px 0',
                             fontSize: '1rem',
                             opacity: 0.95
@@ -16169,7 +16289,8 @@ case 6: {
                             ))}
                           </div>
                         </div>
-                        
+                        )}
+
                         {/* F-V曲線グラフ（Chart.js使用） */}
                         <div style={{ marginTop: '24px' }}>
                           <h5 style={{ 
