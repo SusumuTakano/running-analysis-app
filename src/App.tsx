@@ -990,7 +990,7 @@ useEffect(() => {
     overview: false,             // 概要
     intervals: false,            // 区間データ
     hfvpAnalysis: false,         // H-FVP分析
-    goalAchievement: false,      // 目標達成
+    goalAchievement: true,       // 目標達成（目標との差はすぐ見たい要望が多いため初期展開）
     aiImprovements: false,       // AI改善提案
     aiTrainingPlan: false,       // AIトレーニングプラン
     poseAnalysis: false,         // 姿勢分析
@@ -4900,6 +4900,8 @@ const clearMarksByButton = () => {
           suggestions.push('さらなる記録更新を目指しましょう');
         }
         suggestions.push('※ 100m換算はF-Vモデルの理論値（リアクション・終盤の減速を含まない）。同一条件での比較・推移把握に使ってください。');
+        // F-V曲線に「目標プロファイル」を重ねるための必要値（均等強化シナリオ）
+        const balanced = goal.scenarios.find(s => s.deltaF0Pct > 0 && s.deltaV0Pct > 0) ?? goal.scenarios[0] ?? null;
         return {
           goalTime: round(goalTime, 2),
           currentTime: round(currentTime, 2),
@@ -4908,6 +4910,8 @@ const clearMarksByButton = () => {
           achievement: round(Math.min(100, (goalTime / goal.currentTime) * 100), 1),
           isAchieved: goal.achieved,
           suggestions,
+          requiredF0Rel: balanced ? round(balanced.f0RelNkg, 2) : null,
+          requiredV0: balanced ? round(balanced.v0, 2) : null,
         };
       }
     }
@@ -9702,11 +9706,23 @@ if (totalFrames > MAX_FRAMES) {
     const chartF0 = useExpo ? hfvpDashboard.expo!.f0N : hfvp.F0;
     const chartV0 = useExpo ? hfvpDashboard.expo!.v0 : hfvp.v0;
 
-    // データポイント: 各地点の速度と力（指数モデル時は区間代表値を混ぜない）
-    const dataPoints = useExpo ? [] : hfvp.points.map(p => ({
-      x: p.velocity,
-      y: p.force
-    }));
+    // データポイント:
+    //  - 指数モデル時: 各データ点（スプリット通過・接地）の時刻をモデルで評価した (v, F)。
+    //    どの速度域を実データがカバーしているかが分かる
+    //  - 従来法時: 区間代表値そのまま
+    let dataPoints: Array<{ x: number; y: number }>;
+    if (useExpo) {
+      const e = hfvpDashboard.expo!;
+      dataPoints = e.fit.residuals.map(r => {
+        const td = Math.max(0.01, r.t - e.fit.t0);
+        const v = e.fit.vmax * (1 - Math.exp(-td / e.fit.tau));
+        const a = (e.fit.vmax / e.fit.tau) * Math.exp(-td / e.fit.tau);
+        const F = e.massKg * a + e.kAero * v * v;
+        return { x: v, y: F };
+      });
+    } else {
+      dataPoints = hfvp.points.map(p => ({ x: p.velocity, y: p.force }));
+    }
 
     // 理論曲線: F = F0 * (1 - v/v0)
     const theoreticalCurve = [];
@@ -9715,6 +9731,16 @@ if (totalFrames > MAX_FRAMES) {
         x: v,
         y: chartF0 * (1 - v / chartV0)
       });
+    }
+
+    // 🎯 目標プロファイル（均等強化シナリオ）: 目標記録があれば点線で重ねる
+    const goalCurve: Array<{ x: number; y: number }> = [];
+    if (useExpo && goalAchievement && goalAchievement.requiredF0Rel != null && goalAchievement.requiredV0 != null) {
+      const gF0 = goalAchievement.requiredF0Rel * (hfvpDashboard.expo!.massKg);
+      const gV0 = goalAchievement.requiredV0;
+      for (let v = 0; v <= gV0; v += gV0 / 50) {
+        goalCurve.push({ x: v, y: gF0 * (1 - v / gV0) });
+      }
     }
     
     // Chart.jsでグラフ作成
@@ -9739,7 +9765,18 @@ if (totalFrames > MAX_FRAMES) {
             borderWidth: 2,
             pointRadius: 0,
             fill: false
-          }
+          },
+          ...(goalCurve.length > 0 ? [{
+            label: `目標プロファイル（目標${goalAchievement?.goalTime ?? '—'}秒に必要）`,
+            data: goalCurve,
+            type: 'line' as const,
+            borderColor: 'rgba(249, 115, 22, 0.9)',
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            borderDash: [8, 5],
+            pointRadius: 0,
+            fill: false
+          }] : [])
         ]
       },
       options: {
@@ -9815,7 +9852,7 @@ if (totalFrames > MAX_FRAMES) {
         }
       }
     });
-  }, [analysisMode, panningSprintAnalysis, hfvpDashboard]);
+  }, [analysisMode, panningSprintAnalysis, hfvpDashboard, goalAchievement]);
 
   // 認証ハンドラー
   // 認証は AppWithAuth で処理済み
