@@ -7757,9 +7757,13 @@ if (mode === "multi") {
   }
 } else {
   // 🔴 SINGLE-CAMERA MODE: Use same TYPE A/B detection as multi-camera
-  totalFrames = Math.max(1, Math.floor(duration * 30)); // フォールバック
-  seekDt = 1 / 30;
-  extractFps = 30;
+  // フォールバック初期値はユーザー選択FPSを信頼する。
+  // ⚠️ 以前は無条件に30fps扱いで、コンテナ解析が失敗すると
+  //    120fps動画がすべて30fps扱いになる事故の原因だった
+  const fallbackFps = Number(selectedFps) > 0 ? Number(selectedFps) : 30;
+  totalFrames = Math.max(1, Math.floor(duration * fallbackFps));
+  seekDt = 1 / fallbackFps;
+  extractFps = fallbackFps;
 
   // マルチカメラモードではvf（opts.file）を使用、シングルモードではsourceVideoFileを使用
   const fileToAnalyze = vf ?? sourceVideoFile;
@@ -7852,8 +7856,8 @@ console.log(
 
     } catch (error) {
       console.error('❌ parseMedia failed:', error);
-      console.log('⚠️ Falling back to default frame extraction (30fps × duration)');
-      // フォールバック：デフォルト値を使用
+      console.log(`⚠️ コンテナ解析に失敗 → ユーザー選択FPS(${selectedFps})で継続（この後の実測クロスチェックでも補正されます）`);
+      // フォールバック：選択FPSベースの初期値（上で設定済み）をそのまま使用
     }
   } else {
     console.warn('⚠️ No file to analyze! Using fallback: totalFrames = duration * 30');
@@ -7867,6 +7871,69 @@ if (isPanningMode && duration > 25 && totalFrames > 800) {
   seekDt = 1 / newFps;
   totalFrames = Math.floor(duration * newFps);
   console.log(`🏁 長尺パン軽量化: extractFps=${newFps.toFixed(2)} / totalFrames=${totalFrames} / seekDt=${seekDt.toFixed(4)}`);
+}
+
+// 🛡️ FPS実測クロスチェック（最終防衛線）:
+//    コンテナ情報が読めない/壊れている場合でも、動画を0.25倍速で少しだけ再生し、
+//    requestVideoFrameCallback のフレーム時刻（mediaTime）の間隔から実FPSを直接測定する。
+//    ※0.25倍速にするのは、120fps動画を等速再生するとディスプレイ(60Hz)の制約で
+//      1コマおきにしか提示されず、実測が60fpsに見えてしまうため。
+//    コンテナ判定と実測が40%以上食い違う場合は実測を採用する。
+if (mode !== 'multi') {
+  const measureVideoFps = (): Promise<number | null> => new Promise((resolve) => {
+    const vAny = video as HTMLVideoElement & { requestVideoFrameCallback?: (cb: (now: number, meta: { mediaTime: number }) => void) => number };
+    if (typeof vAny.requestVideoFrameCallback !== 'function') { resolve(null); return; }
+    const deltas: number[] = [];
+    let lastT: number | null = null;
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      try { video.pause(); video.playbackRate = 1; } catch { /* noop */ }
+      if (deltas.length < 6) { resolve(null); return; }
+      deltas.sort((a, b) => a - b);
+      const med = deltas[Math.floor(deltas.length / 2)];
+      resolve(med > 0 ? 1 / med : null);
+    };
+    const onFrame = (_now: number, meta: { mediaTime: number }) => {
+      if (finished) return;
+      if (lastT != null) {
+        const d = meta.mediaTime - lastT;
+        if (d > 0.0005 && d < 0.5) deltas.push(d);
+      }
+      lastT = meta.mediaTime;
+      if (deltas.length >= 24) { finish(); return; }
+      vAny.requestVideoFrameCallback!(onFrame);
+    };
+    try {
+      video.muted = true;
+      video.playbackRate = 0.25;
+      video.currentTime = Math.max(0, Math.min(duration * 0.5, Math.max(0, duration - 1)));
+      vAny.requestVideoFrameCallback!(onFrame);
+      video.play().catch(() => finish());
+      setTimeout(finish, 2500);
+    } catch { finish(); }
+  });
+
+  const measuredRaw = await measureVideoFps();
+  if (measuredRaw != null) {
+    // 一般的なFPSへスナップ（±12%以内）
+    const COMMON = [24, 25, 30, 50, 60, 100, 120, 240];
+    const snapped = COMMON.find(c => Math.abs(measuredRaw - c) / c < 0.12) ?? null;
+    const assumedFps = 1 / seekDt;
+    console.log(`🔬 FPS実測: ${measuredRaw.toFixed(1)}fps（スナップ: ${snapped ?? '—'}） / コンテナ判定: ${assumedFps.toFixed(1)}fps`);
+    if (snapped != null && Math.abs(snapped - assumedFps) / assumedFps > 0.4) {
+      console.warn(`🛡️ コンテナ判定(${assumedFps.toFixed(1)}fps)と実測(${snapped}fps)が大きく不一致 → 実測を採用`);
+      totalFrames = Math.max(1, Math.floor(duration * snapped));
+      seekDt = 1 / snapped;
+      extractFps = snapped;
+      if (snapped >= 40) {
+        targetFps = snapped; // 高速撮影動画として時間換算にも反映
+      }
+    }
+  } else {
+    console.log('🔬 FPS実測: 取得できず（コンテナ判定を使用）');
+  }
 }
 
 console.log(`🎬 Video specs: analysisFps=${targetFps}fps, extractFrames=${totalFrames}, duration=${duration.toFixed(2)}s`);
