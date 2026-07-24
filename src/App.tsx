@@ -6184,17 +6184,25 @@ ${panningSprintAnalysis.intervals.map((int, idx) =>
               setPoleTracks(Array.isArray(data?.poleTracks) ? data.poleTracks : []);
 
               if (landmarksArr.length > 0) {
-                // フレーム数が一致しない場合は長さを揃える
-                const usable = Math.min(landmarksArr.length, totalFrames);
                 const bulkResults: (FramePoseData | null)[] = new Array(totalFrames).fill(null);
 
-                for (let i = 0; i < usable; i++) {
-                  const lms = landmarksArr[i];
-                  if (!Array.isArray(lms) || lms.length === 0) continue;
+                // 🛡️ フレーム対応の整合ガード:
+                //    サーバーは「動画の実フレーム数」で姿勢を返す。クライアント抽出数と
+                //    大きく食い違う場合（例: FPS誤認で30fps抽出=128コマ vs 実120fps=511コマ）、
+                //    1:1対応だと骨格が動画に対して数倍遅れてズレる。
+                //    → 比例対応（i → round(i × server/client)）で正しいコマに割り当てる。
+                const serverTotal = landmarksArr.length;
+                const mismatch = Math.abs(serverTotal - totalFrames) > Math.max(3, totalFrames * 0.02);
+                if (mismatch) {
+                  console.warn(`🛡️ 姿勢フレーム数の不一致を検出: サーバー${serverTotal} vs クライアント${totalFrames} → 比例対応で整合`);
+                }
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const toPose = (lms: any): FramePoseData | null => {
+                  if (!Array.isArray(lms) || lms.length === 0) return null;
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const hasAny = lms.some((lm: any) => (lm?.visibility ?? 0) > 0.2);
-                  if (!hasAny) continue;
-                  bulkResults[i] = {
+                  if (!hasAny) return null;
+                  return {
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     landmarks: lms.map((lm: any) => ({
                       x: lm.x,
@@ -6203,6 +6211,17 @@ ${panningSprintAnalysis.intervals.map((int, idx) =>
                       visibility: lm.visibility ?? 0,
                     })),
                   };
+                };
+                if (mismatch && serverTotal > 1 && totalFrames > 1) {
+                  for (let i = 0; i < totalFrames; i++) {
+                    const si = Math.min(serverTotal - 1, Math.round((i * (serverTotal - 1)) / (totalFrames - 1)));
+                    bulkResults[i] = toPose(landmarksArr[si]);
+                  }
+                } else {
+                  const usable = Math.min(serverTotal, totalFrames);
+                  for (let i = 0; i < usable; i++) {
+                    bulkResults[i] = toPose(landmarksArr[i]);
+                  }
                 }
 
                 const bulkInterpolated = interpolateMissingPoses(bulkResults);
