@@ -2765,17 +2765,22 @@ function handleMarkAtCurrentFrame(kind?: MarkKind) {
     // 重複防止: すでに近くに接地がある場合は登録しない（窓はFPS連動）
     if (manualContactFrames.some((c) => Math.abs(c - cf) <= scaledFrames(3, 1))) {
       console.warn(`⚠️ 近くに既に接地があります（${cf}）。重複登録をスキップしました`);
-      if (cf !== f) setCurrentFrame(cf);
+      setStatus(`⚠️ この近くには接地マーク済みです（F${cf}）`);
       return;
     }
     const nextContacts = [...manualContactFrames, cf];
     setManualContactFrames(nextContacts);
     console.log(`📍 接地マーク: フレーム ${cf}${cf !== f ? `（スナップ: ${f}→${cf}）` : ''}`);
+    // 📌 マーク時に表示コマは動かさない（勝手にコマが進む混乱の元だった）。
+    //    スナップの補正はマーカー位置にのみ適用し、結果はステータスで通知する
+    setStatus(`📍 接地マーク: F${cf}${cf !== f ? `（スナップで ${cf > f ? '+' : ''}${cf - f}コマ補正）` : ''}`);
 
-    // 🔁 連続マーク: 登録後、次の接地候補へ自動ジャンプ（OFFなら吸着位置に留まる）
+    // 🔁 連続マーク: ONのときだけ、登録後に次の接地候補へ自動ジャンプ
     const nextCand = autoAdvanceMark ? toeContactCandidates.find((c) => c > cf) : undefined;
-    setCurrentFrame(nextCand != null ? nextCand : cf);
-    if (nextCand != null) console.log(`🔁 連続マーク: 次の接地候補へ → ${nextCand}`);
+    if (nextCand != null) {
+      setCurrentFrame(nextCand);
+      console.log(`🔁 連続マーク: 次の接地候補へ → ${nextCand}`);
+    }
 
     const toeOff = detectToeOffFrame(cf);
     if (toeOff != null) {
@@ -2798,12 +2803,13 @@ function handleMarkAtCurrentFrame(kind?: MarkKind) {
       // 重複防止: すでに近くに接地がある場合は登録しない（窓はFPS連動）
       if (manualContactFrames.some((c) => Math.abs(c - cf) <= scaledFrames(3, 1))) {
         console.warn(`⚠️ 近くに既に接地があります（${cf}）。重複登録をスキップしました`);
-        if (cf !== f) setCurrentFrame(cf);
+        setStatus(`⚠️ この近くには接地マーク済みです（F${cf}）`);
         return;
       }
-      if (cf !== f) setCurrentFrame(cf);
+      // 📌 表示コマは動かさない（スナップ補正はマーカー位置にのみ適用）
       setManualContactFrames([...manualContactFrames, cf]);
       console.log(`📍 接地マーク: フレーム ${cf}${cf !== f ? `（スナップ: ${f}→${cf}）` : ''}`);
+      setStatus(`📍 接地マーク: F${cf}${cf !== f ? `（スナップで ${cf > f ? '+' : ''}${cf - f}コマ補正）` : ''}`);
       return;
     }
 
@@ -7462,6 +7468,7 @@ const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
     try {
       await new Promise<void>((resolve, reject) => {
         const onLoaded = async () => {
+          window.clearTimeout(wedgeTimer);
           video.removeEventListener("loadedmetadata", onLoaded);
           video.removeEventListener("error", onError);
           
@@ -7549,10 +7556,21 @@ const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
           resolve();
         };
         const onError = () => {
+          window.clearTimeout(wedgeTimer);
           video.removeEventListener("loadedmetadata", onLoaded);
           video.removeEventListener("error", onError);
           reject(new Error("動画の読み込みに失敗しました。"));
         };
+
+        // 🛡️ ブラウザの動画機能の「詰まり」検出:
+        //    Chromeを長時間使うと動画メタデータの読み込みが永遠に終わらなくなる不調が
+        //    実地で頻発している（0%のまま停止する症状の正体）。15秒で検出して
+        //    「Chromeの再起動」という正しい対処法をユーザーに案内する。
+        const wedgeTimer = window.setTimeout(() => {
+          video.removeEventListener("loadedmetadata", onLoaded);
+          video.removeEventListener("error", onError);
+          reject(new Error("VIDEO_PIPELINE_STUCK"));
+        }, 15000);
 
         video.addEventListener("loadedmetadata", onLoaded);
         video.addEventListener("error", onError);
@@ -7597,8 +7615,21 @@ const handleExtractFrames = async (opts: ExtractFramesOpts = {}) => {
     } catch (err) {
       console.error(err);
       setIsExtracting(false);
-      setStatus("❌ 動画の読み込みに失敗しました。");
-      alert("動画の読み込みに失敗しました。別のファイルを選択してください。");
+      if (err instanceof Error && err.message === "VIDEO_PIPELINE_STUCK") {
+        setStatus("⚠️ ブラウザの動画機能が応答していません（Chromeの再起動が必要です）");
+        alert(
+          "⚠️ ブラウザの動画機能が応答していません。\n\n" +
+          "これはアプリや動画ファイルの問題ではなく、ブラウザ（Chrome）を長時間使った際に起こる一時的な不調です。\n\n" +
+          "【対処方法】\n" +
+          "1. Chromeを完全に終了する（Mac: Cmd + Q）\n" +
+          "2. Chromeを起動し直す\n" +
+          "3. もう一度アップロードからやり直す\n\n" +
+          "※ ページのリロード（再読み込み）だけでは直りません。必ずChrome自体を終了してください。"
+        );
+      } else {
+        setStatus("❌ 動画の読み込みに失敗しました。");
+        alert("動画の読み込みに失敗しました。別のファイルを選択してください。");
+      }
       setWizardStep(1);
       return;
     }
