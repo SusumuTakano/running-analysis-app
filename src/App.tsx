@@ -6198,9 +6198,13 @@ ${panningSprintAnalysis.intervals.map((int, idx) =>
                 //    1:1対応だと骨格が動画に対して数倍遅れてズレる。
                 //    → 比例対応（i → round(i × server/client)）で正しいコマに割り当てる。
                 const serverTotal = landmarksArr.length;
-                const mismatch = Math.abs(serverTotal - totalFrames) > Math.max(3, totalFrames * 0.02);
+                // 比例対応は「明確なFPS取り違え」（1.5倍以上の差）のときだけ発動する。
+                // 可変フレームレート等による数%のズレで発動すると、かえって
+                // 骨格の対応を乱すため（1:1のままが正しい）
+                const ratio = totalFrames > 0 ? serverTotal / totalFrames : 1;
+                const mismatch = ratio > 1.5 || ratio < 1 / 1.5;
                 if (mismatch) {
-                  console.warn(`🛡️ 姿勢フレーム数の不一致を検出: サーバー${serverTotal} vs クライアント${totalFrames} → 比例対応で整合`);
+                  console.warn(`🛡️ 姿勢フレーム数の大幅な不一致を検出: サーバー${serverTotal} vs クライアント${totalFrames}（${ratio.toFixed(2)}倍） → 比例対応で整合`);
                 }
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const toPose = (lms: any): FramePoseData | null => {
